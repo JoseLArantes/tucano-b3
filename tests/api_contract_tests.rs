@@ -50,7 +50,12 @@ async fn test_auth_whitelist_and_rejection() {
     // 1. Healthz is public
     let res = app
         .clone()
-        .oneshot(Request::builder().uri("/healthz").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/healthz")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
@@ -58,7 +63,12 @@ async fn test_auth_whitelist_and_rejection() {
     // 2. /api/v1/health is public
     let res = app
         .clone()
-        .oneshot(Request::builder().uri("/api/v1/health").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
@@ -66,7 +76,12 @@ async fn test_auth_whitelist_and_rejection() {
     // 3. /docs and /openapi.json are public
     let res = app
         .clone()
-        .oneshot(Request::builder().uri("/openapi.json").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/openapi.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
@@ -81,7 +96,12 @@ async fn test_auth_whitelist_and_rejection() {
     // 4. Protected route without auth header returns 401
     let res = app
         .clone()
-        .oneshot(Request::builder().uri("/api/v1/b3/instruments").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/b3/instruments")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
@@ -126,12 +146,19 @@ async fn test_openapi_schema_contains_b3_specs_and_disclaimer() {
     };
 
     let res = app
-        .oneshot(Request::builder().uri("/openapi.json").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/openapi.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
 
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let openapi: Value = serde_json::from_slice(&body_bytes).unwrap();
 
     let title = openapi["info"]["title"].as_str().unwrap();
@@ -171,7 +198,9 @@ async fn test_cotahist_envelope_includes_disclaimer() {
         .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
 
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json_resp: Value = serde_json::from_slice(&body_bytes).unwrap();
 
     assert!(json_resp.get("items").is_some());
@@ -205,7 +234,9 @@ async fn test_diagnostics_coverage_endpoint() {
         .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
 
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let metrics: Vec<Value> = serde_json::from_slice(&body_bytes).unwrap();
     assert!(!metrics.is_empty());
     assert!(metrics.iter().any(|m| m["dataset"] == "b3_instruments"));
@@ -239,4 +270,3 @@ async fn test_mcp_tools_execution() {
     let diag = handle_get_dataset_diagnostics(&pool).await;
     assert!(diag.get("diagnostics").is_some());
 }
-

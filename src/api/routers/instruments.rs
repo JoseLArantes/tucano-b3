@@ -77,8 +77,14 @@ pub async fn list_instruments(
     let ticker = filters.ticker.as_deref().map(|s| s.trim().to_uppercase());
     let isin = filters.isin.as_deref().map(|s| s.trim().to_uppercase());
     let sec_id = filters.security_id.as_deref().map(|s| s.trim());
-    let market = filters.market_code.as_deref().map(|s| s.trim().to_uppercase());
-    let segment = filters.segment_code.as_deref().map(|s| s.trim().to_uppercase());
+    let market = filters
+        .market_code
+        .as_deref()
+        .map(|s| s.trim().to_uppercase());
+    let segment = filters
+        .segment_code
+        .as_deref()
+        .map(|s| s.trim().to_uppercase());
 
     let count_query = r#"
         SELECT count(DISTINCT i.id)
@@ -94,7 +100,7 @@ pub async fn list_instruments(
     let total: i64 = sqlx::query_scalar(count_query)
         .bind(&ticker)
         .bind(&isin)
-        .bind(&sec_id)
+        .bind(sec_id)
         .bind(&market)
         .bind(&segment)
         .fetch_one(&state.pool)
@@ -128,7 +134,7 @@ pub async fn list_instruments(
     let rows = sqlx::query(select_query)
         .bind(&ticker)
         .bind(&isin)
-        .bind(&sec_id)
+        .bind(sec_id)
         .bind(&market)
         .bind(&segment)
         .bind(limit)
@@ -296,7 +302,10 @@ pub async fn get_instrument_by_ticker(
         .fetch_optional(&state.pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, format!("Instrument not found for ticker {clean_ticker}")))?;
+        .ok_or((
+            StatusCode::NOT_FOUND,
+            format!("Instrument not found for ticker {clean_ticker}"),
+        ))?;
 
     let provenance = Provenance {
         source_file_type: row.get("source_file_type"),
@@ -360,7 +369,10 @@ pub async fn get_instrument_by_isin(
         .fetch_optional(&state.pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, format!("Instrument not found for ISIN {clean_isin}")))?;
+        .ok_or((
+            StatusCode::NOT_FOUND,
+            format!("Instrument not found for ISIN {clean_isin}"),
+        ))?;
 
     let provenance = Provenance {
         source_file_type: row.get("source_file_type"),

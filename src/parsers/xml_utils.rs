@@ -6,4 +6,3 @@ pub fn local_name(tag: &[u8]) -> String {
         name_str.to_string()
     }
 }
-

@@ -41,6 +41,7 @@ pub struct Bvbg086Row {
     pub minimum_trade_limit: Option<Decimal>,
 }
 
+#[allow(clippy::collapsible_match)]
 pub fn parse_bvbg_086<R: BufRead>(reader: R) -> Result<ParsedOutput<Bvbg086Row>> {
     let mut xml_reader = Reader::from_reader(reader);
     xml_reader.config_mut().trim_text(true);
@@ -56,7 +57,8 @@ pub fn parse_bvbg_086<R: BufRead>(reader: R) -> Result<ParsedOutput<Bvbg086Row>>
         match xml_reader.read_event_into(&mut buf)? {
             Event::Start(ref e) => {
                 let name = local_name(e.name().as_ref()).to_lowercase();
-                if name == "pricerecord" || name == "price" || name == "quote" || name == "pricrpt" {
+                if name == "pricerecord" || name == "price" || name == "quote" || name == "pricrpt"
+                {
                     in_record = true;
                     current_row = Bvbg086Row::default();
                 } else if in_record {
@@ -66,10 +68,12 @@ pub fn parse_bvbg_086<R: BufRead>(reader: R) -> Result<ParsedOutput<Bvbg086Row>>
             }
             Event::End(ref e) => {
                 let name = local_name(e.name().as_ref()).to_lowercase();
-                if name == "pricerecord" || name == "price" || name == "quote" || name == "pricrpt" {
+                if name == "pricerecord" || name == "price" || name == "quote" || name == "pricrpt"
+                {
                     in_record = false;
                     if current_row.trade_date.is_some()
-                        && (current_row.security_id.is_some() || current_row.ticker_symbol.is_some())
+                        && (current_row.security_id.is_some()
+                            || current_row.ticker_symbol.is_some())
                     {
                         rows.push(current_row.clone());
                     }
@@ -94,7 +98,8 @@ pub fn parse_bvbg_086<R: BufRead>(reader: R) -> Result<ParsedOutput<Bvbg086Row>>
                         }
                         "marketidentifiercode" | "mic" | "mktidrcd" => {
                             if current_row.market_identifier_code.is_none() {
-                                current_row.market_identifier_code = canonicalize_string(Some(text));
+                                current_row.market_identifier_code =
+                                    canonicalize_string(Some(text));
                             }
                         }
                         "tradequantity" | "trade_quantity" | "tradqty" => {
@@ -104,17 +109,20 @@ pub fn parse_bvbg_086<R: BufRead>(reader: R) -> Result<ParsedOutput<Bvbg086Row>>
                         }
                         "daystosettlement" | "days_to_settlement" | "daystosttlm" => {
                             if current_row.days_to_settlement.is_none() {
-                                current_row.days_to_settlement = canonicalize_int(Some(text))?.map(|v| v as i32);
+                                current_row.days_to_settlement =
+                                    canonicalize_int(Some(text))?.map(|v| v as i32);
                             }
                         }
                         "financialvolumebrl" | "financial_volume_brl" | "ntlfinvol" => {
                             if current_row.financial_volume_brl.is_none() {
-                                current_row.financial_volume_brl = canonicalize_decimal(Some(text))?;
+                                current_row.financial_volume_brl =
+                                    canonicalize_decimal(Some(text))?;
                             }
                         }
                         "financialvolumeusd" | "financial_volume_usd" | "intlfinvol" => {
                             if current_row.financial_volume_usd.is_none() {
-                                current_row.financial_volume_usd = canonicalize_decimal(Some(text))?;
+                                current_row.financial_volume_usd =
+                                    canonicalize_decimal(Some(text))?;
                             }
                         }
                         "openinterest" | "open_interest" | "opnintrst" => {
@@ -122,9 +130,12 @@ pub fn parse_bvbg_086<R: BufRead>(reader: R) -> Result<ParsedOutput<Bvbg086Row>>
                                 current_row.open_interest = canonicalize_decimal(Some(text))?;
                             }
                         }
-                        "financialinstrumentquantity" | "financial_instrument_quantity" | "fininstrmqty" => {
+                        "financialinstrumentquantity"
+                        | "financial_instrument_quantity"
+                        | "fininstrmqty" => {
                             if current_row.financial_instrument_quantity.is_none() {
-                                current_row.financial_instrument_quantity = canonicalize_decimal(Some(text))?;
+                                current_row.financial_instrument_quantity =
+                                    canonicalize_decimal(Some(text))?;
                             }
                         }
                         "bestbidprice" | "best_bid_price" | "bestbidpric" => {
@@ -162,49 +173,73 @@ pub fn parse_bvbg_086<R: BufRead>(reader: R) -> Result<ParsedOutput<Bvbg086Row>>
                                 current_row.last_price = canonicalize_decimal(Some(text))?;
                             }
                         }
-                        "regulartransactionsquantity" | "regular_transactions_quantity" | "tradescount" | "rglrtxsqty" => {
+                        "regulartransactionsquantity"
+                        | "regular_transactions_quantity"
+                        | "tradescount"
+                        | "rglrtxsqty" => {
                             if current_row.regular_transactions_quantity.is_none() {
-                                current_row.regular_transactions_quantity = canonicalize_int(Some(text))?.map(|v| v as i32);
+                                current_row.regular_transactions_quantity =
+                                    canonicalize_int(Some(text))?.map(|v| v as i32);
                             }
                         }
-                        "nonregulartransactionsquantity" | "non_regular_transactions_quantity" | "nonrglrtxsqty" => {
+                        "nonregulartransactionsquantity"
+                        | "non_regular_transactions_quantity"
+                        | "nonrglrtxsqty" => {
                             if current_row.non_regular_transactions_quantity.is_none() {
-                                current_row.non_regular_transactions_quantity = canonicalize_int(Some(text))?.map(|v| v as i32);
+                                current_row.non_regular_transactions_quantity =
+                                    canonicalize_int(Some(text))?.map(|v| v as i32);
                             }
                         }
-                        "regulartradedcontracts" | "regular_traded_contracts" | "rglrtraddctrcts" => {
+                        "regulartradedcontracts"
+                        | "regular_traded_contracts"
+                        | "rglrtraddctrcts" => {
                             if current_row.regular_traded_contracts.is_none() {
-                                current_row.regular_traded_contracts = canonicalize_decimal(Some(text))?;
+                                current_row.regular_traded_contracts =
+                                    canonicalize_decimal(Some(text))?;
                             }
                         }
-                        "nonregulartradedcontracts" | "non_regular_traded_contracts" | "nonrglrtraddctrcts" => {
+                        "nonregulartradedcontracts"
+                        | "non_regular_traded_contracts"
+                        | "nonrglrtraddctrcts" => {
                             if current_row.non_regular_traded_contracts.is_none() {
-                                current_row.non_regular_traded_contracts = canonicalize_decimal(Some(text))?;
+                                current_row.non_regular_traded_contracts =
+                                    canonicalize_decimal(Some(text))?;
                             }
                         }
                         "nationalregularvolume" | "national_regular_volume" | "ntlrglrvol" => {
                             if current_row.national_regular_volume.is_none() {
-                                current_row.national_regular_volume = canonicalize_decimal(Some(text))?;
+                                current_row.national_regular_volume =
+                                    canonicalize_decimal(Some(text))?;
                             }
                         }
-                        "nationalnonregularvolume" | "national_non_regular_volume" | "ntlnonrglrvol" => {
+                        "nationalnonregularvolume"
+                        | "national_non_regular_volume"
+                        | "ntlnonrglrvol" => {
                             if current_row.national_non_regular_volume.is_none() {
-                                current_row.national_non_regular_volume = canonicalize_decimal(Some(text))?;
+                                current_row.national_non_regular_volume =
+                                    canonicalize_decimal(Some(text))?;
                             }
                         }
-                        "internationalregularvolume" | "international_regular_volume" | "intlrglrvol" => {
+                        "internationalregularvolume"
+                        | "international_regular_volume"
+                        | "intlrglrvol" => {
                             if current_row.international_regular_volume.is_none() {
-                                current_row.international_regular_volume = canonicalize_decimal(Some(text))?;
+                                current_row.international_regular_volume =
+                                    canonicalize_decimal(Some(text))?;
                             }
                         }
-                        "internationalnonregularvolume" | "international_non_regular_volume" | "intlnonrglrvol" => {
+                        "internationalnonregularvolume"
+                        | "international_non_regular_volume"
+                        | "intlnonrglrvol" => {
                             if current_row.international_non_regular_volume.is_none() {
-                                current_row.international_non_regular_volume = canonicalize_decimal(Some(text))?;
+                                current_row.international_non_regular_volume =
+                                    canonicalize_decimal(Some(text))?;
                             }
                         }
                         "oscillationpercentage" | "oscillation_percentage" | "oscnpctg" => {
                             if current_row.oscillation_percentage.is_none() {
-                                current_row.oscillation_percentage = canonicalize_decimal(Some(text))?;
+                                current_row.oscillation_percentage =
+                                    canonicalize_decimal(Some(text))?;
                             }
                         }
                         "maximumtradelimit" | "maximum_trade_limit" | "maxtradlmt" => {
@@ -239,4 +274,3 @@ pub fn parse_bvbg_086<R: BufRead>(reader: R) -> Result<ParsedOutput<Bvbg086Row>>
         warnings: Vec::new(),
     })
 }
-

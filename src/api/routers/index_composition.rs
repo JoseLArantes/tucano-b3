@@ -56,7 +56,10 @@ pub async fn list_index_compositions(
     let limit = pagination.limit();
     let offset = pagination.offset();
 
-    let idx_code = filters.index_code.as_deref().map(|s| s.trim().to_uppercase());
+    let idx_code = filters
+        .index_code
+        .as_deref()
+        .map(|s| s.trim().to_uppercase());
     let ticker = filters.ticker.as_deref().map(|s| s.trim().to_uppercase());
 
     let count_query = r#"
@@ -193,4 +196,3 @@ pub async fn get_index_composition_by_ticker(
     };
     list_index_compositions(State(state), Query(pagination), Query(filters)).await
 }
-

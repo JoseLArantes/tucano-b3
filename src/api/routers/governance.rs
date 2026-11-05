@@ -9,7 +9,9 @@ use sqlx::Row;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
-use crate::api::schemas::{CoverageMetric, PaginatedResponse, PaginationParams, QuarantineReplayResponse};
+use crate::api::schemas::{
+    CoverageMetric, PaginatedResponse, PaginationParams, QuarantineReplayResponse,
+};
 use crate::api::AppState;
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -318,10 +320,11 @@ pub async fn get_coverage_diagnostics(
         let max_d: Option<NaiveDate> = row.get(1);
         let total: i64 = row.get(2);
 
-        let files_count: i64 = sqlx::query_scalar("SELECT count(*) FROM b3_source_files WHERE status = 'ingested'")
-            .fetch_one(&state.pool)
-            .await
-            .unwrap_or(0);
+        let files_count: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM b3_source_files WHERE status = 'ingested'")
+                .fetch_one(&state.pool)
+                .await
+                .unwrap_or(0);
 
         metrics.push(CoverageMetric {
             dataset: dataset.to_string(),
@@ -334,4 +337,3 @@ pub async fn get_coverage_diagnostics(
 
     Ok(Json(metrics))
 }
-

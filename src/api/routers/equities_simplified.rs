@@ -208,7 +208,10 @@ pub async fn get_equities_simplified_by_id(
         .fetch_optional(&state.pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Simplified quote not found".to_string()))?;
+        .ok_or((
+            StatusCode::NOT_FOUND,
+            "Simplified quote not found".to_string(),
+        ))?;
 
     let provenance = Provenance {
         source_file_type: row.get("source_file_type"),
@@ -289,4 +292,3 @@ pub async fn compare_price_reports(
 
     Ok(Json(items))
 }
-

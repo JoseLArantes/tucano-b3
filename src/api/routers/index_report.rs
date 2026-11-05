@@ -55,10 +55,12 @@ pub struct IndexValueFilterParams {
 pub async fn list_indices(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<IndexItem>>, (StatusCode, String)> {
-    let rows = sqlx::query("SELECT id, index_code, index_name, currency FROM b3_indices ORDER BY index_code ASC")
-        .fetch_all(&state.pool)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let rows = sqlx::query(
+        "SELECT id, index_code, index_name, currency FROM b3_indices ORDER BY index_code ASC",
+    )
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let items = rows
         .into_iter()
@@ -90,8 +92,14 @@ pub async fn list_index_values(
     let limit = pagination.limit();
     let offset = pagination.offset();
 
-    let idx_code = filters.index_code.as_deref().map(|s| s.trim().to_uppercase());
-    let val_type = filters.value_type.as_deref().map(|s| s.trim().to_lowercase());
+    let idx_code = filters
+        .index_code
+        .as_deref()
+        .map(|s| s.trim().to_uppercase());
+    let val_type = filters
+        .value_type
+        .as_deref()
+        .map(|s| s.trim().to_lowercase());
 
     let count_query = r#"
         SELECT count(*)
@@ -210,4 +218,3 @@ pub async fn get_index_values_by_date(
     };
     list_index_values(State(state), Query(pagination), Query(filters)).await
 }
-

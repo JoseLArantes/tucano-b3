@@ -43,7 +43,10 @@ pub async fn list_company_data(
     let limit = pagination.limit();
     let offset = pagination.offset();
 
-    let search = filters.search.as_deref().map(|s| format!("%{}%", s.trim().to_uppercase()));
+    let search = filters
+        .search
+        .as_deref()
+        .map(|s| format!("%{}%", s.trim().to_uppercase()));
 
     let count_query = r#"
         SELECT count(DISTINCT asset)
@@ -107,4 +110,3 @@ pub async fn list_company_data(
         disclaimer: None,
     }))
 }
-

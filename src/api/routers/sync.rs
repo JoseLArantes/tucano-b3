@@ -11,7 +11,8 @@ use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::api::schemas::{
-    ManualSyncRequest, ManualSyncResponse, PaginatedResponse, PaginationParams, RebuildIdentityResponse,
+    ManualSyncRequest, ManualSyncResponse, PaginatedResponse, PaginationParams,
+    RebuildIdentityResponse,
 };
 use crate::api::AppState;
 use crate::db::enums::SourceFileType;
@@ -367,8 +368,12 @@ pub async fn trigger_sync_run(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ManualSyncRequest>,
 ) -> Result<Json<ManualSyncResponse>, (StatusCode, String)> {
-    let sft = SourceFileType::from_str(&payload.source_file_type)
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid source_file_type: {e}")))?;
+    let sft = SourceFileType::from_str(&payload.source_file_type).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Invalid source_file_type: {e}"),
+        )
+    })?;
 
     let force_dl = payload.force_download.unwrap_or(false);
     let force_rp = payload.force_reparse.unwrap_or(false);
@@ -422,6 +427,8 @@ pub async fn rebuild_identity(
 
     Ok(Json(RebuildIdentityResponse {
         resolved_count: resolved as i32,
-        message: format!("Rebuilt identity relationships; resolved {resolved} previously pending items."),
+        message: format!(
+            "Rebuilt identity relationships; resolved {resolved} previously pending items."
+        ),
     }))
 }

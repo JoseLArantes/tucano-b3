@@ -42,11 +42,15 @@ pub fn canonicalize_date(val: Option<&str>) -> Result<Option<NaiveDate>> {
     if text.len() == 8 && text.chars().all(|c| c.is_ascii_digit()) {
         NaiveDate::parse_from_str(&text, "%Y%m%d")
             .map(Some)
-            .map_err(|e| AppError::Validation(format!("Invalid date format YYYYMMDD: {text} ({e})")))
+            .map_err(|e| {
+                AppError::Validation(format!("Invalid date format YYYYMMDD: {text} ({e})"))
+            })
     } else {
         NaiveDate::parse_from_str(&text, "%Y-%m-%d")
             .map(Some)
-            .map_err(|e| AppError::Validation(format!("Invalid date format YYYY-MM-DD: {text} ({e})")))
+            .map_err(|e| {
+                AppError::Validation(format!("Invalid date format YYYY-MM-DD: {text} ({e})"))
+            })
     }
 }
 
@@ -85,14 +89,18 @@ pub fn parse_implied_decimal(val: Option<&str>, scale: u32) -> Result<Option<Dec
         )));
     }
 
-    let parsed_i128 = text.parse::<i128>().map_err(|e| {
-        AppError::Validation(format!("Implied decimal overflow for {text}: {e}"))
-    })?;
+    let parsed_i128 = text
+        .parse::<i128>()
+        .map_err(|e| AppError::Validation(format!("Implied decimal overflow for {text}: {e}")))?;
 
     if scale == 0 {
-        Ok(Some(Decimal::from_i128_with_scale(parsed_i128, 0).normalize()))
+        Ok(Some(
+            Decimal::from_i128_with_scale(parsed_i128, 0).normalize(),
+        ))
     } else {
-        Ok(Some(Decimal::from_i128_with_scale(parsed_i128, scale).normalize()))
+        Ok(Some(
+            Decimal::from_i128_with_scale(parsed_i128, scale).normalize(),
+        ))
     }
 }
 
@@ -102,4 +110,3 @@ pub fn stable_row_hash(fields: &BTreeMap<String, Value>) -> String {
     hasher.update(raw.as_bytes());
     hex::encode(hasher.finalize())
 }
-

@@ -22,7 +22,9 @@ impl SourceFileType {
             Self::Bvbg028InstrumentsFile => "BVBG_028_INSTRUMENTS_FILE",
             Self::TradableSecurityList => "TRADABLE_SECURITY_LIST",
             Self::Bvbg086PriceReport => "BVBG_086_PRICE_REPORT",
-            Self::Bvbg186EquitiesSimplifiedPriceReport => "BVBG_186_EQUITIES_SIMPLIFIED_PRICE_REPORT",
+            Self::Bvbg186EquitiesSimplifiedPriceReport => {
+                "BVBG_186_EQUITIES_SIMPLIFIED_PRICE_REPORT"
+            }
             Self::Bvbg087IndexReport => "BVBG_087_INDEX_REPORT",
             Self::B3IndexPortfolioComposition => "B3_INDEX_PORTFOLIO_COMPOSITION",
             Self::CotahistYearly => "COTAHIST_YEARLY",
@@ -46,7 +48,9 @@ impl FromStr for SourceFileType {
             "BVBG_028_INSTRUMENTS_FILE" | "BVBG_028" => Ok(Self::Bvbg028InstrumentsFile),
             "TRADABLE_SECURITY_LIST" => Ok(Self::TradableSecurityList),
             "BVBG_086_PRICE_REPORT" | "BVBG_086" => Ok(Self::Bvbg086PriceReport),
-            "BVBG_186_EQUITIES_SIMPLIFIED_PRICE_REPORT" | "BVBG_186" => Ok(Self::Bvbg186EquitiesSimplifiedPriceReport),
+            "BVBG_186_EQUITIES_SIMPLIFIED_PRICE_REPORT" | "BVBG_186" => {
+                Ok(Self::Bvbg186EquitiesSimplifiedPriceReport)
+            }
             "BVBG_087_INDEX_REPORT" | "BVBG_087" => Ok(Self::Bvbg087IndexReport),
             "B3_INDEX_PORTFOLIO_COMPOSITION" => Ok(Self::B3IndexPortfolioComposition),
             "COTAHIST_YEARLY" => Ok(Self::CotahistYearly),
@@ -162,4 +166,3 @@ impl fmt::Display for InstrumentIdentifierType {
         write!(f, "{}", self.as_str())
     }
 }
-

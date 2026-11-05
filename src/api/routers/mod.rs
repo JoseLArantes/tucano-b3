@@ -9,4 +9,3 @@ pub mod instruments;
 pub mod price_report;
 pub mod sync;
 pub mod tradable;
-

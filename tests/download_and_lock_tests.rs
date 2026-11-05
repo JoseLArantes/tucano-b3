@@ -9,7 +9,9 @@ use tucano_b3::services::download_service::B3DownloadService;
 async fn test_download_service_rejects_non_b3_host() {
     let settings = B3Settings::default();
     let download_service = B3DownloadService::new(&settings);
-    let res = download_service.download("https://example.com/data.xml").await;
+    let res = download_service
+        .download("https://example.com/data.xml")
+        .await;
     assert!(res.is_err());
 }
 
@@ -18,8 +20,10 @@ async fn test_download_service_allows_local_raw_files() {
     let dir = tempdir().unwrap();
     let raw_dir = dir.path().to_str().unwrap().to_string();
 
-    let mut settings = B3Settings::default();
-    settings.b3_raw_data_dir = raw_dir.clone();
+    let settings = B3Settings {
+        b3_raw_data_dir: raw_dir.clone(),
+        ..Default::default()
+    };
 
     let test_file = dir.path().join("test_file.xml");
     fs::write(&test_file, "<root/>").unwrap();
@@ -27,7 +31,10 @@ async fn test_download_service_allows_local_raw_files() {
     let download_service = B3DownloadService::new(&settings);
 
     // Absolute file path
-    let res = download_service.download(test_file.to_str().unwrap()).await.unwrap();
+    let res = download_service
+        .download(test_file.to_str().unwrap())
+        .await
+        .unwrap();
     assert_eq!(res.content, b"<root/>");
 
     // Relative path
@@ -39,7 +46,9 @@ async fn test_download_service_allows_local_raw_files() {
     let outside_file = outside_dir.path().join("outside.xml");
     fs::write(&outside_file, "<root/>").unwrap();
 
-    let res_outside = download_service.download(outside_file.to_str().unwrap()).await;
+    let res_outside = download_service
+        .download(outside_file.to_str().unwrap())
+        .await;
     assert!(res_outside.is_err());
 }
 
@@ -59,4 +68,3 @@ fn test_lock_conflict() {
     let guard3 = registry.acquire(key);
     assert!(guard3.is_ok());
 }
-

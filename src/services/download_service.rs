@@ -58,7 +58,10 @@ impl B3DownloadService {
     }
 
     fn validate_local_path(&self, path: &Path) -> Result<()> {
-        let canonical_raw = self.raw_dir.canonicalize().unwrap_or_else(|_| self.raw_dir.clone());
+        let canonical_raw = self
+            .raw_dir
+            .canonicalize()
+            .unwrap_or_else(|_| self.raw_dir.clone());
         let target = if path.is_absolute() {
             path.to_path_buf()
         } else {
@@ -129,4 +132,3 @@ impl B3DownloadService {
         })
     }
 }
-

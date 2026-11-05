@@ -65,6 +65,7 @@ impl B3SyncService {
         &self.settings
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn run_manual_sync(
         &self,
         source_file_type: SourceFileType,
@@ -228,7 +229,13 @@ impl B3SyncService {
         force_reparse: bool,
     ) -> Result<(i32, i32, i32, i32, Vec<String>, Vec<String>)> {
         let (content, content_hash, resolved_url) = self
-            .obtain_content(source_file_type, reference_date, source_url, raw_content, force_download)
+            .obtain_content(
+                source_file_type,
+                reference_date,
+                source_url,
+                raw_content,
+                force_download,
+            )
             .await?;
 
         let existing = sqlx::query(
@@ -409,9 +416,13 @@ impl B3SyncService {
 
         if target_url.is_empty() {
             if force_download {
-                return Err(AppError::Validation("force_download=true exige source_url.".to_string()));
+                return Err(AppError::Validation(
+                    "force_download=true exige source_url.".to_string(),
+                ));
             }
-            return Err(AppError::Validation("Informe source_url ou raw_content para sincronizar.".to_string()));
+            return Err(AppError::Validation(
+                "Informe source_url ou raw_content para sincronizar.".to_string(),
+            ));
         }
 
         let dl = self.download_service.download(&target_url).await?;
@@ -438,7 +449,11 @@ impl B3SyncService {
                     "Ingestao de composicao de indice requer fonte dedicada da B3.".to_string(),
                 ));
             }
-            _ => return Err(AppError::Validation(format!("Unsupported type: {source_file_type}"))),
+            _ => {
+                return Err(AppError::Validation(format!(
+                    "Unsupported type: {source_file_type}"
+                )))
+            }
         };
 
         Ok(format!(
@@ -468,42 +483,78 @@ impl B3SyncService {
 
                 for row in parsed.rows {
                     let mut fields = BTreeMap::new();
-                    fields.insert("security_id".to_string(), serde_json::Value::String(row.security_id.clone()));
+                    fields.insert(
+                        "security_id".to_string(),
+                        serde_json::Value::String(row.security_id.clone()),
+                    );
                     if let Some(ref val) = row.security_source {
-                        fields.insert("security_source".to_string(), serde_json::Value::String(val.clone()));
+                        fields.insert(
+                            "security_source".to_string(),
+                            serde_json::Value::String(val.clone()),
+                        );
                     }
                     if let Some(ref val) = row.market_identifier_code {
-                        fields.insert("market_identifier_code".to_string(), serde_json::Value::String(val.clone()));
+                        fields.insert(
+                            "market_identifier_code".to_string(),
+                            serde_json::Value::String(val.clone()),
+                        );
                     }
                     if let Some(ref val) = row.asset {
                         fields.insert("asset".to_string(), serde_json::Value::String(val.clone()));
                     }
                     if let Some(ref val) = row.asset_description {
-                        fields.insert("asset_description".to_string(), serde_json::Value::String(val.clone()));
+                        fields.insert(
+                            "asset_description".to_string(),
+                            serde_json::Value::String(val.clone()),
+                        );
                     }
                     if let Some(ref val) = row.market_code {
-                        fields.insert("market_code".to_string(), serde_json::Value::String(val.clone()));
+                        fields.insert(
+                            "market_code".to_string(),
+                            serde_json::Value::String(val.clone()),
+                        );
                     }
                     if let Some(ref val) = row.market_name {
-                        fields.insert("market_name".to_string(), serde_json::Value::String(val.clone()));
+                        fields.insert(
+                            "market_name".to_string(),
+                            serde_json::Value::String(val.clone()),
+                        );
                     }
                     if let Some(ref val) = row.segment_code {
-                        fields.insert("segment_code".to_string(), serde_json::Value::String(val.clone()));
+                        fields.insert(
+                            "segment_code".to_string(),
+                            serde_json::Value::String(val.clone()),
+                        );
                     }
                     if let Some(ref val) = row.segment_name {
-                        fields.insert("segment_name".to_string(), serde_json::Value::String(val.clone()));
+                        fields.insert(
+                            "segment_name".to_string(),
+                            serde_json::Value::String(val.clone()),
+                        );
                     }
                     if let Some(ref val) = row.instrument_type {
-                        fields.insert("instrument_type".to_string(), serde_json::Value::String(val.clone()));
+                        fields.insert(
+                            "instrument_type".to_string(),
+                            serde_json::Value::String(val.clone()),
+                        );
                     }
                     if let Some(ref val) = row.security_category {
-                        fields.insert("security_category".to_string(), serde_json::Value::String(val.clone()));
+                        fields.insert(
+                            "security_category".to_string(),
+                            serde_json::Value::String(val.clone()),
+                        );
                     }
                     if let Some(ref val) = row.cfi_code {
-                        fields.insert("cfi_code".to_string(), serde_json::Value::String(val.clone()));
+                        fields.insert(
+                            "cfi_code".to_string(),
+                            serde_json::Value::String(val.clone()),
+                        );
                     }
                     if let Some(ref val) = row.instrument_status {
-                        fields.insert("instrument_status".to_string(), serde_json::Value::String(val.clone()));
+                        fields.insert(
+                            "instrument_status".to_string(),
+                            serde_json::Value::String(val.clone()),
+                        );
                     }
 
                     let row_hash = stable_row_hash(&fields);
@@ -516,10 +567,16 @@ impl B3SyncService {
                     let instrument_id = match existing {
                         None => {
                             let new_id = Uuid::new_v4().to_string();
-                            let field_changed_at_obj: serde_json::Map<String, serde_json::Value> = fields
-                                .keys()
-                                .map(|k| (k.clone(), serde_json::Value::String(Utc::now().to_rfc3339())))
-                                .collect();
+                            let field_changed_at_obj: serde_json::Map<String, serde_json::Value> =
+                                fields
+                                    .keys()
+                                    .map(|k| {
+                                        (
+                                            k.clone(),
+                                            serde_json::Value::String(Utc::now().to_rfc3339()),
+                                        )
+                                    })
+                                    .collect();
                             let field_changed_val = serde_json::Value::Object(field_changed_at_obj);
 
                             sqlx::query(
@@ -570,7 +627,10 @@ impl B3SyncService {
                                 rec_id
                             } else {
                                 let mut fc_map = rec_fc.as_object().cloned().unwrap_or_default();
-                                fc_map.insert("updated".to_string(), serde_json::Value::String(Utc::now().to_rfc3339()));
+                                fc_map.insert(
+                                    "updated".to_string(),
+                                    serde_json::Value::String(Utc::now().to_rfc3339()),
+                                );
                                 let new_fc_val = serde_json::Value::Object(fc_map);
 
                                 sqlx::query(
@@ -618,7 +678,13 @@ impl B3SyncService {
                                     old_value_hash: Some(rec_hash),
                                     new_value_hash: Some(row_hash.clone()),
                                 };
-                                let _ = insert_field_changes(&self.pool, None, source_file_id, &[audit]).await;
+                                let _ = insert_field_changes(
+                                    &self.pool,
+                                    None,
+                                    source_file_id,
+                                    &[audit],
+                                )
+                                .await;
 
                                 rec_id
                             }
@@ -637,8 +703,14 @@ impl B3SyncService {
                         if let Some(id_val) = id_val_opt {
                             let ident_id = Uuid::new_v4().to_string();
                             let mut ident_fields = BTreeMap::new();
-                            ident_fields.insert("identifier_type".to_string(), serde_json::Value::String(id_type.to_string()));
-                            ident_fields.insert("identifier_value".to_string(), serde_json::Value::String(id_val.to_string()));
+                            ident_fields.insert(
+                                "identifier_type".to_string(),
+                                serde_json::Value::String(id_type.to_string()),
+                            );
+                            ident_fields.insert(
+                                "identifier_value".to_string(),
+                                serde_json::Value::String(id_val.to_string()),
+                            );
                             let ident_hash = stable_row_hash(&ident_fields);
 
                             sqlx::query(
@@ -726,12 +798,21 @@ impl B3SyncService {
 
                     let new_id = Uuid::new_v4().to_string();
                     let mut fields = BTreeMap::new();
-                    fields.insert("reference_date".to_string(), serde_json::Value::String(row.reference_date.to_string()));
+                    fields.insert(
+                        "reference_date".to_string(),
+                        serde_json::Value::String(row.reference_date.to_string()),
+                    );
                     if let Some(ref val) = row.security_id {
-                        fields.insert("security_id".to_string(), serde_json::Value::String(val.clone()));
+                        fields.insert(
+                            "security_id".to_string(),
+                            serde_json::Value::String(val.clone()),
+                        );
                     }
                     if let Some(ref val) = row.ticker_symbol {
-                        fields.insert("ticker_symbol".to_string(), serde_json::Value::String(val.clone()));
+                        fields.insert(
+                            "ticker_symbol".to_string(),
+                            serde_json::Value::String(val.clone()),
+                        );
                     }
                     let hash = stable_row_hash(&fields);
 
@@ -798,12 +879,21 @@ impl B3SyncService {
 
                     let new_id = Uuid::new_v4().to_string();
                     let mut fields = BTreeMap::new();
-                    fields.insert("trade_date".to_string(), serde_json::Value::String(trade_dt.to_string()));
+                    fields.insert(
+                        "trade_date".to_string(),
+                        serde_json::Value::String(trade_dt.to_string()),
+                    );
                     if let Some(ref val) = row.ticker_symbol {
-                        fields.insert("ticker_symbol".to_string(), serde_json::Value::String(val.clone()));
+                        fields.insert(
+                            "ticker_symbol".to_string(),
+                            serde_json::Value::String(val.clone()),
+                        );
                     }
                     if let Some(ref val) = row.last_price {
-                        fields.insert("last_price".to_string(), serde_json::Value::String(val.to_string()));
+                        fields.insert(
+                            "last_price".to_string(),
+                            serde_json::Value::String(val.to_string()),
+                        );
                     }
                     let hash = stable_row_hash(&fields);
 
@@ -891,12 +981,21 @@ impl B3SyncService {
 
                     let new_id = Uuid::new_v4().to_string();
                     let mut fields = BTreeMap::new();
-                    fields.insert("trade_date".to_string(), serde_json::Value::String(trade_dt.to_string()));
+                    fields.insert(
+                        "trade_date".to_string(),
+                        serde_json::Value::String(trade_dt.to_string()),
+                    );
                     if let Some(ref val) = row.ticker_symbol {
-                        fields.insert("ticker_symbol".to_string(), serde_json::Value::String(val.clone()));
+                        fields.insert(
+                            "ticker_symbol".to_string(),
+                            serde_json::Value::String(val.clone()),
+                        );
                     }
                     if let Some(ref val) = row.last_price {
-                        fields.insert("last_price".to_string(), serde_json::Value::String(val.to_string()));
+                        fields.insert(
+                            "last_price".to_string(),
+                            serde_json::Value::String(val.to_string()),
+                        );
                     }
                     let hash = stable_row_hash(&fields);
 
@@ -990,12 +1089,21 @@ impl B3SyncService {
 
                     let new_id = Uuid::new_v4().to_string();
                     let mut fields = BTreeMap::new();
-                    fields.insert("trade_date".to_string(), serde_json::Value::String(trade_dt.to_string()));
+                    fields.insert(
+                        "trade_date".to_string(),
+                        serde_json::Value::String(trade_dt.to_string()),
+                    );
                     if let Some(ref val) = row.ticker_symbol {
-                        fields.insert("ticker_symbol".to_string(), serde_json::Value::String(val.clone()));
+                        fields.insert(
+                            "ticker_symbol".to_string(),
+                            serde_json::Value::String(val.clone()),
+                        );
                     }
                     if let Some(ref val) = row.last_price {
-                        fields.insert("last_price".to_string(), serde_json::Value::String(val.to_string()));
+                        fields.insert(
+                            "last_price".to_string(),
+                            serde_json::Value::String(val.to_string()),
+                        );
                     }
                     let hash = stable_row_hash(&fields);
 
@@ -1048,20 +1156,40 @@ impl B3SyncService {
                     let value_type = row.value_type.unwrap_or_else(|| "index_value".to_string());
 
                     let mut hash_fields = BTreeMap::new();
-                    hash_fields.insert("index_code".to_string(), serde_json::Value::String(index_code.clone()));
+                    hash_fields.insert(
+                        "index_code".to_string(),
+                        serde_json::Value::String(index_code.clone()),
+                    );
                     let index_hash = stable_row_hash(&hash_fields);
 
                     let index_id = resolver
-                        .resolve_or_create_index(source_file_id, &index_code, row.index_name.as_deref(), &index_hash)
+                        .resolve_or_create_index(
+                            source_file_id,
+                            &index_code,
+                            row.index_name.as_deref(),
+                            &index_hash,
+                        )
                         .await?;
 
                     let new_id = Uuid::new_v4().to_string();
                     let mut fields = BTreeMap::new();
-                    fields.insert("trade_date".to_string(), serde_json::Value::String(trade_dt.to_string()));
-                    fields.insert("index_code".to_string(), serde_json::Value::String(index_code.clone()));
-                    fields.insert("value_type".to_string(), serde_json::Value::String(value_type.clone()));
+                    fields.insert(
+                        "trade_date".to_string(),
+                        serde_json::Value::String(trade_dt.to_string()),
+                    );
+                    fields.insert(
+                        "index_code".to_string(),
+                        serde_json::Value::String(index_code.clone()),
+                    );
+                    fields.insert(
+                        "value_type".to_string(),
+                        serde_json::Value::String(value_type.clone()),
+                    );
                     if let Some(ref v) = row.value {
-                        fields.insert("value".to_string(), serde_json::Value::String(v.to_string()));
+                        fields.insert(
+                            "value".to_string(),
+                            serde_json::Value::String(v.to_string()),
+                        );
                     }
                     let hash = stable_row_hash(&fields);
 
@@ -1105,7 +1233,10 @@ impl B3SyncService {
 
                 for row in parsed.rows {
                     let mut hash_fields = BTreeMap::new();
-                    hash_fields.insert("index_code".to_string(), serde_json::Value::String(row.index_code.clone()));
+                    hash_fields.insert(
+                        "index_code".to_string(),
+                        serde_json::Value::String(row.index_code.clone()),
+                    );
                     let index_hash = stable_row_hash(&hash_fields);
 
                     let index_id = resolver
@@ -1128,10 +1259,19 @@ impl B3SyncService {
 
                     let new_id = Uuid::new_v4().to_string();
                     let mut fields = BTreeMap::new();
-                    fields.insert("composition_date".to_string(), serde_json::Value::String(row.composition_date.to_string()));
-                    fields.insert("index_code".to_string(), serde_json::Value::String(row.index_code.clone()));
+                    fields.insert(
+                        "composition_date".to_string(),
+                        serde_json::Value::String(row.composition_date.to_string()),
+                    );
+                    fields.insert(
+                        "index_code".to_string(),
+                        serde_json::Value::String(row.index_code.clone()),
+                    );
                     if let Some(ref t) = row.ticker_symbol {
-                        fields.insert("ticker_symbol".to_string(), serde_json::Value::String(t.clone()));
+                        fields.insert(
+                            "ticker_symbol".to_string(),
+                            serde_json::Value::String(t.clone()),
+                        );
                     }
                     let hash = stable_row_hash(&fields);
 

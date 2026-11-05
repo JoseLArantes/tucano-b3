@@ -132,7 +132,8 @@ pub async fn openapi_json() -> Response {
 }
 
 pub async fn swagger_ui() -> Html<&'static str> {
-    Html(r#"<!DOCTYPE html>
+    Html(
+        r#"<!DOCTYPE html>
 <html>
 <head>
   <title>Tucano B3 - Swagger UI</title>
@@ -170,11 +171,13 @@ pub async fn swagger_ui() -> Html<&'static str> {
     };
   </script>
 </body>
-</html>"#)
+</html>"#,
+    )
 }
 
 pub async fn redoc_ui() -> Html<&'static str> {
-    Html(r#"<!DOCTYPE html>
+    Html(
+        r#"<!DOCTYPE html>
 <html>
 <head>
   <title>Tucano B3 - ReDoc</title>
@@ -189,7 +192,8 @@ pub async fn redoc_ui() -> Html<&'static str> {
   <redoc spec-url="/openapi.json" expand-responses="200,201"></redoc>
   <script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"></script>
 </body>
-</html>"#)
+</html>"#,
+    )
 }
 
 pub fn create_router(app_state: Arc<AppState>) -> Router {
@@ -207,73 +211,154 @@ pub fn create_router(app_state: Arc<AppState>) -> Router {
         .route("/swagger-ui/", get(swagger_ui))
         .route("/redoc", get(redoc_ui))
         .route("/redoc/", get(redoc_ui))
-
         // Protected B3 API routes
         // Instruments
         .route("/api/v1/b3/instruments", get(list_instruments))
         .route("/api/v1/b3/instruments/{id}", get(get_instrument))
-        .route("/api/v1/b3/instruments/by-security-id/{security_id}", get(get_instrument))
-        .route("/api/v1/b3/instruments/by-ticker/{ticker_symbol}", get(get_instrument_by_ticker))
-        .route("/api/v1/b3/instruments/by-isin/{isin}", get(get_instrument_by_isin))
-        .route("/api/v1/b3/instruments/{id}/identifiers", get(list_instrument_identifiers))
-
+        .route(
+            "/api/v1/b3/instruments/by-security-id/{security_id}",
+            get(get_instrument),
+        )
+        .route(
+            "/api/v1/b3/instruments/by-ticker/{ticker_symbol}",
+            get(get_instrument_by_ticker),
+        )
+        .route(
+            "/api/v1/b3/instruments/by-isin/{isin}",
+            get(get_instrument_by_isin),
+        )
+        .route(
+            "/api/v1/b3/instruments/{id}/identifiers",
+            get(list_instrument_identifiers),
+        )
         // Tradable
-        .route("/api/v1/b3/tradable-securities", get(list_tradable_securities))
-        .route("/api/v1/b3/tradable-securities/by-date/{reference_date}", get(get_tradable_by_date))
-        .route("/api/v1/b3/tradable-securities/by-ticker/{ticker_symbol}", get(get_tradable_by_ticker))
-
+        .route(
+            "/api/v1/b3/tradable-securities",
+            get(list_tradable_securities),
+        )
+        .route(
+            "/api/v1/b3/tradable-securities/by-date/{reference_date}",
+            get(get_tradable_by_date),
+        )
+        .route(
+            "/api/v1/b3/tradable-securities/by-ticker/{ticker_symbol}",
+            get(get_tradable_by_ticker),
+        )
         // Price Report (BVBG.086)
-        .route("/api/v1/b3/price-report/quotes", get(list_price_report_quotes))
-        .route("/api/v1/b3/price-report/quotes/by-ticker/{ticker_symbol}", get(get_price_report_by_ticker))
-        .route("/api/v1/b3/price-report/quotes/by-date/{trade_date}", get(get_price_report_by_date))
-        .route("/api/v1/b3/price-report/quotes/{quote_id}", get(get_price_report_by_id))
-
+        .route(
+            "/api/v1/b3/price-report/quotes",
+            get(list_price_report_quotes),
+        )
+        .route(
+            "/api/v1/b3/price-report/quotes/by-ticker/{ticker_symbol}",
+            get(get_price_report_by_ticker),
+        )
+        .route(
+            "/api/v1/b3/price-report/quotes/by-date/{trade_date}",
+            get(get_price_report_by_date),
+        )
+        .route(
+            "/api/v1/b3/price-report/quotes/{quote_id}",
+            get(get_price_report_by_id),
+        )
         // Simplified Equities (BVBG.186)
-        .route("/api/v1/b3/equities-simplified-price-report/quotes", get(list_equities_simplified_quotes))
-        .route("/api/v1/b3/equities-simplified-price-report/quotes/by-ticker/{ticker_symbol}", get(get_equities_simplified_by_ticker))
-        .route("/api/v1/b3/equities-simplified-price-report/quotes/by-date/{trade_date}", get(get_equities_simplified_by_date))
-        .route("/api/v1/b3/equities-simplified-price-report/quotes/{quote_id}", get(get_equities_simplified_by_id))
-        .route("/api/v1/b3/price-report-comparison/{trade_date}", get(compare_price_reports))
-
+        .route(
+            "/api/v1/b3/equities-simplified-price-report/quotes",
+            get(list_equities_simplified_quotes),
+        )
+        .route(
+            "/api/v1/b3/equities-simplified-price-report/quotes/by-ticker/{ticker_symbol}",
+            get(get_equities_simplified_by_ticker),
+        )
+        .route(
+            "/api/v1/b3/equities-simplified-price-report/quotes/by-date/{trade_date}",
+            get(get_equities_simplified_by_date),
+        )
+        .route(
+            "/api/v1/b3/equities-simplified-price-report/quotes/{quote_id}",
+            get(get_equities_simplified_by_id),
+        )
+        .route(
+            "/api/v1/b3/price-report-comparison/{trade_date}",
+            get(compare_price_reports),
+        )
         // Index Report (BVBG.087)
         .route("/api/v1/b3/index-report/indices", get(list_indices))
         .route("/api/v1/b3/index-report/values", get(list_index_values))
-        .route("/api/v1/b3/index-report/values/by-index/{index_code}", get(get_index_values_by_code))
-        .route("/api/v1/b3/index-report/values/by-date/{trade_date}", get(get_index_values_by_date))
-
+        .route(
+            "/api/v1/b3/index-report/values/by-index/{index_code}",
+            get(get_index_values_by_code),
+        )
+        .route(
+            "/api/v1/b3/index-report/values/by-date/{trade_date}",
+            get(get_index_values_by_date),
+        )
         // Index Portfolio Composition
-        .route("/api/v1/b3/index-composition/portfolios", get(list_index_compositions))
-        .route("/api/v1/b3/index-composition/portfolios/{index_code}", get(get_index_composition_by_index))
-        .route("/api/v1/b3/index-composition/portfolios/{index_code}/by-date/{composition_date}", get(get_index_composition_by_index_and_date))
-        .route("/api/v1/b3/index-composition/components/by-ticker/{ticker_symbol}", get(get_index_composition_by_ticker))
-
+        .route(
+            "/api/v1/b3/index-composition/portfolios",
+            get(list_index_compositions),
+        )
+        .route(
+            "/api/v1/b3/index-composition/portfolios/{index_code}",
+            get(get_index_composition_by_index),
+        )
+        .route(
+            "/api/v1/b3/index-composition/portfolios/{index_code}/by-date/{composition_date}",
+            get(get_index_composition_by_index_and_date),
+        )
+        .route(
+            "/api/v1/b3/index-composition/components/by-ticker/{ticker_symbol}",
+            get(get_index_composition_by_ticker),
+        )
         // COTAHIST
         .route("/api/v1/b3/cotahist/quotes", get(list_cotahist_quotes))
-        .route("/api/v1/b3/cotahist/quotes/by-ticker/{ticker_symbol}", get(get_cotahist_by_ticker))
-        .route("/api/v1/b3/cotahist/quotes/by-isin/{isin}", get(get_cotahist_by_isin))
-        .route("/api/v1/b3/cotahist/quotes/by-date/{trade_date}", get(get_cotahist_by_date))
-        .route("/api/v1/b3/cotahist/quotes/{quote_id}", get(get_cotahist_by_id))
-
+        .route(
+            "/api/v1/b3/cotahist/quotes/by-ticker/{ticker_symbol}",
+            get(get_cotahist_by_ticker),
+        )
+        .route(
+            "/api/v1/b3/cotahist/quotes/by-isin/{isin}",
+            get(get_cotahist_by_isin),
+        )
+        .route(
+            "/api/v1/b3/cotahist/quotes/by-date/{trade_date}",
+            get(get_cotahist_by_date),
+        )
+        .route(
+            "/api/v1/b3/cotahist/quotes/{quote_id}",
+            get(get_cotahist_by_id),
+        )
         // Company Data
         .route("/api/v1/b3/company-data", get(list_company_data))
-
         // Source Files & Sync Jobs
         .route("/api/v1/b3/source-files", get(list_source_files))
         .route("/api/v1/b3/source-files/{id}", get(get_source_file_by_id))
-        .route("/api/v1/b3/source-files/{id}/members", get(list_source_file_members))
-        .route("/api/v1/b3/sync-runs", get(list_sync_runs).post(trigger_sync_run))
+        .route(
+            "/api/v1/b3/source-files/{id}/members",
+            get(list_source_file_members),
+        )
+        .route(
+            "/api/v1/b3/sync-runs",
+            get(list_sync_runs).post(trigger_sync_run),
+        )
         .route("/api/v1/b3/sync-runs/{id}", get(get_sync_run_by_id))
-        .route("/api/v1/b3/sync-runs/rebuild-identity", post(rebuild_identity))
-
+        .route(
+            "/api/v1/b3/sync-runs/rebuild-identity",
+            post(rebuild_identity),
+        )
         // Governance
         .route("/api/v1/b3/quarantine", get(list_quarantine_records))
         .route("/api/v1/b3/quarantine/replay", post(replay_quarantine))
         .route("/api/v1/b3/field-changes", get(list_field_changes))
         .route("/api/v1/b3/pending-updates", get(list_pending_updates))
-        .route("/api/v1/b3/diagnostics/coverage", get(get_coverage_diagnostics))
-
+        .route(
+            "/api/v1/b3/diagnostics/coverage",
+            get(get_coverage_diagnostics),
+        )
         // Apply auth middleware to all protected routes
-        .layer(middleware::from_fn_with_state(settings, require_bearer_token))
+        .layer(middleware::from_fn_with_state(
+            settings,
+            require_bearer_token,
+        ))
         .with_state(app_state)
 }
-

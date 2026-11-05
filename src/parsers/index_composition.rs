@@ -18,7 +18,9 @@ pub struct IndexCompositionRow {
     pub participation_percentage: Option<Decimal>,
 }
 
-pub fn parse_index_composition_csv<R: Read>(mut reader: R) -> Result<ParsedOutput<IndexCompositionRow>> {
+pub fn parse_index_composition_csv<R: Read>(
+    mut reader: R,
+) -> Result<ParsedOutput<IndexCompositionRow>> {
     let mut content = String::new();
     reader.read_to_string(&mut content)?;
 
@@ -100,4 +102,3 @@ pub fn parse_index_composition_csv<R: Read>(mut reader: R) -> Result<ParsedOutpu
         warnings: Vec::new(),
     })
 }
-

@@ -78,7 +78,7 @@ pub async fn list_price_report_quotes(
     let total: i64 = sqlx::query_scalar(count_query)
         .bind(filters.trade_date)
         .bind(&ticker)
-        .bind(&sec_id)
+        .bind(sec_id)
         .fetch_one(&state.pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -105,7 +105,7 @@ pub async fn list_price_report_quotes(
     let rows = sqlx::query(select_query)
         .bind(filters.trade_date)
         .bind(&ticker)
-        .bind(&sec_id)
+        .bind(sec_id)
         .bind(limit)
         .bind(offset)
         .fetch_all(&state.pool)
@@ -224,7 +224,10 @@ pub async fn get_price_report_by_id(
         .fetch_optional(&state.pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Price report quote not found".to_string()))?;
+        .ok_or((
+            StatusCode::NOT_FOUND,
+            "Price report quote not found".to_string(),
+        ))?;
 
     let provenance = Provenance {
         source_file_type: row.get("source_file_type"),
@@ -261,4 +264,3 @@ pub async fn get_price_report_by_id(
         internal_metadata: None,
     }))
 }
-

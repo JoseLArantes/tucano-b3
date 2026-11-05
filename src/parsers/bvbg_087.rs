@@ -20,6 +20,7 @@ pub struct Bvbg087Row {
     pub market_identifier_code: Option<String>,
 }
 
+#[allow(clippy::collapsible_match)]
 pub fn parse_bvbg_087<R: BufRead>(reader: R) -> Result<ParsedOutput<Bvbg087Row>> {
     let mut xml_reader = Reader::from_reader(reader);
     xml_reader.config_mut().trim_text(true);
@@ -35,7 +36,13 @@ pub fn parse_bvbg_087<R: BufRead>(reader: R) -> Result<ParsedOutput<Bvbg087Row>>
         match xml_reader.read_event_into(&mut buf)? {
             Event::Start(ref e) => {
                 let name = local_name(e.name().as_ref()).to_lowercase();
-                if name == "indexvalue" || name == "indexrecord" || name == "index" || name == "indxinf" || name == "iopvinf" || name == "bdrinf" {
+                if name == "indexvalue"
+                    || name == "indexrecord"
+                    || name == "index"
+                    || name == "indxinf"
+                    || name == "iopvinf"
+                    || name == "bdrinf"
+                {
                     in_record = true;
                     current_row = Bvbg087Row::default();
                     if name == "iopvinf" {
@@ -50,7 +57,13 @@ pub fn parse_bvbg_087<R: BufRead>(reader: R) -> Result<ParsedOutput<Bvbg087Row>>
             }
             Event::End(ref e) => {
                 let name = local_name(e.name().as_ref()).to_lowercase();
-                if name == "indexvalue" || name == "indexrecord" || name == "index" || name == "indxinf" || name == "iopvinf" || name == "bdrinf" {
+                if name == "indexvalue"
+                    || name == "indexrecord"
+                    || name == "index"
+                    || name == "indxinf"
+                    || name == "iopvinf"
+                    || name == "bdrinf"
+                {
                     in_record = false;
                     if current_row.trade_date.is_some()
                         && current_row.index_code.is_some()
@@ -97,7 +110,8 @@ pub fn parse_bvbg_087<R: BufRead>(reader: R) -> Result<ParsedOutput<Bvbg087Row>>
                         }
                         "marketidentifiercode" | "mic" | "mktidrcd" => {
                             if current_row.market_identifier_code.is_none() {
-                                current_row.market_identifier_code = canonicalize_string(Some(text));
+                                current_row.market_identifier_code =
+                                    canonicalize_string(Some(text));
                             }
                         }
                         _ => {}
@@ -122,4 +136,3 @@ pub fn parse_bvbg_087<R: BufRead>(reader: R) -> Result<ParsedOutput<Bvbg087Row>>
         warnings: Vec::new(),
     })
 }
-

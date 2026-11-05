@@ -13,8 +13,16 @@ pub async fn handle_healthcheck(pool: &PgPool) -> Value {
 }
 
 pub async fn handle_search_instruments(pool: &PgPool, args: &Value) -> Value {
-    let query_str = args.get("query").and_then(|v| v.as_str()).unwrap_or("").trim();
-    let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(20).clamp(1, 100);
+    let query_str = args
+        .get("query")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim();
+    let limit = args
+        .get("limit")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(20)
+        .clamp(1, 100);
 
     let pattern = format!("%{}%", query_str.to_uppercase());
 
@@ -32,29 +40,42 @@ pub async fn handle_search_instruments(pool: &PgPool, args: &Value) -> Value {
         LIMIT $2
     "#;
 
-    let rows = match sqlx::query(sql).bind(&pattern).bind(limit).fetch_all(pool).await {
+    let rows = match sqlx::query(sql)
+        .bind(&pattern)
+        .bind(limit)
+        .fetch_all(pool)
+        .await
+    {
         Ok(r) => r,
         Err(e) => return json!({ "error": e.to_string() }),
     };
 
-    let items: Vec<Value> = rows.into_iter().map(|r| {
-        json!({
-            "id": r.get::<String, _>("id"),
-            "security_id": r.get::<String, _>("security_id"),
-            "ticker": r.get::<Option<String>, _>("ticker"),
-            "isin": r.get::<Option<String>, _>("isin"),
-            "asset": r.get::<Option<String>, _>("asset"),
-            "asset_description": r.get::<Option<String>, _>("asset_description"),
-            "market_name": r.get::<Option<String>, _>("market_name"),
-            "segment_name": r.get::<Option<String>, _>("segment_name"),
+    let items: Vec<Value> = rows
+        .into_iter()
+        .map(|r| {
+            json!({
+                "id": r.get::<String, _>("id"),
+                "security_id": r.get::<String, _>("security_id"),
+                "ticker": r.get::<Option<String>, _>("ticker"),
+                "isin": r.get::<Option<String>, _>("isin"),
+                "asset": r.get::<Option<String>, _>("asset"),
+                "asset_description": r.get::<Option<String>, _>("asset_description"),
+                "market_name": r.get::<Option<String>, _>("market_name"),
+                "segment_name": r.get::<Option<String>, _>("segment_name"),
+            })
         })
-    }).collect();
+        .collect();
 
     json!({ "count": items.len(), "instruments": items })
 }
 
 pub async fn handle_get_instrument_coverage(pool: &PgPool, args: &Value) -> Value {
-    let ticker = args.get("ticker").and_then(|v| v.as_str()).unwrap_or("").trim().to_uppercase();
+    let ticker = args
+        .get("ticker")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_uppercase();
 
     let sql = r#"
         SELECT 
@@ -83,10 +104,25 @@ pub async fn handle_get_instrument_coverage(pool: &PgPool, args: &Value) -> Valu
 }
 
 pub async fn handle_get_ohlcv_series(pool: &PgPool, args: &Value) -> Value {
-    let ticker = args.get("ticker").and_then(|v| v.as_str()).unwrap_or("").trim().to_uppercase();
-    let start_date = args.get("start_date").and_then(|v| v.as_str()).and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
-    let end_date = args.get("end_date").and_then(|v| v.as_str()).and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
-    let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(250).clamp(1, 1000);
+    let ticker = args
+        .get("ticker")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_uppercase();
+    let start_date = args
+        .get("start_date")
+        .and_then(|v| v.as_str())
+        .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
+    let end_date = args
+        .get("end_date")
+        .and_then(|v| v.as_str())
+        .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
+    let limit = args
+        .get("limit")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(250)
+        .clamp(1, 1000);
 
     let sql = r#"
         SELECT 
@@ -112,18 +148,21 @@ pub async fn handle_get_ohlcv_series(pool: &PgPool, args: &Value) -> Value {
         Err(e) => return json!({ "error": e.to_string() }),
     };
 
-    let candles: Vec<Value> = rows.into_iter().map(|r| {
-        json!({
-            "trade_date": r.get::<NaiveDate, _>("trade_date"),
-            "open": r.get::<Option<Decimal>, _>("open_price"),
-            "high": r.get::<Option<Decimal>, _>("high_price"),
-            "low": r.get::<Option<Decimal>, _>("low_price"),
-            "close": r.get::<Option<Decimal>, _>("last_price"),
-            "quantity": r.get::<Option<Decimal>, _>("traded_quantity"),
-            "volume": r.get::<Option<Decimal>, _>("traded_volume"),
-            "trades": r.get::<Option<i32>, _>("trades_count"),
+    let candles: Vec<Value> = rows
+        .into_iter()
+        .map(|r| {
+            json!({
+                "trade_date": r.get::<NaiveDate, _>("trade_date"),
+                "open": r.get::<Option<Decimal>, _>("open_price"),
+                "high": r.get::<Option<Decimal>, _>("high_price"),
+                "low": r.get::<Option<Decimal>, _>("low_price"),
+                "close": r.get::<Option<Decimal>, _>("last_price"),
+                "quantity": r.get::<Option<Decimal>, _>("traded_quantity"),
+                "volume": r.get::<Option<Decimal>, _>("traded_volume"),
+                "trades": r.get::<Option<i32>, _>("trades_count"),
+            })
         })
-    }).collect();
+        .collect();
 
     json!({
         "ticker": ticker,
@@ -134,7 +173,12 @@ pub async fn handle_get_ohlcv_series(pool: &PgPool, args: &Value) -> Value {
 }
 
 pub async fn handle_get_index_portfolio(pool: &PgPool, args: &Value) -> Value {
-    let index_code = args.get("index_code").and_then(|v| v.as_str()).unwrap_or("IBOV").trim().to_uppercase();
+    let index_code = args
+        .get("index_code")
+        .and_then(|v| v.as_str())
+        .unwrap_or("IBOV")
+        .trim()
+        .to_uppercase();
 
     let sql = r#"
         SELECT 
@@ -150,15 +194,18 @@ pub async fn handle_get_index_portfolio(pool: &PgPool, args: &Value) -> Value {
         Err(e) => return json!({ "error": e.to_string() }),
     };
 
-    let components: Vec<Value> = rows.into_iter().map(|r| {
-        json!({
-            "ticker": r.get::<Option<String>, _>("ticker_symbol"),
-            "isin": r.get::<Option<String>, _>("isin"),
-            "asset_name": r.get::<Option<String>, _>("asset_name"),
-            "theoretical_quantity": r.get::<Option<Decimal>, _>("theoretical_quantity"),
-            "weight": r.get::<Option<Decimal>, _>("portfolio_weight"),
+    let components: Vec<Value> = rows
+        .into_iter()
+        .map(|r| {
+            json!({
+                "ticker": r.get::<Option<String>, _>("ticker_symbol"),
+                "isin": r.get::<Option<String>, _>("isin"),
+                "asset_name": r.get::<Option<String>, _>("asset_name"),
+                "theoretical_quantity": r.get::<Option<Decimal>, _>("theoretical_quantity"),
+                "weight": r.get::<Option<Decimal>, _>("portfolio_weight"),
+            })
         })
-    }).collect();
+        .collect();
 
     json!({
         "index_code": index_code,
@@ -169,12 +216,30 @@ pub async fn handle_get_index_portfolio(pool: &PgPool, args: &Value) -> Value {
 
 pub async fn handle_get_dataset_diagnostics(pool: &PgPool) -> Value {
     let queries = vec![
-        ("b3_instruments", "SELECT min(created_at::date), max(created_at::date), count(*) FROM b3_instruments"),
-        ("b3_tradable_securities", "SELECT min(reference_date), max(reference_date), count(*) FROM b3_tradable_securities"),
-        ("b3_price_report_quotes", "SELECT min(trade_date), max(trade_date), count(*) FROM b3_price_report_quotes"),
-        ("b3_cotahist_quotes", "SELECT min(trade_date), max(trade_date), count(*) FROM b3_cotahist_quotes"),
-        ("b3_quarantine_records", "SELECT NULL::date, NULL::date, count(*) FROM b3_quarantine_records"),
-        ("b3_field_changes", "SELECT NULL::date, NULL::date, count(*) FROM b3_field_changes"),
+        (
+            "b3_instruments",
+            "SELECT min(created_at::date), max(created_at::date), count(*) FROM b3_instruments",
+        ),
+        (
+            "b3_tradable_securities",
+            "SELECT min(reference_date), max(reference_date), count(*) FROM b3_tradable_securities",
+        ),
+        (
+            "b3_price_report_quotes",
+            "SELECT min(trade_date), max(trade_date), count(*) FROM b3_price_report_quotes",
+        ),
+        (
+            "b3_cotahist_quotes",
+            "SELECT min(trade_date), max(trade_date), count(*) FROM b3_cotahist_quotes",
+        ),
+        (
+            "b3_quarantine_records",
+            "SELECT NULL::date, NULL::date, count(*) FROM b3_quarantine_records",
+        ),
+        (
+            "b3_field_changes",
+            "SELECT NULL::date, NULL::date, count(*) FROM b3_field_changes",
+        ),
     ];
 
     let mut map = serde_json::Map::new();
@@ -184,14 +249,16 @@ pub async fn handle_get_dataset_diagnostics(pool: &PgPool) -> Value {
             let min_d: Option<NaiveDate> = row.get(0);
             let max_d: Option<NaiveDate> = row.get(1);
             let count: i64 = row.get(2);
-            map.insert(name.to_string(), json!({
-                "min_date": min_d,
-                "max_date": max_d,
-                "total_rows": count,
-            }));
+            map.insert(
+                name.to_string(),
+                json!({
+                    "min_date": min_d,
+                    "max_date": max_d,
+                    "total_rows": count,
+                }),
+            );
         }
     }
 
     json!({ "diagnostics": map })
 }
-

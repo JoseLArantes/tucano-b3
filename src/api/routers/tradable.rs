@@ -55,7 +55,10 @@ pub async fn list_tradable_securities(
     let offset = pagination.offset();
 
     let ticker = filters.ticker.as_deref().map(|s| s.trim().to_uppercase());
-    let market = filters.market_code.as_deref().map(|s| s.trim().to_uppercase());
+    let market = filters
+        .market_code
+        .as_deref()
+        .map(|s| s.trim().to_uppercase());
 
     let count_query = r#"
         SELECT count(*)
@@ -177,4 +180,3 @@ pub async fn get_tradable_by_ticker(
     };
     list_tradable_securities(State(state), Query(pagination), Query(filters)).await
 }
-

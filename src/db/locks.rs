@@ -1,8 +1,8 @@
+use sha2::{Digest, Sha256};
+use sqlx::{PgPool, Row};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, OwnedMutexGuard};
-use sha2::{Digest, Sha256};
-use sqlx::{PgPool, Row};
 
 use crate::error::{AppError, Result};
 
@@ -18,13 +18,14 @@ impl InMemoryLockRegistry {
 
     pub fn acquire(&self, key: &str) -> Result<InMemoryLockGuard> {
         let mut map = self.locks.lock().unwrap();
-        let mutex = map.entry(key.to_string()).or_insert_with(|| Arc::new(Mutex::new(()))).clone();
+        let mutex = map
+            .entry(key.to_string())
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone();
         drop(map);
 
         let guard = mutex.try_lock_owned().map_err(|_| {
-            AppError::LockConflict(format!(
-                "Ja existe sincronizacao em andamento para {key}."
-            ))
+            AppError::LockConflict(format!("Ja existe sincronizacao em andamento para {key}."))
         })?;
 
         Ok(InMemoryLockGuard { _guard: guard })

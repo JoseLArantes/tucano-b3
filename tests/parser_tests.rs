@@ -59,7 +59,10 @@ fn test_parse_bvbg_086_and_186() {
     assert_eq!(full.rows[0].last_price, Some(Decimal::new(1030, 2)));
 
     assert_eq!(simple.rows.len(), 1);
-    assert_eq!(simple.rows[0].source_file_type, "BVBG_186_EQUITIES_SIMPLIFIED_PRICE_REPORT");
+    assert_eq!(
+        simple.rows[0].source_file_type,
+        "BVBG_186_EQUITIES_SIMPLIFIED_PRICE_REPORT"
+    );
 }
 
 #[test]
@@ -93,16 +96,27 @@ fn test_parse_tradable_and_index_composition_csv() {
     let composition = parse_index_composition_csv(Cursor::new(composition_csv)).unwrap();
     assert_eq!(composition.rows.len(), 1);
     assert_eq!(composition.rows[0].ticker_symbol.as_deref(), Some("VALE3"));
-    assert_eq!(composition.rows[0].portfolio_weight, Some(Decimal::new(12, 2)));
+    assert_eq!(
+        composition.rows[0].portfolio_weight,
+        Some(Decimal::new(12, 2))
+    );
 }
 
 fn fit(val: &str, width: usize) -> String {
-    let s = if val.len() > width { &val[..width] } else { val };
+    let s = if val.len() > width {
+        &val[..width]
+    } else {
+        val
+    };
     format!("{:<width$}", s, width = width)
 }
 
 fn fit_num(val: &str, width: usize) -> String {
-    let s = if val.len() > width { &val[..width] } else { val };
+    let s = if val.len() > width {
+        &val[..width]
+    } else {
+        val
+    };
     format!("{:0>width$}", s, width = width)
 }
 
@@ -165,7 +179,10 @@ fn test_parse_cotahist_fixed_width() {
     assert_eq!(parsed.rows.len(), 1);
     assert_eq!(parsed.rows[0].ticker_symbol.as_deref(), Some("PETR4"));
     assert_eq!(parsed.rows[0].open_price, Some(Decimal::new(3625, 2)));
-    assert_eq!(parsed.rows[0].traded_quantity, Some(Decimal::new(10000000, 0)));
+    assert_eq!(
+        parsed.rows[0].traded_quantity,
+        Some(Decimal::new(10000000, 0))
+    );
     assert!(parsed.warnings.is_empty());
 }
 
@@ -174,4 +191,3 @@ fn test_parse_cotahist_invalid_record_size() {
     let res = parse_cotahist("01TOO_SHORT");
     assert!(res.is_err());
 }
-

@@ -143,11 +143,21 @@ impl McpServer {
 
                     let result_data = match tool_name {
                         "healthcheck" => tools::handle_healthcheck(&self.pool).await,
-                        "search_instruments" => tools::handle_search_instruments(&self.pool, &arguments).await,
-                        "get_instrument_coverage" => tools::handle_get_instrument_coverage(&self.pool, &arguments).await,
-                        "get_ohlcv_series" => tools::handle_get_ohlcv_series(&self.pool, &arguments).await,
-                        "get_index_portfolio" => tools::handle_get_index_portfolio(&self.pool, &arguments).await,
-                        "get_dataset_diagnostics" => tools::handle_get_dataset_diagnostics(&self.pool).await,
+                        "search_instruments" => {
+                            tools::handle_search_instruments(&self.pool, &arguments).await
+                        }
+                        "get_instrument_coverage" => {
+                            tools::handle_get_instrument_coverage(&self.pool, &arguments).await
+                        }
+                        "get_ohlcv_series" => {
+                            tools::handle_get_ohlcv_series(&self.pool, &arguments).await
+                        }
+                        "get_index_portfolio" => {
+                            tools::handle_get_index_portfolio(&self.pool, &arguments).await
+                        }
+                        "get_dataset_diagnostics" => {
+                            tools::handle_get_dataset_diagnostics(&self.pool).await
+                        }
                         _ => json!({ "error": format!("Ferramenta desconhecida: {tool_name}") }),
                     };
 
@@ -184,4 +194,3 @@ impl McpServer {
         Ok(())
     }
 }
-

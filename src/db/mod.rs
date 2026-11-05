@@ -1,11 +1,11 @@
 pub mod enums;
-pub mod models;
 pub mod locks;
-pub mod upsert;
+pub mod models;
 pub mod resolver;
+pub mod upsert;
 
-use sqlx::{postgres::PgPoolOptions, PgPool};
 use crate::error::Result;
+use sqlx::{postgres::PgPoolOptions, PgPool};
 
 pub async fn create_pool(database_url: &str) -> Result<PgPool> {
     let pool = PgPoolOptions::new()
@@ -17,9 +17,6 @@ pub async fn create_pool(database_url: &str) -> Result<PgPool> {
 }
 
 pub async fn run_migrations(pool: &PgPool) -> Result<()> {
-    sqlx::migrate!("./migrations")
-        .run(pool)
-        .await?;
+    sqlx::migrate!("./migrations").run(pool).await?;
     Ok(())
 }
-

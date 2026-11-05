@@ -24,6 +24,7 @@ pub struct Bvbg186Row {
     pub source_file_type: String,
 }
 
+#[allow(clippy::collapsible_match)]
 pub fn parse_bvbg_186<R: BufRead>(reader: R) -> Result<ParsedOutput<Bvbg186Row>> {
     let mut xml_reader = Reader::from_reader(reader);
     xml_reader.config_mut().trim_text(true);
@@ -42,7 +43,11 @@ pub fn parse_bvbg_186<R: BufRead>(reader: R) -> Result<ParsedOutput<Bvbg186Row>>
         match xml_reader.read_event_into(&mut buf)? {
             Event::Start(ref e) => {
                 let name = local_name(e.name().as_ref()).to_lowercase();
-                if name == "equityprice" || name == "pricerecord" || name == "quote" || name == "pricrpt" {
+                if name == "equityprice"
+                    || name == "pricerecord"
+                    || name == "quote"
+                    || name == "pricrpt"
+                {
                     in_record = true;
                     current_row = Bvbg186Row {
                         source_file_type: "BVBG_186_EQUITIES_SIMPLIFIED_PRICE_REPORT".to_string(),
@@ -55,10 +60,15 @@ pub fn parse_bvbg_186<R: BufRead>(reader: R) -> Result<ParsedOutput<Bvbg186Row>>
             }
             Event::End(ref e) => {
                 let name = local_name(e.name().as_ref()).to_lowercase();
-                if name == "equityprice" || name == "pricerecord" || name == "quote" || name == "pricrpt" {
+                if name == "equityprice"
+                    || name == "pricerecord"
+                    || name == "quote"
+                    || name == "pricrpt"
+                {
                     in_record = false;
                     if current_row.trade_date.is_some()
-                        && (current_row.security_id.is_some() || current_row.ticker_symbol.is_some())
+                        && (current_row.security_id.is_some()
+                            || current_row.ticker_symbol.is_some())
                     {
                         rows.push(current_row.clone());
                     }
@@ -86,7 +96,8 @@ pub fn parse_bvbg_186<R: BufRead>(reader: R) -> Result<ParsedOutput<Bvbg186Row>>
                         }
                         "marketidentifiercode" | "mic" | "mktidrcd" => {
                             if current_row.market_identifier_code.is_none() {
-                                current_row.market_identifier_code = canonicalize_string(Some(text));
+                                current_row.market_identifier_code =
+                                    canonicalize_string(Some(text));
                             }
                         }
                         "firstprice" | "first_price" | "openprice" | "frstpric" => {
@@ -116,7 +127,8 @@ pub fn parse_bvbg_186<R: BufRead>(reader: R) -> Result<ParsedOutput<Bvbg186Row>>
                         }
                         "financialvolumebrl" | "financial_volume_brl" | "ntlfinvol" => {
                             if current_row.financial_volume_brl.is_none() {
-                                current_row.financial_volume_brl = canonicalize_decimal(Some(text))?;
+                                current_row.financial_volume_brl =
+                                    canonicalize_decimal(Some(text))?;
                             }
                         }
                         _ => {}
@@ -141,4 +153,3 @@ pub fn parse_bvbg_186<R: BufRead>(reader: R) -> Result<ParsedOutput<Bvbg186Row>>
         warnings: Vec::new(),
     })
 }
-

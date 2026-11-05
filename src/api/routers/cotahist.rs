@@ -95,8 +95,8 @@ pub async fn list_cotahist_quotes(
         .bind(filters.trade_date)
         .bind(&ticker)
         .bind(&isin)
-        .bind(&bdi)
-        .bind(&mkt)
+        .bind(bdi)
+        .bind(mkt)
         .fetch_one(&state.pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -128,8 +128,8 @@ pub async fn list_cotahist_quotes(
         .bind(filters.trade_date)
         .bind(&ticker)
         .bind(&isin)
-        .bind(&bdi)
-        .bind(&mkt)
+        .bind(bdi)
+        .bind(mkt)
         .bind(limit)
         .bind(offset)
         .fetch_all(&state.pool)
@@ -277,7 +277,10 @@ pub async fn get_cotahist_by_id(
         .fetch_optional(&state.pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Cotahist quote not found".to_string()))?;
+        .ok_or((
+            StatusCode::NOT_FOUND,
+            "Cotahist quote not found".to_string(),
+        ))?;
 
     let provenance = Provenance {
         source_file_type: row.get("source_file_type"),
@@ -322,4 +325,3 @@ pub async fn get_cotahist_by_id(
         internal_metadata: None,
     }))
 }
-

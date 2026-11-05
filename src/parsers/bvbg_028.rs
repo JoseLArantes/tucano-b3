@@ -34,6 +34,7 @@ pub struct ParsedOutput<T> {
     pub warnings: Vec<String>,
 }
 
+#[allow(clippy::collapsible_match)]
 pub fn parse_bvbg_028<R: BufRead>(reader: R) -> Result<ParsedOutput<Bvbg028Row>> {
     let mut xml_reader = Reader::from_reader(reader);
     xml_reader.config_mut().trim_text(true);
@@ -86,7 +87,8 @@ pub fn parse_bvbg_028<R: BufRead>(reader: R) -> Result<ParsedOutput<Bvbg028Row>>
                     match current_tag.as_str() {
                         "sctyid" | "securityid" | "security_id" | "id" => {
                             if current_row.security_id.is_empty() && !text.is_empty() {
-                                current_row.security_id = canonicalize_string(Some(text)).unwrap_or_default();
+                                current_row.security_id =
+                                    canonicalize_string(Some(text)).unwrap_or_default();
                             }
                         }
                         "securitysource" | "security_source" => {
@@ -96,7 +98,8 @@ pub fn parse_bvbg_028<R: BufRead>(reader: R) -> Result<ParsedOutput<Bvbg028Row>>
                         }
                         "marketidentifiercode" | "mic" => {
                             if current_row.market_identifier_code.is_none() {
-                                current_row.market_identifier_code = canonicalize_string(Some(text));
+                                current_row.market_identifier_code =
+                                    canonicalize_string(Some(text));
                             }
                         }
                         "asset" | "asst" => {
@@ -104,7 +107,8 @@ pub fn parse_bvbg_028<R: BufRead>(reader: R) -> Result<ParsedOutput<Bvbg028Row>>
                                 current_row.asset = canonicalize_string(Some(text));
                             }
                         }
-                        "assetdescription" | "asset_description" | "asstdesc" | "desc" | "description" => {
+                        "assetdescription" | "asset_description" | "asstdesc" | "desc"
+                        | "description" => {
                             if current_row.asset_description.is_none() {
                                 current_row.asset_description = canonicalize_string(Some(text));
                             }

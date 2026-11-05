@@ -1,12 +1,12 @@
-pub mod canonical;
-pub mod xml_utils;
 pub mod bvbg_028;
 pub mod bvbg_086;
-pub mod bvbg_186;
 pub mod bvbg_087;
+pub mod bvbg_186;
+pub mod canonical;
 pub mod cotahist;
-pub mod tradable_list;
 pub mod index_composition;
+pub mod tradable_list;
+pub mod xml_utils;
 
 use sha2::{Digest, Sha256};
 use std::io::{Cursor, Read};
@@ -52,7 +52,9 @@ pub fn extract_archive_members(
     }
 
     if members.is_empty() {
-        return Err(AppError::Layout("Nenhum arquivo valido encontrado no arquivo B3.".to_string()));
+        return Err(AppError::Layout(
+            "Nenhum arquivo valido encontrado no arquivo B3.".to_string(),
+        ));
     }
 
     members.sort_by(|a, b| a.name.cmp(&b.name));
@@ -89,7 +91,9 @@ fn extract_zip_recursive(
         }
 
         let lower_name = name.to_lowercase();
-        let matches = preferred_extensions.iter().any(|ext| lower_name.ends_with(ext));
+        let matches = preferred_extensions
+            .iter()
+            .any(|ext| lower_name.ends_with(ext));
 
         if matches {
             let mut hasher = Sha256::new();
@@ -108,4 +112,3 @@ fn extract_zip_recursive(
 
     Ok(())
 }
-

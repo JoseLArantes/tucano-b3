@@ -1,0 +1,6 @@
+FROM rust:1-bookworm
+
+RUN rustup component add rustfmt clippy
+
+WORKDIR /usr/src/tucano-b3
+

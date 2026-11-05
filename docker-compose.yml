@@ -19,6 +19,7 @@ services:
   b3_api:
     build: .
     container_name: b3_api
+    command: ["tucano-b3", "serve"]
     ports:
       - "8010:8000"
     environment:
@@ -50,7 +51,54 @@ services:
       timeout: 5s
       retries: 10
 
+  b3_worker:
+    build: .
+    container_name: b3_worker
+    command: ["tucano-b3", "worker"]
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@b3_postgres:5432/tucano_b3
+      B3_ALLOWED_HOSTS: www.b3.com.br,b3.com.br
+      B3_RAW_DATA_DIR: /data/raw
+      B3_SYNC_ENABLED: "true"
+      B3_MANUAL_SYNC_ENABLED: "true"
+      B3_DEFAULT_TIMEZONE: America/Sao_Paulo
+      B3_PARSER_VERSION: v1
+      TUCANO_B3_TOKEN: ${TUCANO_B3_TOKEN:-dev-token}
+      B3_SOURCE_URL_BVBG_028: ${B3_SOURCE_URL_BVBG_028:-}
+      B3_SOURCE_URL_TRADABLE_SECURITY_LIST: ${B3_SOURCE_URL_TRADABLE_SECURITY_LIST:-}
+      B3_SOURCE_URL_BVBG_086: ${B3_SOURCE_URL_BVBG_086:-}
+      B3_SOURCE_URL_BVBG_186: ${B3_SOURCE_URL_BVBG_186:-}
+      B3_SOURCE_URL_BVBG_087: ${B3_SOURCE_URL_BVBG_087:-}
+      B3_SOURCE_URL_INDEX_COMPOSITION: ${B3_SOURCE_URL_INDEX_COMPOSITION:-}
+      B3_SOURCE_URL_COTAHIST: ${B3_SOURCE_URL_COTAHIST:-}
+      LOG_LEVEL: INFO
+    volumes:
+      - b3_raw_files:/data/raw
+      - b3_processed_files:/data/processed
+    depends_on:
+      b3_postgres:
+        condition: service_healthy
+
+  cargo:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - .:/usr/src/tucano-b3
+      - cargo_target:/usr/src/tucano-b3/target
+      - cargo_registry:/usr/local/cargo/registry
+      - cargo_git:/usr/local/cargo/git
+    working_dir: /usr/src/tucano-b3
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@b3_postgres:5432/tucano_b3
+    depends_on:
+      b3_postgres:
+        condition: service_healthy
+
 volumes:
   postgres_data:
   b3_raw_files:
   b3_processed_files:
+  cargo_target:
+  cargo_registry:
+  cargo_git:

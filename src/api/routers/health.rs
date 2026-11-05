@@ -46,4 +46,3 @@ pub async fn worker_health(State(state): State<Arc<AppState>>) -> Json<HealthRes
         database: db_status,
     })
 }
-

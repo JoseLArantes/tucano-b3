@@ -9,7 +9,7 @@ use tucano_b3::services::sync_service::B3SyncService;
 async fn get_test_pool() -> Option<PgPool> {
     let url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5433/tucano_b3".to_string());
-    
+
     match create_pool(&url).await {
         Ok(pool) => {
             if run_migrations(&pool).await.is_ok() {
@@ -94,16 +94,20 @@ async fn test_sync_bvbg_028_idempotency_and_audit() {
     assert_eq!(res1.inserted, 1);
 
     // Verify instrument in database
-    let row = sqlx::query("SELECT security_id, asset_description FROM b3_instruments WHERE security_id = 'PETR4'")
-        .fetch_one(&pool)
-        .await
-        .expect("Failed to fetch instrument");
+    let row = sqlx::query(
+        "SELECT security_id, asset_description FROM b3_instruments WHERE security_id = 'PETR4'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("Failed to fetch instrument");
     assert_eq!(row.get::<String, _>("security_id"), "PETR4");
 
-    let ident = sqlx::query("SELECT identifier_value FROM b3_instrument_identifiers WHERE identifier_value = 'PETR4'")
-        .fetch_one(&pool)
-        .await
-        .expect("Failed to fetch identifier");
+    let ident = sqlx::query(
+        "SELECT identifier_value FROM b3_instrument_identifiers WHERE identifier_value = 'PETR4'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("Failed to fetch identifier");
     assert_eq!(ident.get::<String, _>("identifier_value"), "PETR4");
 
     // 2nd sync: Duplicate, should be unchanged
@@ -165,7 +169,10 @@ async fn test_sync_bvbg_028_idempotency_and_audit() {
     .await
     .expect("Failed to query audit changes");
 
-    assert!(audit_count >= 1, "Field change audit log should record changed description");
+    assert!(
+        audit_count >= 1,
+        "Field change audit log should record changed description"
+    );
 }
 
 #[tokio::test]
@@ -221,12 +228,9 @@ async fn test_sync_cotahist_and_resolution() {
         .await
         .expect("Instrument sync failed");
 
-    let fit = |val: &str, width: usize| -> String {
-        format!("{:<width$}", val, width = width)
-    };
-    let fit_num = |val: &str, width: usize| -> String {
-        format!("{:0>width$}", val, width = width)
-    };
+    let fit = |val: &str, width: usize| -> String { format!("{:<width$}", val, width = width) };
+    let fit_num =
+        |val: &str, width: usize| -> String { format!("{:0>width$}", val, width = width) };
 
     let header = format!("00{: <243}\n", "");
     let parts = vec![
@@ -289,5 +293,8 @@ async fn test_sync_cotahist_and_resolution() {
     let status: String = row.get("resolution_status");
     assert_eq!(status, ResolutionStatus::Resolved.as_str());
     let inst_id: Option<String> = row.get("instrument_id");
-    assert!(inst_id.is_some(), "Instrument ID should be resolved to VALE3");
+    assert!(
+        inst_id.is_some(),
+        "Instrument ID should be resolved to VALE3"
+    );
 }

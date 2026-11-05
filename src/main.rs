@@ -13,7 +13,11 @@ use tucano_b3::services::sync_service::B3SyncService;
 use tucano_b3::worker::B3Worker;
 
 #[derive(Parser)]
-#[command(name = "tucano-b3", version, about = "Tucano B3 Exchange Data Engine (Rust Edition)")]
+#[command(
+    name = "tucano-b3",
+    version,
+    about = "Tucano B3 Exchange Data Engine (Rust Edition)"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -52,7 +56,9 @@ async fn main() -> anyhow::Result<()> {
 
     let sync_service = Arc::new(B3SyncService::new(pool.clone(), (*settings).clone()));
 
-    match cli.command.unwrap_or(Commands::Serve { bind: "0.0.0.0:8000".to_string() }) {
+    match cli.command.unwrap_or(Commands::Serve {
+        bind: "0.0.0.0:8000".to_string(),
+    }) {
         Commands::Serve { bind } => {
             info!("Starting Tucano B3 HTTP REST API Server on {}...", bind);
             let app_state = Arc::new(AppState {
@@ -80,16 +86,18 @@ async fn main() -> anyhow::Result<()> {
             let sft = SourceFileType::from_str(&source_type).map_err(|e| anyhow::anyhow!(e))?;
             let ref_date = chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d")?;
             info!("Executing manual sync for {} on {}", sft, ref_date);
-            let outcome = sync_service.run_manual_sync(
-                sft,
-                ref_date,
-                ref_date,
-                None,
-                None,
-                false,
-                false,
-                Some("cli_user".to_string()),
-            ).await?;
+            let outcome = sync_service
+                .run_manual_sync(
+                    sft,
+                    ref_date,
+                    ref_date,
+                    None,
+                    None,
+                    false,
+                    false,
+                    Some("cli_user".to_string()),
+                )
+                .await?;
             println!("Sync result: {:?}", outcome);
         }
     }

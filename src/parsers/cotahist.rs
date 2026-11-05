@@ -72,7 +72,9 @@ pub fn parse_cotahist(content: &str) -> Result<ParsedOutput<CotahistRow>> {
             continue;
         }
         if record_type != "01" {
-            warnings.push(format!("Linha {line_num}: tipo de registro invalido {record_type}"));
+            warnings.push(format!(
+                "Linha {line_num}: tipo de registro invalido {record_type}"
+            ));
             continue;
         }
 
@@ -98,7 +100,8 @@ pub fn parse_cotahist(content: &str) -> Result<ParsedOutput<CotahistRow>> {
             option_exercise_price: parse_implied_decimal(Some(slice_1based(line, 189, 201)), 2)?,
             price_correction_indicator: canonicalize_string(Some(slice_1based(line, 202, 202))),
             maturity_date: canonicalize_date(Some(slice_1based(line, 203, 210)))?,
-            quotation_factor: canonicalize_int(Some(slice_1based(line, 211, 217)))?.map(|v| v as i32),
+            quotation_factor: canonicalize_int(Some(slice_1based(line, 211, 217)))?
+                .map(|v| v as i32),
             exercise_price_points: parse_implied_decimal(Some(slice_1based(line, 218, 230)), 6)?,
             isin: canonicalize_isin(Some(slice_1based(line, 231, 242))),
             distribution_number: canonicalize_string(Some(slice_1based(line, 243, 245))),
@@ -124,4 +127,3 @@ pub fn parse_cotahist(content: &str) -> Result<ParsedOutput<CotahistRow>> {
 
     Ok(ParsedOutput { rows, warnings })
 }
-

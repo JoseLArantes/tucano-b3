@@ -62,4 +62,3 @@ pub async fn require_bearer_token(
 
     next.run(req).await
 }
-

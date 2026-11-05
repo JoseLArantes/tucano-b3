@@ -106,4 +106,3 @@ pub struct CoverageMetric {
     pub total_records: i64,
     pub total_files: i64,
 }
-

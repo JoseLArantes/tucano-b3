@@ -27,7 +27,9 @@ fn as_bool(val: Option<&str>) -> Option<bool> {
     }
 }
 
-pub fn parse_tradable_security_list<R: Read>(mut reader: R) -> Result<ParsedOutput<TradableSecurityRow>> {
+pub fn parse_tradable_security_list<R: Read>(
+    mut reader: R,
+) -> Result<ParsedOutput<TradableSecurityRow>> {
     let mut content = String::new();
     reader.read_to_string(&mut content)?;
 
@@ -112,4 +114,3 @@ pub fn parse_tradable_security_list<R: Read>(mut reader: R) -> Result<ParsedOutp
         warnings: Vec::new(),
     })
 }
-
