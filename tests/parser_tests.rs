@@ -1,0 +1,177 @@
+use rust_decimal::Decimal;
+use std::io::Cursor;
+
+use tucano_b3::parsers::bvbg_028::parse_bvbg_028;
+use tucano_b3::parsers::bvbg_086::parse_bvbg_086;
+use tucano_b3::parsers::bvbg_087::parse_bvbg_087;
+use tucano_b3::parsers::bvbg_186::parse_bvbg_186;
+use tucano_b3::parsers::cotahist::parse_cotahist;
+use tucano_b3::parsers::index_composition::parse_index_composition_csv;
+use tucano_b3::parsers::tradable_list::parse_tradable_security_list;
+
+#[test]
+fn test_parse_bvbg_028_instrument() {
+    let xml = r#"
+    <root>
+      <instrument>
+        <securityId>123456</securityId>
+        <mic>BVMF</mic>
+        <asset>PETR</asset>
+        <marketCode>10</marketCode>
+        <segmentCode>1</segmentCode>
+        <tickerSymbol>petr4</tickerSymbol>
+        <isin>brpetracnpr6</isin>
+        <referenceDate>2026-05-30</referenceDate>
+      </instrument>
+    </root>
+    "#;
+
+    let parsed = parse_bvbg_028(Cursor::new(xml)).unwrap();
+    assert_eq!(parsed.rows.len(), 1);
+    assert_eq!(parsed.rows[0].security_id, "123456");
+    assert_eq!(parsed.rows[0].ticker_symbol.as_deref(), Some("PETR4"));
+    assert_eq!(parsed.rows[0].isin.as_deref(), Some("BRPETRACNPR6"));
+}
+
+#[test]
+fn test_parse_bvbg_086_and_186() {
+    let xml = r#"
+    <root>
+      <priceRecord>
+        <tradeDate>2026-05-30</tradeDate>
+        <tickerSymbol>vale3</tickerSymbol>
+        <securityId>9988</securityId>
+        <firstPrice>10.10</firstPrice>
+        <minimumPrice>10.00</minimumPrice>
+        <averagePrice>10.20</averagePrice>
+        <maximumPrice>10.40</maximumPrice>
+        <lastPrice>10.30</lastPrice>
+        <financialVolumeBrl>1000000.00</financialVolumeBrl>
+      </priceRecord>
+    </root>
+    "#;
+
+    let full = parse_bvbg_086(Cursor::new(xml)).unwrap();
+    let simple = parse_bvbg_186(Cursor::new(xml)).unwrap();
+
+    assert_eq!(full.rows.len(), 1);
+    assert_eq!(full.rows[0].ticker_symbol.as_deref(), Some("VALE3"));
+    assert_eq!(full.rows[0].last_price, Some(Decimal::new(1030, 2)));
+
+    assert_eq!(simple.rows.len(), 1);
+    assert_eq!(simple.rows[0].source_file_type, "BVBG_186_EQUITIES_SIMPLIFIED_PRICE_REPORT");
+}
+
+#[test]
+fn test_parse_bvbg_087() {
+    let xml = r#"
+    <root>
+      <indexValue>
+        <tradeDate>2026-05-30</tradeDate>
+        <indexCode>IBOV</indexCode>
+        <indexName>Ibovespa</indexName>
+        <valueType>index_value</valueType>
+        <value>132456.98</value>
+      </indexValue>
+    </root>
+    "#;
+
+    let parsed = parse_bvbg_087(Cursor::new(xml)).unwrap();
+    assert_eq!(parsed.rows.len(), 1);
+    assert_eq!(parsed.rows[0].index_code.as_deref(), Some("IBOV"));
+    assert_eq!(parsed.rows[0].value, Some(Decimal::new(13245698, 2)));
+}
+
+#[test]
+fn test_parse_tradable_and_index_composition_csv() {
+    let tradable_csv = "reference_date;security_id;ticker_symbol;market_code;tradable_indicator\n2026-05-30;123456;PETR4;10;SIM\n";
+    let tradable = parse_tradable_security_list(Cursor::new(tradable_csv)).unwrap();
+    assert_eq!(tradable.rows.len(), 1);
+    assert_eq!(tradable.rows[0].tradable_indicator, Some(true));
+
+    let composition_csv = "composition_date,index_code,ticker_symbol,isin,theoretical_quantity,portfolio_weight\n2026-05-30,IBOV,VALE3,BRVALEACNOR0,1000,0.12\n";
+    let composition = parse_index_composition_csv(Cursor::new(composition_csv)).unwrap();
+    assert_eq!(composition.rows.len(), 1);
+    assert_eq!(composition.rows[0].ticker_symbol.as_deref(), Some("VALE3"));
+    assert_eq!(composition.rows[0].portfolio_weight, Some(Decimal::new(12, 2)));
+}
+
+fn fit(val: &str, width: usize) -> String {
+    let s = if val.len() > width { &val[..width] } else { val };
+    format!("{:<width$}", s, width = width)
+}
+
+fn fit_num(val: &str, width: usize) -> String {
+    let s = if val.len() > width { &val[..width] } else { val };
+    format!("{:0>width$}", s, width = width)
+}
+
+fn cotahist_quote_line() -> String {
+    let parts = vec![
+        "01".to_string(),
+        "20241230".to_string(),
+        "02".to_string(),
+        fit("PETR4", 12),
+        "010".to_string(),
+        fit("PETROBRAS", 12),
+        fit("PN", 10),
+        fit_num("0", 3),
+        fit("BRL", 4),
+        fit_num("3625", 13),
+        fit_num("3680", 13),
+        fit_num("3590", 13),
+        fit_num("3630", 13),
+        fit_num("3645", 13),
+        fit_num("3640", 13),
+        fit_num("3650", 13),
+        fit_num("123", 5),
+        fit_num("10000000", 18),
+        fit_num("36300000000", 18),
+        fit_num("0", 13),
+        "0".to_string(),
+        "99991231".to_string(),
+        fit_num("1", 7),
+        fit_num("0", 13),
+        fit("BRPETRACNPR6", 12),
+        fit_num("123", 3),
+    ];
+    let line = parts.join("");
+    assert_eq!(line.len(), 245);
+    line
+}
+
+fn cotahist_header_line() -> String {
+    let line = format!("00{: <243}", "");
+    assert_eq!(line.len(), 245);
+    line
+}
+
+fn cotahist_trailer_line(record_count: usize) -> String {
+    let prefix = format!("99{: <29}{:0>11}", "", record_count);
+    let line = format!("{:<245}", prefix);
+    assert_eq!(line.len(), 245);
+    line
+}
+
+#[test]
+fn test_parse_cotahist_fixed_width() {
+    let content = format!(
+        "{}\n{}\n{}",
+        cotahist_header_line(),
+        cotahist_quote_line(),
+        cotahist_trailer_line(1)
+    );
+    let parsed = parse_cotahist(&content).unwrap();
+    assert_eq!(parsed.rows.len(), 1);
+    assert_eq!(parsed.rows[0].ticker_symbol.as_deref(), Some("PETR4"));
+    assert_eq!(parsed.rows[0].open_price, Some(Decimal::new(3625, 2)));
+    assert_eq!(parsed.rows[0].traded_quantity, Some(Decimal::new(10000000, 0)));
+    assert!(parsed.warnings.is_empty());
+}
+
+#[test]
+fn test_parse_cotahist_invalid_record_size() {
+    let res = parse_cotahist("01TOO_SHORT");
+    assert!(res.is_err());
+}
+

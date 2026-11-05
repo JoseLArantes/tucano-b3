@@ -1,0 +1,56 @@
+services:
+  b3_postgres:
+    image: postgres:16-alpine
+    container_name: b3_postgres
+    environment:
+      POSTGRES_DB: tucano_b3
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tucano_b3"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  b3_api:
+    build: .
+    container_name: b3_api
+    ports:
+      - "8010:8000"
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@b3_postgres:5432/tucano_b3
+      B3_ALLOWED_HOSTS: www.b3.com.br,b3.com.br
+      B3_RAW_DATA_DIR: /data/raw
+      B3_SYNC_ENABLED: "true"
+      B3_MANUAL_SYNC_ENABLED: "true"
+      B3_DEFAULT_TIMEZONE: America/Sao_Paulo
+      B3_PARSER_VERSION: v1
+      TUCANO_B3_TOKEN: ${TUCANO_B3_TOKEN:-dev-token}
+      B3_SOURCE_URL_BVBG_028: ${B3_SOURCE_URL_BVBG_028:-}
+      B3_SOURCE_URL_TRADABLE_SECURITY_LIST: ${B3_SOURCE_URL_TRADABLE_SECURITY_LIST:-}
+      B3_SOURCE_URL_BVBG_086: ${B3_SOURCE_URL_BVBG_086:-}
+      B3_SOURCE_URL_BVBG_186: ${B3_SOURCE_URL_BVBG_186:-}
+      B3_SOURCE_URL_BVBG_087: ${B3_SOURCE_URL_BVBG_087:-}
+      B3_SOURCE_URL_INDEX_COMPOSITION: ${B3_SOURCE_URL_INDEX_COMPOSITION:-}
+      B3_SOURCE_URL_COTAHIST: ${B3_SOURCE_URL_COTAHIST:-}
+      LOG_LEVEL: INFO
+    volumes:
+      - b3_raw_files:/data/raw
+      - b3_processed_files:/data/processed
+    depends_on:
+      b3_postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:
+  b3_raw_files:
+  b3_processed_files:
