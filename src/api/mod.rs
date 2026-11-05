@@ -60,6 +60,7 @@ impl Modify for SecurityAddon {
     ),
     paths(
         routers::health::health_check,
+        routers::health::metrics,
         routers::instruments::list_instruments,
         routers::instruments::get_instrument,
         routers::tradable::list_tradable_securities,
@@ -202,6 +203,7 @@ pub fn create_router(app_state: Arc<AppState>) -> Router {
     Router::new()
         // Unauthenticated docs & health
         .route("/healthz", get(healthz))
+        .route("/metrics", get(metrics))
         .route("/api/v1/health", get(health_check))
         .route("/api/v1/b3/worker/health", get(worker_health))
         .route("/openapi.json", get(openapi_json))

@@ -93,7 +93,26 @@ async fn test_auth_whitelist_and_rejection() {
         .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
 
-    // 4. Protected route without auth header returns 401
+    // 4. /metrics is public and exports prometheus text
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/metrics")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body_str = String::from_utf8(body_bytes.to_vec()).unwrap();
+    assert!(body_str.contains("tucano_b3_up 1"));
+    assert!(body_str.contains("tucano_b3_instruments_total"));
+
+    // 5. Protected route without auth header returns 401
     let res = app
         .clone()
         .oneshot(
@@ -269,4 +288,58 @@ async fn test_mcp_tools_execution() {
     // 3. Dataset diagnostics
     let diag = handle_get_dataset_diagnostics(&pool).await;
     assert!(diag.get("diagnostics").is_some());
+}
+
+#[tokio::test]
+async fn test_rebuild_identity_and_quarantine_endpoints() {
+    let app = match setup_test_app().await {
+        Some(a) => a,
+        None => {
+            eprintln!("Skipping test: Database not available");
+            return;
+        }
+    };
+
+    // Rebuild identity
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/b3/sync-runs/rebuild-identity")
+                .header("Authorization", "Bearer dev-token")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let resp: Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert!(resp["resolved_count"].is_number());
+    assert!(resp["message"]
+        .as_str()
+        .unwrap()
+        .contains("Rebuilt identity"));
+
+    // Replay quarantine
+    let res = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/b3/quarantine/replay")
+                .header("Authorization", "Bearer dev-token")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let resp: Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert!(resp["reprocessed_count"].is_number());
 }

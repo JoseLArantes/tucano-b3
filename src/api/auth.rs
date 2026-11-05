@@ -24,6 +24,7 @@ pub async fn require_bearer_token(
 
     // Whitelist public endpoints
     if path == "/healthz"
+        || path == "/metrics"
         || path == "/api/v1/health"
         || path == "/api/v1/b3/worker/health"
         || path == "/docs"
