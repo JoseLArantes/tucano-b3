@@ -24,8 +24,25 @@ pub struct B3Settings {
 
 impl Default for B3Settings {
     fn default() -> Self {
+        if env::var("DATABASE_URL").is_err() {
+            if let Ok(content) = std::fs::read_to_string(".env") {
+                for line in content.lines() {
+                    let trimmed = line.trim();
+                    if !trimmed.starts_with('#') && !trimmed.is_empty() {
+                        if let Some((k, v)) = trimmed.split_once('=') {
+                            let k = k.trim();
+                            let v = v.trim();
+                            if env::var(k).is_err() {
+                                env::set_var(k, v);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Self {
-            database_url: env::var("DATABASE_URL").unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/tucano_b3".to_string()),
+            database_url: env::var("DATABASE_URL").unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5433/tucano_b3".to_string()),
             b3_allowed_hosts: env::var("B3_ALLOWED_HOSTS").unwrap_or_else(|_| {
                 "www.b3.com.br,b3.com.br,bvmf.bmfbovespa.com.br,arquivos.b3.com.br,sistemaswebb3-listados.b3.com.br".to_string()
             }),
