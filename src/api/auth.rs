@@ -27,7 +27,9 @@ pub async fn require_bearer_token(
         || path == "/api/v1/health"
         || path == "/api/v1/b3/worker/health"
         || path == "/docs"
+        || path == "/docs/"
         || path == "/redoc"
+        || path == "/redoc/"
         || path == "/openapi.json"
         || path.starts_with("/swagger-ui")
     {

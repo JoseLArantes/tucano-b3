@@ -10,7 +10,8 @@ use axum::{
 };
 use sqlx::PgPool;
 use std::sync::Arc;
-use utoipa::OpenApi;
+use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
+use utoipa::{Modify, OpenApi};
 
 use crate::config::B3Settings;
 use crate::services::sync_service::B3SyncService;
@@ -27,8 +28,31 @@ pub struct AppState {
     pub sync_service: Arc<B3SyncService>,
 }
 
+struct SecurityAddon;
+
+impl Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        if let Some(components) = openapi.components.as_mut() {
+            components.add_security_scheme(
+                "bearer_auth",
+                SecurityScheme::Http(
+                    HttpBuilder::new()
+                        .scheme(HttpAuthScheme::Bearer)
+                        .bearer_format("Token")
+                        .description(Some("Token de autenticação Tucano B3 (ex: dev-token)"))
+                        .build(),
+                ),
+            );
+        }
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
+    modifiers(&SecurityAddon),
+    security(
+        ("bearer_auth" = [])
+    ),
     info(
         title = "Tucano B3 Data Platform API",
         version = "0.1.0",
@@ -115,20 +139,33 @@ pub async fn swagger_ui() -> Html<&'static str> {
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+  <link rel="icon" type="image/png" href="https://unpkg.com/swagger-ui-dist@5/favicon-32x32.png" sizes="32x32" />
+  <style>
+    html { box-sizing: border-box; overflow: -moz-scrollbars-vertical; overflow-y: scroll; }
+    *, *:before, *:after { box-sizing: inherit; }
+    body { margin: 0; background: #fafafa; }
+    .topbar { display: none; }
+  </style>
 </head>
 <body>
   <div id="swagger-ui"></div>
   <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
   <script>
     window.onload = function() {
-      SwaggerUIBundle({
+      window.ui = SwaggerUIBundle({
         url: "/openapi.json",
         dom_id: '#swagger-ui',
         deepLinking: true,
+        persistAuthorization: true,
+        displayRequestDuration: true,
+        docExpansion: 'list',
+        filter: true,
         presets: [
           SwaggerUIBundle.presets.apis,
-          SwaggerUIBundle.SwaggerUIStandalonePreset
-        ]
+          SwaggerUIStandalonePreset
+        ],
+        layout: "BaseLayout"
       });
     };
   </script>
@@ -149,7 +186,7 @@ pub async fn redoc_ui() -> Html<&'static str> {
   </style>
 </head>
 <body>
-  <redoc spec-url="/openapi.json"></redoc>
+  <redoc spec-url="/openapi.json" expand-responses="200,201"></redoc>
   <script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"></script>
 </body>
 </html>"#)
@@ -165,7 +202,11 @@ pub fn create_router(app_state: Arc<AppState>) -> Router {
         .route("/api/v1/b3/worker/health", get(worker_health))
         .route("/openapi.json", get(openapi_json))
         .route("/docs", get(swagger_ui))
+        .route("/docs/", get(swagger_ui))
+        .route("/swagger-ui", get(swagger_ui))
+        .route("/swagger-ui/", get(swagger_ui))
         .route("/redoc", get(redoc_ui))
+        .route("/redoc/", get(redoc_ui))
 
         // Protected B3 API routes
         // Instruments
