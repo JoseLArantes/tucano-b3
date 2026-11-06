@@ -10,7 +10,7 @@ use crate::{
     },
     services::{
         eligibility::{require_eligible, SourcePurpose},
-        jobs::{JobClaim, JobCompletion, JobService},
+        jobs::{JobClaim, JobService},
     },
 };
 use chrono::NaiveDate;
@@ -368,10 +368,7 @@ impl HistoryRepository {
         )
         .await?;
         let jobs = JobService::new(self.pool.clone());
-        let mut tx = jobs.begin_confirmation(claim).await?;
-        sqlx::query("SELECT pg_advisory_xact_lock(7324031002)")
-            .execute(&mut *tx)
-            .await?;
+        let mut tx = jobs.begin_locked_confirmation(claim, 7324031002).await?;
         let eligible:bool=sqlx::query_scalar("SELECT NOT EXISTS(SELECT 1 FROM unnest(ARRAY['processing','raw_retention','rest','mcp','third_party_delivery']) p WHERE NOT EXISTS(SELECT 1 FROM b3_source_eligibility e WHERE e.source_file_type=$1 AND e.channel=$2 AND e.purpose=p AND e.status='eligible' AND e.zero_cost AND e.verified_at IS NOT NULL AND length(trim(e.evidence_reference))>0))").bind(&family).bind(spec.get::<String,_>("channel")).fetch_one(&mut *tx).await?;
         if !eligible {
             return Err(AppError::Validation(
@@ -385,7 +382,6 @@ impl HistoryRepository {
         .fetch_optional(&mut *tx)
         .await?;
         if active == Some(snapshot) {
-            JobService::complete(&mut tx, claim, JobCompletion::Succeeded).await?;
             tx.commit().await?;
             return Ok(());
         }
@@ -416,16 +412,12 @@ impl HistoryRepository {
         sqlx::query("INSERT INTO b3_registry_publications(snapshot_id,previous_snapshot_id,job_id,action) VALUES($1,$2,$3,'publish')").bind(snapshot).bind(active).bind(claim.id).execute(&mut *tx).await?;
         sqlx::query("UPDATE b3_source_files SET status='ingested',ingested_at=NOW(),row_count_raw=((SELECT count(*) FROM b3_registry_records WHERE snapshot_id=$1)+(SELECT count(*) FROM b3_registry_rejections WHERE snapshot_id=$1))::int,row_count_quarantined=(SELECT count(*)::int FROM b3_registry_rejections WHERE snapshot_id=$1) WHERE id=$2").bind(snapshot).bind(spec.get::<String,_>("source_file_id")).execute(&mut *tx).await?;
         sqlx::query("UPDATE b3_quarantine_records old SET resolution_status='reprocessed',reprocessed_at=NOW() FROM b3_source_files current,b3_registry_snapshots s,b3_source_file_members m,b3_registry_records r WHERE s.id=$1 AND current.id=s.source_file_id AND old.source_file_id=current.replayed_from_file_id AND m.source_file_id=current.id AND m.member_name=old.source_member_name AND r.snapshot_id=s.id AND r.source_member_id=m.id AND r.record_index=old.source_record_index AND old.resolution_status='quarantined'").bind(snapshot).execute(&mut *tx).await?;
-        JobService::complete(&mut tx, claim, JobCompletion::Succeeded).await?;
         tx.commit().await?;
         Ok(())
     }
     pub async fn rollback_registry_snapshot(&self, claim: &JobClaim, snapshot: Uuid) -> Result<()> {
         let jobs = JobService::new(self.pool.clone());
-        let mut tx = jobs.begin_confirmation(claim).await?;
-        sqlx::query("SELECT pg_advisory_xact_lock(7324031002)")
-            .execute(&mut *tx)
-            .await?;
+        let mut tx = jobs.begin_locked_confirmation(claim, 7324031002).await?;
         let family: Option<String> = sqlx::query_scalar(
             "SELECT source_file_type FROM b3_registry_snapshots WHERE id=$1 AND status='published'",
         )
@@ -446,7 +438,6 @@ impl HistoryRepository {
             .execute(&mut *tx)
             .await?;
         sqlx::query("INSERT INTO b3_registry_publications(snapshot_id,previous_snapshot_id,job_id,action) VALUES($1,$2,$3,'rollback')").bind(snapshot).bind(active).bind(claim.id).execute(&mut *tx).await?;
-        JobService::complete(&mut tx, claim, JobCompletion::Succeeded).await?;
         tx.commit().await?;
         Ok(())
     }

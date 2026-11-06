@@ -49,11 +49,10 @@ impl QueryService {
             B3IndexPortfolioComposition,
         ]
         .into_iter()
-        .enumerate()
         .skip(o as usize)
         .take(l as usize)
-        .map(|(i, source)| {
-            let implemented = i < 5;
+        .map(|source| {
+            let implemented = source.supports_record_date_cuts();
             let available = implemented && enabled.iter().any(|s| s == source.as_str());
             Capability {
                 source_file_type: source,

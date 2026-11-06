@@ -4,7 +4,7 @@ title: Endpoints de cadastro
 
 # Endpoints de cadastro
 
-As consultas cadastrais exigem Bearer de leitura e retornam evidências publicadas por fotografia. Não executam aquisição nem resolução pesada.
+As rotas cadastrais estão documentadas, mas a capacidade de ingestão BVBG.028/Tradable Security List está `deferred` no `0.0.1`. Sem fotografias publicadas, a consulta informa indisponibilidade; elas não devem ser usadas como prova de identidade histórica. Cotações válidas continuam consultáveis com identidade `unresolved` quando necessário.
 
 ## Filtros compartilhados
 

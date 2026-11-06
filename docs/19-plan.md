@@ -1,10 +1,12 @@
 # Existing implementation review and migration plan
 
-Status: needs-triage
+Status: review and migration decision completed; preservation-oriented cutover assumptions superseded for release 0.0.1.
 
 Date: 2026-11-06, America/Sao_Paulo.
 
 This plan implements the review and migration approach in [PRD section 19](b3_prd.md#19-aproveitamento-do-projeto-existente-e-migração). The [product PRD](b3_prd.md) remains the sole source of product requirements. This document defines how to assess existing code, preserve useful capabilities, and sequence remediation; it neither replaces the PRD nor declares its requirements implemented.
+
+The maintainer later chose a fresh 0.0.1 persistence boundary and first supported API contract. Do not migrate pre-release records, IDs, audit history, jobs, or require compatibility with preview payloads. Sections 6–7 below preserve the original review's safeguards and cutover template; where they propose data backfills, shadow publication, preserving prior public contracts, or consumer migration, the accepted decision in PRD §19.3 and [`docs/0.0.1-plan.md`](0.0.1-plan.md) supersedes them. Schema upgrades within the new 0.0.1 persistence line remain required.
 
 Agent communication, assessment reports, and this plan use English. Product documentation, API descriptions, errors, and other product-facing text remain Brazilian Portuguese unless explicitly requested otherwise. Preserve official source names and technical identifiers.
 
@@ -17,8 +19,8 @@ The outcome is a traceable assessment and an ordered implementation backlog that
 1. Which capabilities already satisfy the requirements, with what evidence?
 2. Which code should be retained, extended, isolated behind a compatible adapter, or replaced?
 3. Which gaps threaten financial correctness, audit history, identity, or availability?
-4. What must migrate in data, contracts, and operations before switching consumers?
-5. What evidence permits each migration step and eventual retirement of the old path?
+4. Which data, contracts, and operational state should be deliberately reset, retained as code, or migrated within the new release line?
+5. What evidence permits the clean-slate cutover and retirement of unsupported preview paths?
 
 Creating this plan does not initiate remediation, ingest market data, run migrations, create commits, or certify source access. Execution begins with the baseline and review phases below. External eligibility questions must not block independent offline review and deterministic testing.
 
@@ -293,12 +295,13 @@ Final review delivery must state: what was retained; what was replaced and why; 
 - Section 19.1 reuse principles, 19.2 review leads and all seven 19.3 migration steps are covered.
 - The plan distinguishes current static observations from future tests and verified behavior.
 - All PRD subsystems have a review path, evidence model and release gate.
-- Migration preserves contracts, IDs, raw provenance, temporal identity, market facts and audit history.
+- The outcome records the selected migration boundary. For 0.0.1 this is fresh persistence with no pre-release data/ID/audit import; within the new release line, migrations preserve its published identities and evidence.
 - Source access uncertainty and unavailable runtime checks remain explicit.
 - This document is English; the product PRD remains authoritative and product communication remains pt-BR.
 
 ## Comments
 
-- 2026-11-06 — Requested an English development plan in `docs/` to review existing code against the adopted PRD, specifically section 19. Preliminary code inspection informed the review leads; no implementation, runtime validation or migration was performed while authoring this plan.
+- 2026-11-06 — Requested an English development plan in `docs/` to review existing code against the adopted PRD, specifically section 19. The assessment was performed against the historical baseline; implementation and current validations are recorded in the release plan and milestones.
+- 2026-11-06 — Maintainer selected fresh 0.0.1 persistence and no pre-release API/data compatibility. Preservation-oriented data migration and shadow cutover proposals in this review plan are superseded for the first release; forward schema evolution and provenance guarantees still apply.
 
 - 2026-11-06 — Source research, domain glossary and delivery backlog promoted to permanent locations. [Issue 09](issues/09-prd-alignment-review.md) is the executable entry point for this plan.

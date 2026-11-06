@@ -4,8 +4,9 @@ use sqlx::{postgres::PgPoolOptions, PgPool};
 use std::process::Stdio;
 use tucano_b3::{
     db::enums::SourceFileType,
+    db::history::HistoryRepository,
     db::run_migrations,
-    services::jobs::{JobCommand, JobPriority, JobService},
+    services::jobs::{ExecutionLane, JobCommand, JobCompletion, JobPriority, JobService},
 };
 use uuid::Uuid;
 
@@ -42,28 +43,40 @@ async fn cleanup(pool: PgPool, admin: PgPool, name: String) {
 }
 
 fn fixture(price: &str) -> Vec<u8> {
+    fixture_rows(&[("20250102", price)])
+}
+
+fn fixture_rows(rows: &[(&str, &str)]) -> Vec<u8> {
     let mut header = vec![b' '; 245];
     header[..2].copy_from_slice(b"00");
-    let mut detail = vec![b' '; 245];
-    for (start, value) in [
-        (0, "01"),
-        (2, "20250102"),
-        (10, "02"),
-        (12, "EXMP3"),
-        (24, "010"),
-        (52, "BRL"),
-        (56, price),
-        (202, "99991231"),
-        (210, "0000001"),
-        (242, "001"),
-    ] {
-        detail[start..start + value.len()].copy_from_slice(value.as_bytes());
-    }
+    let details = rows
+        .iter()
+        .map(|(trade_date, price)| {
+            let mut detail = vec![b' '; 245];
+            for (start, value) in [
+                (0, "01"),
+                (2, *trade_date),
+                (10, "02"),
+                (12, "EXMP3"),
+                (24, "010"),
+                (52, "BRL"),
+                (56, *price),
+                (202, "99991231"),
+                (210, "0000001"),
+                (242, "001"),
+            ] {
+                detail[start..start + value.len()].copy_from_slice(value.as_bytes());
+            }
+            detail
+        })
+        .collect::<Vec<_>>();
     let mut trailer = vec![b' '; 245];
     trailer[..2].copy_from_slice(b"99");
-    trailer[31..42].copy_from_slice(b"00000000003");
-    [header, detail, trailer]
-        .into_iter()
+    let record_count = format!("{:011}", rows.len() + 2);
+    trailer[31..42].copy_from_slice(record_count.as_bytes());
+    std::iter::once(header)
+        .chain(details)
+        .chain(std::iter::once(trailer))
         .flat_map(|mut r| {
             r.push(b'\n');
             r
@@ -84,13 +97,13 @@ async fn worker(url: &str, root: &std::path::Path) -> tokio::process::Child {
 }
 
 #[tokio::test]
-async fn two_worker_processes_ingest_once_and_publication_is_explicit() {
+async fn two_worker_processes_ingest_once_and_publish_a_clean_candidate_automatically() {
     let (pool, admin, name, url) = database().await;
     let root = tempfile::tempdir().unwrap();
     std::fs::create_dir(root.path().join("imports")).unwrap();
     std::fs::write(
         root.path().join("imports/year.txt"),
-        fixture("0000000001234"),
+        fixture_rows(&[("20250102", "0000000001234"), ("20250103", "0000000005678")]),
     )
     .unwrap();
     sqlx::query("INSERT INTO b3_source_channels(id,source_file_type,acquisition_mode,local_relative_path,enabled,publication_key,format_profile,period_start,period_end) VALUES('fixture','COTAHIST_YEARLY','local','year.txt',true,'year2025','cotahist_latin1','2025-01-01','2025-12-31')").execute(&pool).await.unwrap();
@@ -101,8 +114,8 @@ async fn two_worker_processes_ingest_once_and_publication_is_explicit() {
             "ingest",
             JobCommand::Ingest {
                 source: SourceFileType::CotahistYearly,
-                from: NaiveDate::from_ymd_opt(2025, 1, 1).unwrap(),
-                to: NaiveDate::from_ymd_opt(2025, 12, 31).unwrap(),
+                from: NaiveDate::from_ymd_opt(2025, 1, 2).unwrap(),
+                to: NaiveDate::from_ymd_opt(2025, 1, 2).unwrap(),
             },
             JobPriority::Maintenance,
             1,
@@ -126,12 +139,6 @@ async fn two_worker_processes_ingest_once_and_publication_is_explicit() {
         .await
         .unwrap();
     assert_eq!(attempts, 1);
-    let active: Option<Uuid> =
-        sqlx::query_scalar("SELECT revision_id FROM b3_history_active WHERE singleton")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    assert!(active.is_none());
     let revision: String = sqlx::query_scalar(
         "SELECT output_id FROM b3_job_outputs WHERE job_id=$1 AND output_kind='revision'",
     )
@@ -140,37 +147,12 @@ async fn two_worker_processes_ingest_once_and_publication_is_explicit() {
     .await
     .unwrap();
     let revision = Uuid::parse_str(&revision).unwrap();
-    let publish = jobs
-        .submit(
-            "publish",
-            JobCommand::PublishRevision {
-                revision_id: revision,
-                acknowledge_issues: false,
-            },
-            JobPriority::Maintenance,
-            1,
-        )
-        .await
-        .unwrap();
-    assert!(worker(&url, root.path())
-        .await
-        .wait_with_output()
-        .await
-        .unwrap()
-        .status
-        .success());
     let active: Option<Uuid> =
         sqlx::query_scalar("SELECT revision_id FROM b3_history_active WHERE singleton")
             .fetch_one(&pool)
             .await
             .unwrap();
     assert_eq!(active, Some(revision));
-    let status: String = sqlx::query_scalar("SELECT status FROM b3_jobs WHERE id=$1")
-        .bind(publish)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-    assert_eq!(status, "succeeded");
     let count: i64 =
         sqlx::query_scalar("SELECT count(*) FROM b3_history_revision_quotes WHERE revision_id=$1")
             .bind(revision)
@@ -178,6 +160,14 @@ async fn two_worker_processes_ingest_once_and_publication_is_explicit() {
             .await
             .unwrap();
     assert_eq!(count, 1);
+    let (detail_read, out_of_scope): (i64, i64) = sqlx::query_as(
+        "SELECT detail_read,out_of_scope FROM b3_history_revision_members WHERE revision_id=$1",
+    )
+    .bind(revision)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!((detail_read, out_of_scope), (2, 1));
     // Reparse uses immutable publication metadata and bytes, not today's catalog/import.
     let source_file: String = sqlx::query_scalar(
         "SELECT output_id FROM b3_job_outputs WHERE job_id=$1 AND output_kind='source_file'",
@@ -244,7 +234,7 @@ async fn two_worker_processes_ingest_once_and_publication_is_explicit() {
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(active, Some(revision));
+    assert_eq!(active, Some(replay_revision));
     // A structurally broken second member cannot replace the public revision.
     let file = std::fs::File::create(root.path().join("imports/mixed.zip")).unwrap();
     let mut zip = zip::ZipWriter::new(file);
@@ -287,99 +277,92 @@ async fn two_worker_processes_ingest_once_and_publication_is_explicit() {
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(active, Some(revision));
+    assert_eq!(active, Some(replay_revision));
     let states: Vec<String> =
         sqlx::query_scalar("SELECT status FROM b3_sync_runs WHERE id=ANY($1)")
-            .bind(vec![
-                id.to_string(),
-                publish.to_string(),
-                replay.to_string(),
-                broken.to_string(),
-            ])
+            .bind(vec![id.to_string(), replay.to_string(), broken.to_string()])
             .fetch_all(&pool)
             .await
             .unwrap();
     assert_eq!(
         states.iter().filter(|s| s.as_str() == "succeeded").count(),
-        3
+        2
     );
     assert_eq!(states.iter().filter(|s| s.as_str() == "failed").count(), 1);
-    // A real process whose lease expires while waiting for publication cannot commit.
+    // A worker waiting for the publication lock does not hold the job row. A replacement
+    // generation can take ownership, and the old owner must fail its post-lock fence check.
     let delayed = jobs
         .submit(
             "delayed-publish",
-            JobCommand::PublishRevision {
-                revision_id: replay_revision,
-                acknowledge_issues: false,
+            JobCommand::RollbackRevision {
+                revision_id: revision,
             },
             JobPriority::Maintenance,
             2,
         )
         .await
         .unwrap();
+    let first_owner = Uuid::new_v4();
+    let first_claim = jobs
+        .claim(first_owner, ExecutionLane::Maintenance, 1)
+        .await
+        .unwrap()
+        .unwrap();
     let mut blocker = pool.begin().await.unwrap();
     sqlx::query("SELECT pg_advisory_xact_lock(7324031001)")
         .execute(&mut *blocker)
         .await
         .unwrap();
-    let stale = tokio::process::Command::new(env!("CARGO_BIN_EXE_tucano-b3"))
-        .args(["worker", "--once", "--lane", "maintenance"])
-        .env("DATABASE_URL", &url)
-        .env("B3_RAW_DATA_DIR", root.path())
-        .env("B3_LEASE_SECONDS", "3")
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    let history = HistoryRepository::new(pool.clone());
+    let stale_claim = first_claim.clone();
+    let stale = tokio::spawn(async move { history.rollback(&stale_claim, revision).await });
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(3);
     loop {
-        let started: bool = sqlx::query_scalar("SELECT status='running' FROM b3_jobs WHERE id=$1")
-            .bind(delayed)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-        if started {
+        let waiting: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM pg_locks WHERE locktype='advisory' AND NOT granted)",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        if waiting {
             break;
         }
         assert!(tokio::time::Instant::now() < deadline);
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
-    tokio::time::sleep(std::time::Duration::from_secs(4)).await;
-    assert!(worker(&url, root.path())
-        .await
-        .wait_with_output()
+    tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+    let second_claim = jobs
+        .claim(Uuid::new_v4(), ExecutionLane::Maintenance, 30)
         .await
         .unwrap()
-        .status
-        .success());
+        .unwrap();
+    assert_eq!(second_claim.id, delayed);
+    assert_eq!(second_claim.generation, first_claim.generation + 1);
     blocker.rollback().await.unwrap();
+    let stale_result = stale.await.unwrap();
     assert!(
-        tokio::time::timeout(std::time::Duration::from_secs(10), stale.wait_with_output())
-            .await
-            .unwrap()
-            .unwrap()
-            .status
-            .success()
+        stale_result.is_err(),
+        "expired generation published a revision"
     );
     let active: Option<Uuid> =
         sqlx::query_scalar("SELECT revision_id FROM b3_history_active WHERE singleton")
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(active, Some(revision));
-    assert!(worker(&url, root.path())
+    assert_eq!(active, Some(replay_revision));
+    let history = HistoryRepository::new(pool.clone());
+    history.rollback(&second_claim, revision).await.unwrap();
+    let mut tx = jobs.begin_confirmation(&second_claim).await.unwrap();
+    JobService::complete(&mut tx, &second_claim, JobCompletion::Succeeded)
         .await
-        .wait_with_output()
-        .await
-        .unwrap()
-        .status
-        .success());
+        .unwrap();
+    tx.commit().await.unwrap();
     let active: Option<Uuid> =
         sqlx::query_scalar("SELECT revision_id FROM b3_history_active WHERE singleton")
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(active, Some(replay_revision));
+    assert_eq!(active, Some(revision));
     let attempt: i32 = sqlx::query_scalar("SELECT attempt FROM b3_jobs WHERE id=$1")
         .bind(delayed)
         .fetch_one(&pool)
@@ -390,32 +373,34 @@ async fn two_worker_processes_ingest_once_and_publication_is_explicit() {
 }
 
 #[tokio::test]
-async fn tradable_security_list_stores_full_typed_records_before_explicit_publication() {
-    use tucano_b3::services::query::{InstrumentFilters, QueryPurpose, QueryService};
-
+async fn a_date_cut_batches_overlapping_files_and_withdrawal_is_reversible() {
     let (pool, admin, name, url) = database().await;
     let root = tempfile::tempdir().unwrap();
     std::fs::create_dir(root.path().join("imports")).unwrap();
-    let payload = r#"[{"Symbol":"EXMP3","SecurityID":"000123","SecurityIDSource":"8","SecurityExchange":"BVMF","ISINNumber":"BREXMPACNOR0","SecurityType":"CS","SecurityDesc":"EMPRESA EXEMPLO","MinPriceIncrement":"0.0100","NoApplIDs":[{"ApplID":"MBO1"}],"NoInstrAttrib":[{"InstrAttribType":"24","InstrAttribValue":"1"}],"NoLegs":[{"LegSymbol":"EXMP4","LegRatioQty":"-1.0000","LegSide":"2"}]}]"#;
-    std::fs::write(root.path().join("imports/security.json"), payload).unwrap();
-    let reference = NaiveDate::from_ymd_opt(2026, 1, 2).unwrap();
-    sqlx::query("INSERT INTO b3_source_channels(id,source_file_type,acquisition_mode,local_relative_path,enabled,publication_key,format_profile,period_start,period_end) VALUES('fixture-tsl','TRADABLE_SECURITY_LIST','local','security.json',true,'tsl-2026-01-02','tradable_b3_security_definition_v101_json',$1,$1)")
-        .bind(reference)
-        .execute(&pool)
-        .await
-        .unwrap();
-    sqlx::query("INSERT INTO b3_source_eligibility(source_file_type,channel,purpose,status,zero_cost,evidence_reference,verified_at) SELECT 'TRADABLE_SECURITY_LIST','fixture-tsl',purpose,'eligible',true,'SYNTHETIC TEST ONLY',NOW() FROM unnest(ARRAY['acquisition','raw_retention','processing','rest','mcp','third_party_delivery']) AS purpose")
-        .execute(&pool)
-        .await
-        .unwrap();
+    let content = fixture_rows(&[("20250102", "0000000001234"), ("20250103", "0000000005678")]);
+    std::fs::write(root.path().join("imports/annual.txt"), &content).unwrap();
+    std::fs::write(root.path().join("imports/cumulative.txt"), &content).unwrap();
+    for (channel, file) in [("annual", "annual.txt"), ("cumulative", "cumulative.txt")] {
+        sqlx::query("INSERT INTO b3_source_channels(id,source_file_type,acquisition_mode,local_relative_path,enabled,publication_key,format_profile,period_start,period_end) VALUES($1,'COTAHIST_YEARLY','local',$2,true,$1,'cotahist_latin1','2025-01-01','2025-12-31')")
+            .bind(channel)
+            .bind(file)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO b3_source_eligibility(source_file_type,channel,purpose,status,zero_cost,evidence_reference,verified_at) SELECT 'COTAHIST_YEARLY',$1,purpose,'eligible',true,'SYNTHETIC TEST ONLY',NOW() FROM unnest(ARRAY['acquisition','raw_retention','processing','rest','mcp','third_party_delivery']) purpose")
+            .bind(channel)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
     let jobs = JobService::new(pool.clone());
     let ingest = jobs
         .submit(
-            "ingest-tsl",
+            "window-import",
             JobCommand::Ingest {
-                source: SourceFileType::TradableSecurityList,
-                from: reference,
-                to: reference,
+                source: SourceFileType::CotahistYearly,
+                from: NaiveDate::from_ymd_opt(2025, 1, 2).unwrap(),
+                to: NaiveDate::from_ymd_opt(2025, 1, 2).unwrap(),
             },
             JobPriority::Maintenance,
             1,
@@ -429,42 +414,51 @@ async fn tradable_security_list_stores_full_typed_records_before_explicit_public
         .unwrap()
         .status
         .success());
-    let status: String = sqlx::query_scalar("SELECT status FROM b3_jobs WHERE id=$1")
-        .bind(ingest)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-    assert_eq!(status, "succeeded");
-    let snapshot: Uuid = sqlx::query_scalar("SELECT id FROM b3_registry_snapshots WHERE job_id=$1")
-        .bind(ingest)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-    let before: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM b3_security_definition_legs WHERE snapshot_id=$1")
-            .bind(snapshot)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    assert_eq!(before, 1);
-    let visible_before_publish: i64 = sqlx::query_scalar("SELECT count(*) FROM b3_registry_records WHERE snapshot_id=$1 AND instrument_id IS NOT NULL")
-        .bind(snapshot)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-    assert_eq!(visible_before_publish, 0);
-
-    jobs.submit(
-        "publish-tsl",
-        JobCommand::PublishRevision {
-            revision_id: snapshot,
-            acknowledge_issues: false,
-        },
-        JobPriority::Maintenance,
-        1,
+    let revision: Uuid = sqlx::query_scalar(
+        "SELECT output_id::uuid FROM b3_job_outputs WHERE job_id=$1 AND output_kind='revision'",
     )
+    .bind(ingest)
+    .fetch_one(&pool)
     .await
     .unwrap();
+    let (quotes, source_files, expected_members, detail_read, out_of_scope): (i64, i64, i32, i64, i64) = sqlx::query_as(
+        "SELECT (SELECT count(*) FROM b3_history_revision_quotes WHERE revision_id=$1),(SELECT count(*) FROM b3_history_revision_sources WHERE revision_id=$1),expected_members,(SELECT coalesce(sum(detail_read),0)::bigint FROM b3_history_revision_members WHERE revision_id=$1),(SELECT coalesce(sum(out_of_scope),0)::bigint FROM b3_history_revision_members WHERE revision_id=$1) FROM b3_history_revisions WHERE id=$1",
+    )
+    .bind(revision)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        (
+            quotes,
+            source_files,
+            expected_members,
+            detail_read,
+            out_of_scope
+        ),
+        (1, 2, 2, 4, 2)
+    );
+    let fact_count_before: i64 = sqlx::query_scalar("SELECT count(*) FROM b3_cotahist_facts")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let version_count_before: i64 = sqlx::query_scalar("SELECT count(*) FROM b3_cotahist_versions")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    let withdrawal = jobs
+        .submit(
+            "withdraw-window",
+            JobCommand::WithdrawWindow {
+                from: NaiveDate::from_ymd_opt(2025, 1, 2).unwrap(),
+                to: NaiveDate::from_ymd_opt(2025, 1, 2).unwrap(),
+            },
+            JobPriority::Maintenance,
+            1,
+        )
+        .await
+        .unwrap();
     assert!(worker(&url, root.path())
         .await
         .wait_with_output()
@@ -472,19 +466,176 @@ async fn tradable_security_list_stores_full_typed_records_before_explicit_public
         .unwrap()
         .status
         .success());
-    let published = QueryService::new(pool.clone())
-        .instruments(
-            InstrumentFilters {
-                ticker_symbol: Some("EXMP3".into()),
-                source_file_type: Some(SourceFileType::TradableSecurityList),
-                ..Default::default()
+    let active_after_withdrawal: Uuid =
+        sqlx::query_scalar("SELECT revision_id FROM b3_history_active WHERE singleton")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_ne!(active_after_withdrawal, revision);
+    let visible_after_withdrawal: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM b3_history_revision_quotes WHERE revision_id=$1")
+            .bind(active_after_withdrawal)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(visible_after_withdrawal, 0);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM b3_cotahist_facts")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        fact_count_before
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM b3_cotahist_versions")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        version_count_before
+    );
+
+    let reimport = jobs
+        .submit(
+            "reimport-window",
+            JobCommand::Ingest {
+                source: SourceFileType::CotahistYearly,
+                from: NaiveDate::from_ymd_opt(2025, 1, 2).unwrap(),
+                to: NaiveDate::from_ymd_opt(2025, 1, 2).unwrap(),
             },
-            QueryPurpose::Rest,
+            JobPriority::Maintenance,
+            1,
         )
         .await
         .unwrap();
-    assert_eq!(published.total, 1);
-    assert_eq!(published.items[0].security_id.as_deref(), Some("000123"));
-    assert_eq!(published.items[0].security_source, "8");
+    assert!(worker(&url, root.path())
+        .await
+        .wait_with_output()
+        .await
+        .unwrap()
+        .status
+        .success());
+    let reimport_revision: Uuid = sqlx::query_scalar(
+        "SELECT output_id::uuid FROM b3_job_outputs WHERE job_id=$1 AND output_kind='revision'",
+    )
+    .bind(reimport)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let restored_version: Uuid = sqlx::query_scalar(
+        "SELECT version_id FROM b3_history_revision_quotes WHERE revision_id=$1",
+    )
+    .bind(reimport_revision)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let original_version: Uuid = sqlx::query_scalar(
+        "SELECT version_id FROM b3_history_revision_quotes WHERE revision_id=$1",
+    )
+    .bind(revision)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(restored_version, original_version);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM b3_cotahist_facts")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        fact_count_before
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM b3_cotahist_versions")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        version_count_before
+    );
+
+    let rollback = jobs
+        .submit(
+            "restore-window",
+            JobCommand::RollbackRevision {
+                revision_id: revision,
+            },
+            JobPriority::Maintenance,
+            1,
+        )
+        .await
+        .unwrap();
+    assert!(worker(&url, root.path())
+        .await
+        .wait_with_output()
+        .await
+        .unwrap()
+        .status
+        .success());
+    let active_after_rollback: Uuid =
+        sqlx::query_scalar("SELECT revision_id FROM b3_history_active WHERE singleton")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(active_after_rollback, revision);
+    let final_statuses: Vec<String> =
+        sqlx::query_scalar("SELECT status FROM b3_jobs WHERE id=ANY($1)")
+            .bind(vec![ingest, withdrawal, reimport, rollback])
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert!(final_statuses.iter().all(|status| status == "succeeded"));
+    cleanup(pool, admin, name).await;
+}
+
+#[tokio::test]
+async fn registry_import_is_rejected_until_records_support_internal_date_cuts() {
+    let (pool, admin, name, _) = database().await;
+    let jobs = JobService::new(pool.clone());
+    let from = NaiveDate::from_ymd_opt(2026, 1, 2).unwrap();
+
+    let capabilities = tucano_b3::services::query::QueryService::new(pool.clone())
+        .capabilities(Default::default())
+        .await
+        .unwrap();
+    for source in [
+        SourceFileType::Bvbg028InstrumentsFile,
+        SourceFileType::TradableSecurityList,
+    ] {
+        let capability = capabilities
+            .items
+            .iter()
+            .find(|item| item.source_file_type == source)
+            .unwrap();
+        assert!(!capability.implemented);
+        assert!(!capability.enabled);
+        assert_eq!(
+            serde_json::to_value(&capability.status).unwrap(),
+            serde_json::json!("deferred")
+        );
+    }
+
+    for source in [
+        SourceFileType::Bvbg028InstrumentsFile,
+        SourceFileType::TradableSecurityList,
+    ] {
+        let error = jobs
+            .submit(
+                &format!("deferred-{source}"),
+                JobCommand::Ingest {
+                    source,
+                    from,
+                    to: from,
+                },
+                JobPriority::Maintenance,
+                1,
+            )
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("cortes às datas internas"));
+    }
+
+    let queued: i64 = sqlx::query_scalar("SELECT count(*) FROM b3_jobs")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(queued, 0);
     cleanup(pool, admin, name).await;
 }

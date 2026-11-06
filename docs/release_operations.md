@@ -1,6 +1,6 @@
 # Operação do primeiro lançamento
 
-Status: qualificação em andamento. Este guia não libera publicação externa; consultar o [plano 0.0.1](0.0.1-plan.md) e a [elegibilidade de fontes](release_source_eligibility.md).
+Status: plataforma 0.0.1 qualificada com PostgreSQL 16 e fixture sintética; canais externos continuam desabilitados até a evidência de elegibilidade por finalidade. Consultar o [plano 0.0.1](0.0.1-plan.md) e a [elegibilidade de fontes](release_source_eligibility.md).
 
 ## Inicialização e papéis
 
@@ -22,7 +22,7 @@ O transporte HTTPS valida host exato, porta, redirects e endereços públicos re
 
 O inventário conserva caminho de aninhamento, ordem da entrada, pai, hash e tamanho; diretórios/containers/entradas não selecionadas recebem motivo. Parsing recebe arquivos em disco e callbacks de registros. A descoberta usa HEAD; não recorre a GET pesado quando HEAD não é suportado.
 
-O fluxo de duas etapas com token não é anunciado como homologado: exige canal/schema demonstrados. A Tradable Security List tem perfis CSV/JSON baseados no Security Definition Report v1.0.1, com grupos tipados e referência fornecida pelo catálogo; isso ainda não comprova compatibilidade com corpus real. O perfil CSV simplificado de fixtures continua separado. Não habilitar automaticamente um adaptador desconhecido para obter uma resposta vazia.
+O fluxo de duas etapas com token não é anunciado como homologado: exige canal/schema demonstrados. Apesar de existirem leitores e fixtures exploratórios para dados de registro, BVBG.028 e Tradable Security List estão `deferred` no catálogo 0.0.1: seus contratos não oferecem uma data interna por registro para aplicar os cortes do primeiro release. O serviço rejeita a criação de jobs de ingestão para essas famílias; não as habilite por configuração. Não habilitar automaticamente um adaptador desconhecido para obter uma resposta vazia.
 
 ## Backup consistente de SQL e raw
 
@@ -74,51 +74,47 @@ No ensaio repetido, o backup levou 0,918 s e o restore 1,677 s, medidos por rel�
 
 ## Benchmark sintético integrado 0.0.1
 
-Data: **06/11/2026**. Os valores abaixo pertencem a uma fixture gerada localmente, nunca a um arquivo B3. A fixture imita o formato fixo de 245 bytes para exercitar a aplicação; não é evidência de schema oficial, arquivo válido publicado pela B3, pregão real, completude ou autorização de uso.
+Data: **06/11/2026**. Esta execução valida o fluxo da plataforma com dados sintéticos, não com publicações B3. A fixture imita linhas de largura fixa de COTAHIST para exercitar parser, persistência, revisão e consulta; não comprova schema oficial, conteúdo de pregão real, completude ou autorização de uso. O resultado demonstra os recursos e comportamento de importação, não disponibilidade de dados externos.
 
 ### Ambiente e fixture
 
-- Imagens release `0.0.1` de API, worker e migrate, construídas localmente a partir do código desta entrega.
-- Docker Engine 29.8.2, arquitetura `aarch64`, 2 CPUs e aproximadamente 8 GiB reportados pelo runtime.
-- PostgreSQL **16.15**, instância Compose dedicada e descartável via [`docker-compose.benchmark.yml`](../docker-compose.benchmark.yml), sem acesso à base operacional.
-- Batch: 500 registros / 4 MiB; pool API padrão de 8 conexões; lease de worker de 120 s.
-- Um arquivo COTAHIST-shaped, 20.000 detalhes, data única `2025-01-02`, um member, 4.920.492 bytes, SHA-256 `a001f2f338f8393aeb3b9eeb7620e3130073ecc692a5b4313b9740e192935c67`. Um canal e toda elegibilidade foram semeados com a anotação `SYNTHETIC BENCHMARK ONLY` somente neste banco temporário.
-- O dataset publicado continha 20.000 fatos, sem rejeições, todos sem cadastro (estado `unresolved`). Essa configuração confirma que a incerteza de identidade não descarta o preço.
+- API, worker e migrate construídos a partir da árvore de código qualificada nesta entrega.
+- Docker Engine 29.8.2, arquitetura `aarch64`, 2 CPUs e cerca de 8 GiB de RAM reportados pelo runtime.
+- PostgreSQL **16.15** em projeto Compose isolado e descartável via [`docker-compose.benchmark.yml`](../docker-compose.benchmark.yml); sem acesso ao banco operacional.
+- Worker em lote de 500 registros / 4 MiB; pool de leitura da API limitado a 8 conexões; lease de worker de 120 s.
+- Uma fixture COTAHIST-shaped: 20.000 detalhes para `2025-01-02`, um member, 4.920.492 bytes, SHA-256 `a001f2f338f8393aeb3b9eeb7620e3130073ecc692a5b4313b9740e192935c67`. O canal e a elegibilidade sintéticos foram criados apenas no banco temporário com a referência `SYNTHETIC BENCHMARK ONLY`.
+- Import limpa publicou automaticamente a revisão `8352b297-cda8-41c0-a23a-3ba229ac4c1b`: 20.000 fatos, zero rejeições e zero conflitos. Todos ficaram `unresolved`, demonstrando que incerteza cadastral não descarta o preço.
 
 ### Resultados observados
 
 | Fase/medida | Resultado | Como interpretar |
 | --- | ---: | --- |
-| Importação/hash local | 86 ms | Não mede download HTTPS nem rede B3 |
-| Inventário de um member simples | 40 ms | Sem ZIP ou expansão |
-| Parsing + staging | 21,581 s | 20.000 registros válidos; maior parte do tempo da execução |
-| Tentativa worker completa até candidata pronta | 21,802 s | Aproximadamente 917 registros/s; não inclui espera em fila |
-| Publicação explícita | 43 ms | Uma promoção de revisão com 20.000 fatos |
-| Pico RSS do worker, amostrado | 5,93 MiB | 12 amostras entre início e encerramento; não é profiling de alocação |
-| Pico CPU do worker, amostrado | 8,5% | Maior amostra do Docker stats, não média de CPU |
-| Aumento de WAL PostgreSQL | 45.880.583 bytes | `pg_stat_wal` antes/depois na instância dedicada durante a ingestão |
-| Banco após ingestão/publicação | 37.895.191 bytes | Tamanho total do database, incluindo schema e índices |
-| Raw endereçado por conteúdo | 4.920.492 bytes | Um objeto raw; input importado também existe sob `imports/` |
-| REST concorrente | 160 requests, 8 clientes | Cada resposta limitada a 100; total 16.000 linhas retornadas |
-| Latência REST | p50 663 ms; p95 888 ms | Medida no segundo ensaio com o script abaixo |
-| Throughput REST | 11,64 requests/s | Um endpoint e filtro fixo, sem cache externo |
-| API RSS / CPU, amostrados | 8,79 MiB / 6,2% | 7 amostras durante a carga concorrente |
-| Clientes PostgreSQL máximos | 9 | Inclui uma conexão `psql` observadora; o pool da API está limitado a 8 |
-| Backup SQL+raw | 1,902 s | Snapshot consistente com um raw e uma revisão ativa |
-| Restore | 2,387 s | Banco novo; 20.000 linhas de referência verificadas |
+| Aquisição local e SHA-256 | 71 ms | Não mede download HTTPS nem rede B3 |
+| Inventário de um member simples | 38 ms | Sem ZIP ou expansão |
+| Parsing + staging | 22,422 s | 20.000 registros; maior parte do processamento |
+| Worker até sucesso e publicação automática | ~22,67 s | Aproximadamente 882 registros/s; sem espera em fila |
+| Pico RSS do worker, amostrado | 6,852 MiB | Amostras de `docker stats`, não profiling de alocação |
+| Pico CPU do worker, amostrado | 2,18% | Maior amostra observada, não média de CPU |
+| Aumento de WAL PostgreSQL | 45.771.358 bytes | `pg_stat_wal` antes/depois na instância dedicada durante o worker |
+| Banco após ingestão | ~36 MB | Tamanho total do database, incluindo schema e índices |
+| REST concorrente | 160 requests, 8 clientes | Cada resposta limitada a 100; total de 16.000 linhas |
+| Latência REST | p50 605,27 ms; p95 814,15 ms | Uma rota e consulta; sem cache externo |
+| Throughput REST | 13,60 requests/s | Carga executada após ingestão |
+| Backup SQL+raw | 2,12 s | Um raw e uma revisão ativa; diretório montado pelo mesmo caminho absoluto no host e containers |
+| Restore | ~3,0 s | Banco novo; revisão e 20.000 linhas de referência verificadas |
 
-O restore preservou a revisão ativa `b312beb8-97d8-4dff-9e6d-294d8c44f0e4` e digest `fc813955cada7569141c682bd5a9d92eb19b1569b23cf04046cfa1ad11ead50f`. Depois do restore, a API iniciou no banco novo e respondeu health 200 e uma página de 100 fatos com proveniência.
+O backup preservou a revisão `8352b297-cda8-41c0-a23a-3ba229ac4c1b` e o digest `4883c1bd92db0bb4909efc5f0ac218469b329eeb1c69709d3c2335d373bfb66b`. Depois do restore, a API iniciou contra o banco restaurado, health retornou HTTP 200 e a consulta retornou 20.000 fatos com proveniência e o mesmo identificador de revisão.
 
 ### Reprodução
 
-Use sempre um projeto Compose exclusivo. Este arquivo não publica a porta PostgreSQL no host; o volume é local e descartável.
+Use sempre um projeto Compose exclusivo. O arquivo de benchmark não publica a porta PostgreSQL no host; o volume é local e descartável.
 
 ```bash
 COMPOSE_PROJECT_NAME=tucano-b3-benchmark docker compose -f docker-compose.benchmark.yml up -d b3_postgres
 docker compose -f docker-compose.benchmark.yml -p tucano-b3-benchmark ps
 ```
 
-Aplique as migrations na base `tucano_b3_benchmark`. Gere a fixture e compare seu checksum:
+Aplique as migrations na base isolada. Gere a fixture e confira o checksum:
 
 ```bash
 mkdir -p /tmp/tucano-b3-benchmark/imports/bench
@@ -130,19 +126,19 @@ python3 scripts/generate_synthetic_cotahist.py \
 shasum -a 256 /tmp/tucano-b3-benchmark/imports/bench/cotahist.txt
 ```
 
-Cadastre no banco temporário o channel local `synthetic-benchmark-2025`, tipo `COTAHIST_YEARLY`, perfil `cotahist_latin1`, período 2025 e caminho `bench/cotahist.txt`. Para esse canal isolado, crie evidência de teste para os propósitos `acquisition`, `raw_retention`, `processing`, `rest`, `mcp` e `third_party_delivery`, sempre com referência literal `SYNTHETIC BENCHMARK ONLY`. **Nunca copie essa elegibilidade para uma base ou canal real.** Monte o mesmo diretório absoluto `/tmp/tucano-b3-benchmark` em API/worker e defina `B3_RAW_DATA_DIR` para esse caminho para que a ferramenta de backup consiga verificar os localizadores raw no host.
+Cadastre somente no banco descartável um canal local `synthetic-benchmark-2025`, tipo `COTAHIST_YEARLY`, perfil `cotahist_latin1`, período 2025 e caminho `bench/cotahist.txt`. Registre elegibilidade sintética para os propósitos requeridos com a referência literal `SYNTHETIC BENCHMARK ONLY`; essa evidência nunca deve ser copiada a uma fonte real. Monte `/tmp/tucano-b3-benchmark` no API/worker pelo mesmo caminho absoluto e configure `B3_RAW_DATA_DIR` para esse caminho, permitindo que o backup localize os arquivos raw.
 
-Submeta `ingest.json` através da CLI/API, execute `worker --once --lane maintenance`, publique a revisão por um job administrativo e inicie a API no mesmo banco. Os scripts versionados reproduzem o corpo da fixture e a carga de consulta:
+Submeta `ingest.json` pelo caminho administrativo, execute `worker --once --lane maintenance` e aguarde o job. Um import limpo publica automaticamente ao concluir os gates; não envie um job de publicação separado. Inicie a API contra o mesmo banco e execute a carga versionada:
 
 ```bash
 python3 scripts/benchmark_api_reads.py \
-  --base-url http://127.0.0.1:18012 \
+  --base-url http://127.0.0.1:18124 \
   --token <read-token-temporario> \
   --requests 160 --concurrency 8 --limit 100
 ```
 
-Para repetir o snapshot, defina `COMPOSE_FILE=docker-compose.benchmark.yml` e `COMPOSE_PROJECT_NAME=tucano-b3-benchmark` no ambiente ao executar `scripts/release_snapshot.py backup/restore`; assim o cliente Docker acessa o PostgreSQL isolado correto. Encerre apenas esse projeto e seu volume descartável ao terminar.
+Para repetir backup/restore, defina `COMPOSE_FILE=docker-compose.benchmark.yml` e `COMPOSE_PROJECT_NAME=tucano-b3-benchmark` ao executar `scripts/release_snapshot.py backup/restore`, de modo que o cliente Docker use o PostgreSQL isolado. Encerre somente esse projeto e seu volume descartável ao terminar.
 
 ### Limites dos resultados
 
-Os números caracterizam um arquivo sintético de 4,9 MB, uma família, um member e um pregão; não representam aquisição anual oficial, várias sobreposições, identidade cadastrada, backfill 2026, armazenamento de longo prazo, concorrência de ingestão com API ou escala de produção. RSS/CPU foram obtidos por amostragem de containers. A observação de WAL é específica da instância dedicada. **Nenhum resultado fixa os budgets de produção**; a qualificação com corpus autorizado e hardware-alvo segue pendente.
+Esta medição cobre um arquivo sintético de 4,9 MB, uma família, um member e uma data, sem identidade cadastrada. Não representa aquisição de publicação B3, arquivos com sobreposição, volume anual, longa retenção, concorrência entre ingestão e API ou escala de produção. RSS/CPU são amostras de containers, e WAL vale apenas para a instância dedicada. **Estes resultados não fixam budgets de produção**; ajuste capacidade com corpora autorizados e hardware de implantação antes de ativar canais reais.

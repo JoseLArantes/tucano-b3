@@ -18,9 +18,9 @@ A operação separa descoberta de publicações, aquisição e processamento pes
 
 ## Fluxo geral
 
-    descoberta → pendência → comando administrativo → aquisição/inventário → parsing em lotes → revisão pronta → publicação explícita
+    descoberta → pendência → comando administrativo → aquisição/inventário → parsing em lotes → gates de qualidade → publicação automática da revisão limpa
 
-O fluxo pode terminar com falha, issues ou cancelamento. A consulta de dados não inicia esse fluxo.
+Uma revisão com rejeições ou conflitos não é publicada automaticamente e termina com issues para decisão administrativa. O fluxo também pode terminar com falha ou cancelamento. A consulta de dados não inicia esse fluxo.
 
 ## Segurança e autorização
 

@@ -2,9 +2,9 @@
 
 Serviço Rust para preservar e consultar histórico oficial da B3, com proveniência, precisão decimal, identidade temporal e publicação por revisões.
 
-O primeiro lançamento **0.0.1** cobre COTAHIST de 2025 e o acumulado de 2026 até um corte comprovado pelo corpus, mais cadastros B3 disponíveis. O [PRD](docs/b3_prd.md) define os requisitos; o [plano de execução](docs/0.0.1-plan.md) registra o estado de W1–W9.
+O primeiro lançamento **0.0.1** entrega a plataforma de ingestão histórica, sem depender de um corpus pré-carregado. Neste corte, importação é limitada a COTAHIST anual, mensal ou diário, por datas de negociação dentro dos registros; BVBG.028 e Tradable Security List ficam adiadas até oferecerem uma referência interna adequada para o mesmo contrato de cortes. O [PRD](docs/b3_prd.md) define os requisitos; o [plano de execução](docs/0.0.1-plan.md) registra o estado do release.
 
-**Publicação externa ainda não liberada.** Nenhuma fonte é habilitada por seed. A [elegibilidade por fonte, canal e finalidade](docs/release_source_eligibility.md), o corpus oficial e a qualificação operacional precisam estar comprovados para encerrar o lançamento. Fixtures sintéticas não comprovam homologação de produção.
+**Canais de dados começam desativados.** Nenhuma fonte é habilitada por seed. A [elegibilidade por fonte, canal e finalidade](docs/release_source_eligibility.md) governa a ativação e o uso externo dos dados; ela não exige carregar um corpus para declarar a plataforma `0.0.1` completa. Fixtures sintéticas validam comportamento do software, não autenticidade nem direitos de redistribuição de dados reais.
 
 ## Contratos do primeiro lançamento
 
@@ -14,13 +14,13 @@ O primeiro lançamento **0.0.1** cobre COTAHIST de 2025 e o acumulado de 2026 at
 - Listas usam `limit=100`, máximo `1000`, `offset=0` e ordem determinística. Revisão informada no payload pode ser fixada nas páginas seguintes.
 - Cotações têm proveniência até arquivo/member/registro, estado da identidade e limitações de cobertura. Valores financeiros são strings decimais.
 - MCP inicial usa stdio, os mesmos serviços de consulta e credencial PostgreSQL somente leitura. Logs vão para stderr; stdout contém apenas o protocolo.
-- Famílias BVBG.086/186, BVBG.087 e carteiras permanecem nos marcos G6/G7, sem fallback silencioso para COTAHIST.
+- BVBG.028 e Tradable Security List ficam adiadas até que a seleção dos registros por `from`/`to` possa usar uma data de negócio interna. BVBG.086/186, BVBG.087 e carteiras permanecem nos marcos G6/G7, sem fallback silencioso para COTAHIST.
 
 > COTAHIST representa preços históricos nominais brutos, na moeda e base de cotação da época, sem ajustes retroativos por inflação ou eventos corporativos. `PREULT` não é renomeado como um fechamento oficial genérico.
 
 ## Modelo de execução
 
-A descoberta leve registra checagens e pendências. Administradores iniciam aquisição/ingestão e publicam a revisão explicitamente. O worker consome jobs duráveis PostgreSQL, com lanes de manutenção/trabalho pesado, tentativas, lease, heartbeat, fencing e cancelamento.
+A descoberta leve registra checagens e pendências. Administradores solicitam aquisição/ingestão com cortes `from`/`to`; um import limpo publica automaticamente após os gates de qualidade. O worker consome jobs duráveis PostgreSQL, com lanes de manutenção/trabalho pesado, tentativas, lease, heartbeat, fencing e cancelamento.
 
 A aquisição preserva raw por SHA-256 e inventaria ZIPs aninhados em disco. O processamento produz registros tipados em lotes limitados e quarentena localizada. A revisão anterior continua consultável até a promoção atômica da candidata completa. Divergências sem precedência comprovada não são resolvidas pela ordem de download.
 
@@ -79,7 +79,7 @@ O arquivo de comando é tipado; não contém SQL arbitrário. Configurar `DATABA
 
 ## Operação e evidências
 
-O [guia operacional](docs/release_operations.md) descreve backups consistentes SQL/raw, restore em banco novo, limites e evidências de medição. O [changelog de contratos](docs/frontend_api_changelog.md) acompanha mudanças voltadas a consumidores.
+O [guia operacional](docs/release_operations.md) descreve backups consistentes SQL/raw, restore em banco novo, limites e evidências de medição. O [guia detalhado de consumo da API](docs/consumers_guides.md) organiza rotas, filtros e fluxos para interfaces. O [changelog de contratos](docs/frontend_api_changelog.md) acompanha mudanças voltadas a consumidores.
 
 ## Documentação
 

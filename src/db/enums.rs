@@ -22,6 +22,15 @@ pub enum SourceFileType {
 }
 
 impl SourceFileType {
+    /// Whether each parsed business record carries its own date for inclusive import cuts.
+    /// Snapshot/report-level dates are not a substitute for record dates.
+    pub fn supports_record_date_cuts(&self) -> bool {
+        matches!(
+            self,
+            Self::CotahistYearly | Self::CotahistMonthly | Self::CotahistDaily
+        )
+    }
+
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Bvbg028InstrumentsFile => "BVBG_028_INSTRUMENTS_FILE",

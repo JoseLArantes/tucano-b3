@@ -4,13 +4,28 @@ title: Jobs, retries e cancelamento
 
 # Jobs administrativos
 
-Jobs registram intenções de aquisição, reparse, replay, reconstrução de identidade e publicação. A API persiste um comando fechado; worker e CLI usam o mesmo estado durável.
+Jobs registram intenções administrativas de aquisição, reparse, replay, reconstrução de identidade, retirada e rollback. A API persiste um comando fechado; worker e CLI usam o mesmo estado durável. Consumidores não enviam arquivos nem iniciam ingestão.
 
 ## Enfileirar
 
 POST /api/v1/b3/jobs recebe idempotency_key, command, priority e max_attempts opcional. O corpo rejeita campos desconhecidos. A resposta 202 contém job_id e status_url e também fornece cabeçalho Location.
 
-Um comando ingest informa source, from e to. Reparse e replay_quarantine informam source_file_id. Rebuild_identity delimita o intervalo. publish_revision leva revision_id e acknowledge_issues. rollback_revision leva revision_id. O PRD e OpenAPI descrevem os enums e regras exatas aceitas.
+Um comando ingest informa uma família oficial em source, from e to. No `0.0.1`, só COTAHIST anual, mensal ou diário é aceito: as datas inclusivas cortam `DATA DO PREGÃO` de cada detalhe. Metadados do arquivo servem para localizar a publicação, não para ampliar os fatos importados. Um ano inteiro requer `2025-01-01` a `2025-12-31` de forma explícita. Se várias publicações COTAHIST forem necessárias, elas formam uma única revisão candidata. BVBG.028 e Tradable Security List são reportadas como `deferred` em `/capabilities` e a submissão é rejeitada até que haja corte confiável sobre uma data interna por registro.
+
+```json
+{
+  "idempotency_key": "cotahist-2025-01-02",
+  "command": {
+    "operation": "ingest",
+    "source": "COTAHIST_YEARLY",
+    "from": "2025-01-02",
+    "to": "2025-01-02"
+  },
+  "priority": "backfill"
+}
+```
+
+`reparse` e `replay_quarantine` informam `source_file_id`; `rebuild_identity` delimita intervalo; `publish_revision` leva `revision_id` e `acknowledge_issues`; `rollback_revision` leva `revision_id`; `withdraw_window` recebe `from` e `to` inclusivos e retira datas da visão ativa sem apagar o raw ou as versões anteriores.
 
 A mesma chave com o mesmo comando efetivo retorna o mesmo job. Chave reutilizada com comando incompatível ou escopo concorrente retorna 409. Uma submissão não confirma conclusão.
 
@@ -18,7 +33,7 @@ A mesma chave com o mesmo comando efetivo retorna o mesmo job. Chave reutilizada
 
 GET /api/v1/b3/jobs/&#123;id&#125; requer administração. Observe status, phase, attempt/max_attempts, heartbeat_at, cancel_requested_at, error_code, error_message, created_at, finished_at e outputs. Mensagens de falha são sanitizadas.
 
-Status terminal indica resultado; phase indica etapa de execução. Succeeded_with_issues não é sinônimo de publicação sem ressalvas.
+Status terminal indica resultado; phase indica etapa de execução. Um import estruturalmente íntegro, sem rejeições/conflitos e com fonte elegível publica automaticamente. `succeeded_with_issues` indica que existe candidato não publicado aguardando decisão administrativa. Falha estrutural ou de infraestrutura não é sucesso degradado.
 
 ## Cancelar
 

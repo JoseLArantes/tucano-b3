@@ -21,7 +21,7 @@ O centro do produto é a confiabilidade do histórico. A stack Rust/Tokio/Axum/S
 Recomendações centrais:
 
 1. **COTAHIST como base candidata do histórico longo de cotações.** A B3 apresenta a série desde 1986, sem ajustes retroativos; a cobertura efetiva será demonstrada por arquivos e períodos [R01](RESEARCH.md#r01).
-2. **Registro B3 como raiz de identidade, com fontes distintas.** `BVBG.028`, Tradable Security List e `InstrumentsConsolidated` devem ser cruzados por evidência, preservando seus contratos e diferenças.
+2. **Registro B3 como raiz de identidade, com fontes distintas.** `BVBG.028`, Tradable Security List e `InstrumentsConsolidated` continuam sendo o caminho para resolução futura. Sua ingestão é adiada em `0.0.1` até que os cortes solicitados possam ser aplicados a uma referência de data disponível dentro de cada registro, sem substituir isso pela data da fotografia/arquivo.
 3. **Boletins diários como produtos específicos.** `BVBG.086`, `BVBG.186` e `BVBG.087` mantêm tabelas, DTOs, edições e linhagem próprias.
 4. **Histórico antes de abrangência.** Entregar primeiro cotações históricas, identidade temporal, cobertura, replay e governança. Índices e demais famílias entram por marcos próprios, sem omissão dos requisitos finais.
 5. **Disponibilidade, autorização e gratuidade são verificações diferentes.** A pesquisa não demonstrou permissão irrestrita para operar uma API externa gratuita de dados B3. Esse é um requisito de viabilidade, não um detalhe posterior à implementação.
@@ -95,7 +95,7 @@ O novo desenho não usa as limitações do código para reduzir invariantes de p
 
 Os [termos institucionais](https://www.b3.com.br/pt_br/termos-de-uso-e-protecao-de-dados/termos-de-uso/) impõem condições de uso e difusão. Páginas de dados públicos apresentam restrição à automação; as políticas de Market Data distinguem modalidades e finalidades. A política regulatória estabelece divulgação gratuita para grupos específicos. Esses textos precisam ser considerados em conjunto, sem concluir que um deles concede direitos irrestritos sobre todos os demais [R03–R08](RESEARCH.md#r03).
 
-**Conclusão de pesquisa:** a disponibilidade pública das fontes técnicas foi documentada; a viabilidade de uma API para terceiros com custo zero de licença permanece **não comprovada**.
+**Conclusão de pesquisa:** a disponibilidade pública das fontes técnicas foi documentada; a viabilidade de uma API para terceiros com custo zero de licença permanece **não comprovada**. Essa incerteza controla quais canais podem ser ativados e para quais finalidades. Ela não impede concluir, testar ou distribuir a plataforma sem uma fonte ativa e sem dados de mercado.
 
 ### 4.2 Cadastro de elegibilidade por fonte e finalidade
 
@@ -118,7 +118,7 @@ Estado de elegibilidade: `unreviewed`, `eligible`, `restricted` ou `ineligible`.
 
 1. **Aquisição e finalidade confirmadas sem cobrança:** habilitar o canal correspondente, respeitando suas condições.
 2. **Download manual permitido, automação não confirmada:** pode existir importação local de arquivo oficial licitamente obtido, dentro da finalidade permitida. Isso não libera redistribuição nem serve para contornar restrições de coleta.
-3. **Redistribuição não confirmada:** continuar desenvolvimento com fixtures sintéticas ou autorizadas; não lançar uma API de dados para terceiros como se a licença estivesse resolvida.
+3. **Redistribuição não confirmada:** continuar desenvolvimento com fixtures sintéticas ou autorizadas. A plataforma pode ser lançada sem canais externos habilitados; não expor dados de um canal como se a licença estivesse resolvida.
 4. **Licença obrigatória paga:** excluir o canal da configuração gratuita ou rever explicitamente a restrição econômica. Não ocultar esse custo nem inserir um fornecedor intermediário.
 5. **Nenhum caminho compatível com todas as restrições:** registrar inviabilidade da modalidade desejada. A alternativa é reduzir a finalidade ou o escopo, ou obter permissão específica; não prometer uma solução técnica para uma permissão ausente.
 
@@ -134,8 +134,8 @@ Prioridade indica ordem de entrega; não autorização de acesso. Nenhum canal f
 | --- | --- | --- | --- |
 | COTAHIST anual | Base de backfill de cotações | Série anunciada desde 1986; validar cada ano | P0, núcleo do produto |
 | COTAHIST diário/mensal | Atualização e reconciliação de sobreposição | Janelas distintas no formulário | P0 quando disponíveis |
-| BVBG.028.02 | Registro de instrumentos e atributos por categoria | Arquivos retroativos no portal, profundidade não medida | P0 para identidade disponível |
-| Tradable Security List | Definição de instrumentos de negociação e IDs | Especificação CSV/JSON; retenção não medida | P0 para evidências de identidade |
+| BVBG.028.02 | Registro de instrumentos e atributos por categoria | Arquivos retroativos no portal, profundidade não medida | Futuro; definir corte por registro antes de habilitar |
+| Tradable Security List | Definição de instrumentos de negociação e IDs | Especificação CSV/JSON; retenção não medida | Futuro; definir corte por registro antes de habilitar |
 | InstrumentsConsolidated | Cadastro complementar com contrato próprio | Glossário e periodicidade documentados | P1, sem tratar como substituto integral |
 | BVBG.086.01 | Relatório de preços por edição e mercado | Profundidade não medida | P1, separado do COTAHIST |
 | BVBG.186.01 | Relatório simplificado de ações | Profundidade não medida | P1, sem fallback para 086 |
@@ -158,9 +158,9 @@ As três últimas linhas **não ampliam automaticamente** a lista de fontes acei
 
 ### 5.3 Cadastro e Tradable Security List
 
-Recomenda-se ingerir primeiro as fotografias de cadastro disponíveis para o período pretendido e priorizar a preservação diária dessas evidências. O documento do Tradable Security List acrescenta informação útil de identidade; o cadastro consolidado não garante os mesmos campos [R09–R11](RESEARCH.md#r09).
+O registro B3 segue sendo a raiz de identidade no modelo alvo. Entretanto, a versão inicial não ingere fotografias cadastrais: seus cortes `from`/`to` devem selecionar datas dentro dos próprios registros, e não escolher a fotografia por nome, período cadastrado ou data de geração do arquivo. O formato Security Definition publica `SecurityValidityTimestamp` por instrumento, mas essa é uma validade do instrumento, com sentinela `9999-12-31` para instrumentos sem vencimento; não é uma data universal de observação da versão. Consulte a [especificação oficial Security Definition v1.0.1](https://www.b3.com.br/data/files/09/37/C5/F8/CDAB29106EEC8429AC094EA8/Security%20Definition%20Report-v1.0.1-enUS.pdf) e sua explicação da sentinela. BVBG.028 e TSL serão habilitados quando um contrato de corte por data interna, completo e testável, estiver definido.
 
-O pipeline histórico não deverá ficar bloqueado pela impossibilidade de obter cadastro de uma época remota. Um registro de preço válido e não resolvido é um resultado preservável. A API por ticker/mercado/data continua disponível; consultas por instrumento retornam apenas vínculos sustentados por evidência.
+O pipeline COTAHIST não ficará bloqueado pela ausência de fotografia cadastral. Um registro de preço válido e não resolvido é um resultado preservável. A API por ticker/mercado/data continua disponível; consultas por instrumento ficam indisponíveis enquanto não houver evidência cadastral publicada por uma capacidade habilitada.
 
 Homologar explicitamente o relacionamento entre `SecurityID` de negociação e identificação do BVBG.028. Coincidência numérica ajuda a formar uma hipótese; o mapeamento exige qualificadores e amostras verificadas.
 
@@ -194,7 +194,7 @@ Uma aplicação consumidora pode combinar `tucano-b3` e `tucano-cvm` fora deste 
 
 O primeiro produto completo é: **consultar histórico COTAHIST com precisão, proveniência, filtros de mercado, resolução temporal opcional e cobertura explicada**, sustentado por operação recuperável.
 
-O parser preservará todos os registros válidos dos arquivos aceitos. O caso inicial de uso concentra-se em ações à vista; classes adicionais só recebem classificação quando os códigos e cadastros a sustentarem. FIIs, ETFs, BDRs, units, opções e termo encontrados não serão descartados por uma heurística de sufixo do ticker.
+O parser interpreta e o armazenamento raw preserva os registros válidos dos arquivos aceitos. Uma revisão de import inclui os registros cujo campo de data de negócio pertence ao corte solicitado. O caso inicial de uso concentra-se em ações à vista; classes adicionais só recebem classificação quando os códigos e cadastros a sustentarem. FIIs, ETFs, BDRs, units, opções e termo dentro do corte não serão descartados por uma heurística de sufixo do ticker.
 
 `asset_class=equity` não pode ser implementado como “ticker termina em 3 ou 4”. Um ticker descontinuado encontrado no histórico não depende de estar na lista atual para permanecer consultável.
 
@@ -344,13 +344,24 @@ Componentes opcionais usam `UNIQUE NULLS NOT DISTINCT` quando a igualdade de aus
 
 ## 10. Processo completo de aquisição e ingestão
 
+### 10.0 Importação administrativa com cortes de data de negócio
+
+- Somente um administrador autorizado inicia ingestão, indicando uma família oficial configurada e as datas `from` e `to`. Não existe upload de arquivos por consumidor final.
+- `from` e `to` são cortes inclusivos sobre a data de negócio persistida nos registros. Para COTAHIST, a referência é `DATA DO PREGÃO` de cada registro de detalhe. Nome, ano, header, data de geração e período cadastrado do arquivo podem selecionar a publicação que será adquirida, mas nunca ampliam o intervalo de fatos importados.
+- Não há operação implícita “importar um ano”. Para importar o ano todo, o administrador envia, por exemplo, `2025-01-01` até `2025-12-31`. O executor pode adquirir um arquivo anual para cumprir um intervalo de poucos dias e descarta do candidato os detalhes válidos fora dos cortes, registrando `out_of_scope`.
+- Cada família deve declarar qual campo de negócio de cada registro sustenta seus cortes. No `0.0.1`, somente COTAHIST possui uma data por ocorrência adequada e implementa importação por intervalo. BVBG.028 e Tradable Security List ficam `deferred`: a data da fotografia, do cabeçalho, do catálogo ou do nome do arquivo pode localizar a publicação, mas não decide quais registros entram no import. Uma fonte sem referência interna adequada não pode ser habilitada para ingestão até que essa semântica seja comprovada.
+- Todas as publicações e granularidades selecionadas para um import COTAHIST formam uma única revisão candidata. Valores repetidos idênticos reaproveitam fato/versão; observações divergentes sem precedência comprovada deixam conflito explícito e não publicam parcialmente.
+- Um import estruturalmente válido, sem rejeições ou conflitos e com todas as finalidades de fonte elegíveis, publica automaticamente sua revisão completa. Candidato com rejeições ou conflitos não altera a visão ativa e termina `succeeded_with_issues`, aguardando decisão administrativa. Falha estrutural ou de infraestrutura continua sendo falha.
+- “Remover” significa publicar uma nova revisão lógica que omite um intervalo de datas da visão ativa. Raw, fatos, versões, ocorrências, auditoria e revisões anteriores são preservados, podendo ser restaurados por rollback ou reimportação. Não existe hard purge público; reset completo fica restrito a ambientes isolados de teste/implantação inicial.
+- Importação local é uma capacidade administrativa controlada para arquivo oficial obtido de forma permitida e rastreável. Não é um endpoint de upload nem um caminho para aceitar dados fornecidos por consumidores.
+
 ### 10.1 Descoberta leve, execução separada
 
 O scanner identifica publicações e possíveis revisões com o mecanismo permitido por cada canal. Grava checagens, resultados inconclusivos e `b3_pending_updates`. Não executa parsing, rebuild ou promoção.
 
 `HEAD`, ETag e Last-Modified são capacidades opcionais, não pré-condições universais. Metadado igual é evidência limitada quando o servidor não garante estabilidade; ausência de validators exige estratégia documentada e permitida. Mudança de ZIP não prova mudança de dados.
 
-Recomenda-se iniciar com scanner e ingestão separados e promoção disparada por operação administrativa, seguindo o resultado operacional do `tucano-cvm`. Ingestão automática pode ser adicionada como política explícita por fonte elegível, após estabilizar qualidade, limites e recuperação. A migração do worker atual deve preservar rastreabilidade, compatibilidade e recuperação.
+O scanner apenas registra atualizações pendentes. Um administrador solicita a ingestão e as datas de negócio; após qualidade e elegibilidade confirmadas, uma revisão limpa é promovida automaticamente pelo worker. A descoberta não baixa, interpreta nem publica dados.
 
 ### 10.2 Duas fases, com checkpoints internos
 
@@ -404,14 +415,16 @@ Invariantes transacionais:
 - Fato alterado, evento de campo, proveniência selecionada e contador do lote confirmam juntos.
 - A revisão anterior continua servível até a publicação da substituta.
 - Arquivo estruturalmente inválido não substitui revisão válida.
-- Linhas inválidas isoladas permanecem em quarentena; se a política permitir publicação das válidas, a revisão expõe qualidade degradada e contagens exatas. Completude estrutural e ausência de rejeições são dimensões diferentes.
+- Linhas inválidas isoladas permanecem em quarentena; a candidata não é promovida automaticamente. Qualquer publicação degradada exige operação administrativa explícita de reconhecimento e mantém contagens exatas.
 - Uma falha entre a confirmação de lotes e a troca de revisão não torna dados parciais públicos.
+- Conclusão limpa do import promove automaticamente a candidata completa na mesma trilha administrativa; arquivos que compõem a mesma janela não viram visões públicas independentes.
+- Retirada por data cria uma revisão de visão que exclui os fatos no intervalo. Não apaga dados brutos nem versões imutáveis.
 
 ### 10.6 Contadores e idempotência
 
 No nível de member, contar registros de detalhe, separando controles e entradas não selecionadas. Uma classificação final por ocorrência deverá fechar:
 
-`detail_records_read = inserted + changed + unchanged + duplicate_in_scope + rejected`
+`detail_records_read = inserted + changed + unchanged + duplicate_in_scope + rejected + out_of_scope`
 
 `identity_unresolved`, `identity_ambiguous` e conflitos de seleção são dimensões adicionais, não parcelas a somar novamente nessa equação. Um registro pode ser válido e não resolvido. Os contadores são derivados do que foi confirmado, com tentativas e rollbacks identificados separadamente.
 
@@ -719,7 +732,7 @@ Otimização inicial recomendada: streaming real, lotes limitados, SQL em conjun
 
 ### 18.1 Corpus e testes
 
-Fixtures devem vir de exemplos oficiais redistribuíveis ou amostras cuja retenção seja permitida, com URL, hash, versão e escopo. Fixtures sintéticas complementam extremos e ataques; não substituem validação de estruturas reais.
+Fixtures devem vir de exemplos oficiais redistribuíveis ou amostras cuja retenção seja permitida, com URL, hash, versão e escopo. Fixtures sintéticas exercitam o software, limites e falhas. Homologar um conector contra estruturas oficiais reais é uma validação de dados específica daquele conector; pode permanecer pendente sem impedir a conclusão do software 0.0.1, desde que o canal/finalidade não homologado fique desabilitado.
 
 | Área | Cenário obrigatório | Evidência de aceite |
 | --- | --- | --- |
@@ -737,6 +750,10 @@ Fixtures devem vir de exemplos oficiais redistribuíveis ou amostras cuja reten�
 | Auditoria | Uma alteração real de campo e falha durante commit | Evento exato e atomicidade com fato/contador |
 | Unicidade | Chave com NULL e colisões de prazo/distribuição | Fatos distintos preservados e duplicata evitada |
 | Sobreposição | Diário, mensal e anual concorrentes | Sem duplicação ou seleção dependente de ordem |
+| Cortes de import | Um dia e intervalo parcial contra publicação anual | Seleção por data de negócio de cada registro e contagem explícita fora do escopo |
+| Revisão agregada | Várias publicações atendem ao mesmo pedido COTAHIST | Uma única revisão pública, sem visibilidade parcial entre artefatos |
+| Publicação automática | Candidato íntegro sem rejeições/conflitos | Promoção completa automática após gates; candidato degradado não ativa |
+| Retirada e reimportação | Retirar intervalo, reimportar os mesmos fatos e fazer rollback | Visão lógica reversível, sem apagar raw/versões ou duplicar fatos e auditoria |
 | Correção | Linha retirada de fotografia substituta completa | Retirada rastreada, sem apagar versão anterior |
 | Identidade | Troca/reuso de ticker, ISIN/distribuição e chegada fora de ordem | Janelas corretas ou incerteza explícita |
 | Rebuild | Resolução tardia e execução repetida | Vínculo auditado, preços e hash de mercado estáveis |
@@ -768,15 +785,16 @@ Mudanças de runtime exigem build e smoke de `b3_api` e `b3_worker`. O Compose a
 
 Aquisição ao vivo é teste separado, limitado, autorizado e opt-in. Não colocar varredura de datas ou dependência externa em testes determinísticos de CI.
 
-### 18.3 Definição de pronto do primeiro produto
+### 18.3 Definição de pronto da plataforma 0.0.1
 
-- Finalidade e canal escolhidos passaram pelo marco de viabilidade.
-- Um corpus histórico delimitado está publicado com mapa de cobertura, proveniência, aviso nominal e limites de identidade.
-- Cadastros disponíveis foram priorizados, sem perda dos fatos não resolvidos.
-- Repetição, falha, retomada, correção, concorrência e cancelamento foram demonstrados em PostgreSQL real.
-- REST e MCP usam os mesmos serviços de consulta; não há ingestão disparada por query.
-- Operador consegue decidir a recuperação pela API, sem inspecionar logs ou SQL manualmente.
-- Documentação descreve apenas o que passou nos testes. Metas de performance e cobertura ainda não atingidas permanecem identificadas como metas.
+- A plataforma pode ser inicializada em banco vazio e suporta importação administrativa de COTAHIST oficial configurado, sem aceitar uploads de consumidor. Outras famílias aparecem explicitamente como adiadas até satisfazerem a semântica de corte por registro.
+- Os cortes de data são aplicados aos registros de negócio, inclusive quando a publicação adquirida cobre um período maior. Um import com várias publicações gera uma única revisão COTAHIST coerente.
+- Repetição, correção, retirada lógica, reimportação, rollback, falha, retomada, concorrência e cancelamento foram demonstrados com fixtures sintéticas/autorizadas e PostgreSQL 16 real. A idempotência de negócio evita duplicar fatos, versões ou auditoria; jobs, ocorrências e novas revisões podem registrar nova proveniência operacional.
+- Import limpo publica automaticamente após passar gates estruturais, rejeições, conflitos e elegibilidade. Candidato degradado permanece não ativo até reconhecimento autorizado.
+- REST e MCP usam os mesmos serviços de consulta; não há ingestão disparada por query; consumers sem canal habilitado recebem capacidade indisponível sem dados inventados.
+- Operador consegue inspecionar fonte, revisão, qualidade, proveniência e recuperação pela API, sem inspecionar SQL manualmente.
+- Testes e benchmark sintéticos repetíveis qualificam recursos e recuperação para o perfil declarado. Corpus real e manifesto de cobertura são validações de dados opcionais para concluir o software; a ativação e redistribuição de cada canal continuam condicionadas a evidência própria.
+- Documentação descreve apenas comportamento verificado. Metas de performance e cobertura ainda não medidas permanecem identificadas como metas.
 
 ## 19. Aproveitamento do projeto existente e migração
 
@@ -788,9 +806,9 @@ Os ADRs recentes do projeto de referência são especialmente úteis: [artefatos
 
 Não copiar âncoras de companhia, formatos CVM, regras de versão de documentos, Celery/Redis ou pressupostos de portabilidade SQLite. A identidade temporal de negociação exige decisões próprias.
 
-### 19.2 Lacunas observadas por inspeção estática
+### 19.2 Lacunas observadas na inspeção inicial
 
-As observações abaixo não são um laudo de execução nem significam que os testes foram rodados nesta sessão. A árvore local já continha alterações e recebeu outras durante a pesquisa; as evidências descrevem os trechos inspecionados e devem ser reconferidas antes da implementação.
+Esta tabela registra a fotografia estática que originou o plano de aproveitamento; não descreve o estado atual nem comprova uma execução de testes. A situação corrente e as validações estão no [plano de lançamento](0.0.1-plan.md) e nos [marcos](prd_dev_milestones.md). Os itens continuam úteis como histórico das razões para refatoração, mas não devem ser tratados como pendências atuais sem nova evidência.
 
 | Evidência no repositório | Impacto no plano |
 | --- | --- |
@@ -808,44 +826,46 @@ As observações abaixo não são um laudo de execução nem significam que os t
 | Há testes de integração que retornam cedo sem PostgreSQL | Corrigir a comprovação de integração, sem presumir que um verde atual cobre banco |
 | A inspeção inicial não encontrou context map/ADRs B3 | Vocabulário incorporado ao [mapa de contextos](../CONTEXT-MAP.md); registrar novas decisões reais sem importar contextos CVM |
 
-O README descreve algumas propriedades como entregues que precisam de comprovação de execução e desempenho. Corrigir essas afirmações no marco de implementação correspondente, com evidência de comportamento e sem substituir instruções operacionais atuais por funcionalidades planejadas.
+Naquele momento, algumas afirmações do README precisavam de comprovação de execução e desempenho. A documentação atual de comportamento verificado e evidências foi atualizada no plano de lançamento; metas de desempenho continuam metas até serem medidas em condições representativas.
 
-### 19.3 Sequência de migração
+### 19.3 Aproveitamento e corte de dados
 
-1. Inventariar contratos efetivos e consumidores; salvar OpenAPI de referência e cenários de resposta.
-2. Registrar decisões de implementação de escopo/acesso/identidade/publicação e as evidências ainda pendentes.
-3. Acrescentar migrations; preservar raw, fatos, IDs e auditoria existentes. Identificar proveniência antiga insuficiente como tal.
-4. Implementar aquisição e pipeline novo para escopo pequeno; executar comparação paralela controlada sem dupla publicação.
-5. Publicar uma revisão validada por família/período, com caminho de retorno à revisão anterior.
-6. Migrar queries e worker por capacidade; contratos incompatíveis recebem versão e janela de transição.
-7. Ampliar backfill somente após critérios de integridade e recursos; retirar código antigo quando houver paridade comprovada.
+`0.0.1` substitui o caminho de migração de registros da implementação prévia por uma inicialização limpa. A implementação pode reaproveitar código, conhecimento, parsers e testes que atendam ao modelo B3, mas não importa registros, IDs, histórico de auditoria, arquivos de estado ou trabalhos de ingestão anteriores. O aceite demonstra a plataforma em banco vazio e, quando houver evolução do schema já aplicado, por migrations sequenciais; a compatibilidade do novo conjunto começa após a publicação de `0.0.1`.
+
+1. Inventariar as rotas, contratos, módulos e testes da implementação atual e marcar quais são reaproveitados, refatorados, adiados ou removidos. Registrar as capacidades legadas úteis sem prometer paridade de respostas ou IDs.
+2. Manter as decisões B3 próprias sobre identidade temporal, chaves naturais, proveniência, revisão e elegibilidade. Não importar âncoras ou pressupostos de domínio CVM.
+3. Acrescentar alterações estruturais por migrations, sem reescrever migrations já aplicadas. Inicializar o banco do primeiro release sem dados, IDs, auditoria ou progresso do runtime anterior.
+4. Definir e validar o primeiro contrato público antes de anunciar a plataforma. Contratos anteriores a `0.0.1` não impõem compatibilidade; mudanças posteriores seguem versionamento e migrações explícitas.
+5. Qualificar aquisição, reprocessamento e publicação com fixtures e PostgreSQL. Cada execução deve preservar o encadeamento raw, ocorrência, fato, versão e revisão; rollback volta a uma revisão publicada do novo conjunto.
+6. Direcionar API, CLI e worker aos mesmos serviços e estados duráveis. Não manter dupla escrita ou publicação paralela entre o pipeline antigo e o novo.
+7. Encerrar o corte quando o contrato de `0.0.1` e a recuperação estiverem demonstrados. Importar dados reais, ampliar backfill e ativar canais ficam condicionados à elegibilidade e capacidade de cada fonte; não são uma migração de dados legados.
 
 ## 20. Plano de entrega e issues
 
-Os marcos abaixo não são estimativas de prazo. A incerteza de acesso e corpus precisa ser reduzida antes de estimar esforço de migração. Os sete grupos de fontes atualmente exigidos continuam no escopo final, com priorização por marcos.
+Os marcos abaixo não são estimativas de prazo. O escopo de software pode ser implementado e qualificado com fixtures sem esperar acesso a corpus real; evidência de acesso deve ser fechada antes de ativar uma finalidade de fonte. As fontes de identidade permanecem no escopo do produto, mas não são elegíveis para o primeiro contrato de ingestão até que a semântica de corte por registro seja definida. As demais famílias continuam priorizadas por marcos.
 
 O [plano de marcos de desenvolvimento](prd_dev_milestones.md) detalha a situação atual, as subentregas, as dependências e as evidências de conclusão, preservando este PRD como fonte única dos requisitos de produto.
 
 | Marco | Resultado | Saída obrigatória | Issue |
 | --- | --- | --- | --- |
-| G0 | Viabilidade e corpus homologável | Canal/finalidade sem custo confirmados, formatos e lacunas registrados | [01](issues/01-source-viability.md) |
+| G0 | Catálogo de fontes e controle fail-closed | Famílias/canais/finalidades registram evidência; nenhum canal não comprovado pode ser adquirido, retido, processado ou entregue | [01](issues/01-source-viability.md) |
 | G1 | Contratos e modelo de identidade | Inventário v1, chaves testáveis, janelas e revisão especificadas | [02](issues/02-domain-and-contracts.md) |
 | G2 | Aquisição e replay seguros | Raw, inventário, limites, integridade e mocks determinísticos | [03](issues/03-artifact-acquisition.md) |
-| G3 | Núcleo histórico completo | COTAHIST + cadastros disponíveis + promoção/auditoria/recuperação | [04](issues/04-historical-core.md) |
+| G3 | Núcleo histórico 0.0.1 | COTAHIST por data de negócio, identidade não resolvida preservada, promoção/auditoria/recuperação | [04](issues/04-historical-core.md) |
 | G4 | Produto consultável | REST/MCP, cobertura, documentação e compatibilidade | [05](issues/05-query-product.md) |
 | G5 | Manutenção contínua confiável | Scanner, fila, calendário, prioridade, cancelamento e fencing | [06](issues/06-operations.md) |
 | G6 | Boletins complementares | 086/186 separados, edições, comparação explícita | [07](issues/07-price-reports.md) |
 | G7 | Índices e carteiras | 087 e composições com vigência/estágio, qualidade e fontes permitidas | [08](issues/08-indices-and-portfolios.md) |
 
-G1 e desenvolvimento offline de G2 podem avançar durante a análise de G0. G3 depende de G1/G2 e de corpus obtido de forma permitida; G4 requer G3. G5 precisa começar junto de G2/G3 para não adiar recuperação e locks; G6/G7 exigem a plataforma comum e homologação própria de fonte.
+G1, G2, G3, G4 e G5 podem ser concluídos e demonstrados com fixtures sintéticas/autorizadas em PostgreSQL e HTTP simulados. G0 controla habilitação/uso de cada canal e entrega de seus dados, não a conclusão do código. G6/G7 são expansão posterior e exigem homologação própria de fonte.
 
-O primeiro lançamento utilizável conclui G0–G5 para um recorte delimitado. Os demais marcos completam a visão de produto sem condicionar a utilidade histórica à implementação simultânea de todos os arquivos.
+O primeiro lançamento de plataforma conclui G0–G5 em termos de mecanismos e controles, mesmo sem um corpus real carregado. Os dados disponibilizados por cada canal continuam limitados pela sua elegibilidade. G6/G7 completam a visão de produto sem condicionar a capacidade de ingestão COTAHIST.
 
 ## 21. Riscos, decisões pendentes e limites do produto
 
 | Risco ou pergunta | Tratamento / decisão proposta |
 | --- | --- |
-| Automação e API para terceiros incompatíveis com gratuidade | Resolver por fonte/finalidade em G0; não lançar com premissa não demonstrada |
+| Automação ou entrega a terceiros sem gratuidade comprovada | Desabilitar essa finalidade/canal; o software pode ser lançado sem servir dados dessa fonte |
 | Cadastro histórico insuficiente | Preços permanecem preservados; vínculo fica incerto, sem retroatividade inventada |
 | Catálogo legado muda ou é descontinuado | Adaptadores próprios e raw recuperável; avaliar alternativa oficial permitida sem fallback oculto |
 | Chave histórica colapsa fatos | Perfil de colisões e fixtures antes de constraint e migração |

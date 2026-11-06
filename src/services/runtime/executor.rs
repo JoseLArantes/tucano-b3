@@ -12,7 +12,7 @@ use crate::{
     services::{
         artifacts::{ArtifactLimits, ArtifactService, RawArtifact},
         eligibility::{require_eligible, SourcePurpose},
-        jobs::{JobClaim, JobCommand, JobPhase, JobService},
+        jobs::{JobClaim, JobCommand, JobCompletion, JobPhase, JobService},
     },
 };
 use sqlx::{PgPool, Row};
@@ -36,11 +36,18 @@ impl ReleaseExecutor {
         let jobs = JobService::new(self.pool.clone());
         match &claim.command {
             JobCommand::Ingest { source, from, to } => {
+                if !source.supports_record_date_cuts() {
+                    return Err(invalid(
+                        "Esta família ainda não pode aplicar cortes às datas internas dos registros.",
+                    ));
+                }
                 let channels = sqlx::query("SELECT * FROM b3_source_channels WHERE enabled AND source_file_type=$1 AND period_start<=$3 AND period_end>=$2 ORDER BY period_start,id")
                     .bind(source.as_str()).bind(from).bind(to).fetch_all(&self.pool).await?;
                 if channels.is_empty() {
                     return Err(invalid("Nenhum canal habilitado para o período."));
                 }
+                let mut history_revision = None;
+                let mut registry_snapshots = Vec::new();
                 for channel in channels {
                     jobs.set_phase(claim, JobPhase::Acquisition).await?;
                     let id: String = channel.get("id");
@@ -71,19 +78,39 @@ impl ReleaseExecutor {
                             .await?
                     };
                     info!(job_id=%claim.id,run_id=%claim.owner_id,generation=claim.generation,source_file_type=%source,channel_id=%id,phase="acquisition",acquisition_mode=%acquisition_mode,byte_size=raw.byte_size,sha256=%raw.sha256,elapsed_ms=acquisition_started.elapsed().as_millis() as u64,"Artefato adquirido e finalizado");
-                    self.ingest_artifact(
-                        claim,
-                        *source,
-                        &id,
-                        &channel.get::<String, _>("publication_key"),
-                        channel.get("period_start"),
-                        channel.get("period_end"),
-                        channel.get("official_revision"),
-                        channel.get("replaces_publication"),
-                        &channel.get::<String, _>("format_profile"),
-                        raw,
-                    )
-                    .await?;
+                    if let Some(revision) = self
+                        .ingest_artifact(
+                            claim,
+                            *source,
+                            &id,
+                            &channel.get::<String, _>("publication_key"),
+                            channel.get("period_start"),
+                            channel.get("period_end"),
+                            channel.get("official_revision"),
+                            channel.get("replaces_publication"),
+                            *from,
+                            *to,
+                            &channel.get::<String, _>("format_profile"),
+                            raw,
+                        )
+                        .await?
+                    {
+                        if is_registry_source(*source) {
+                            registry_snapshots.push(revision);
+                        } else {
+                            history_revision = Some(revision);
+                        }
+                    }
+                }
+                if let Some(revision) = history_revision {
+                    self.finish_history_import(claim, revision).await?;
+                }
+                let mut has_issues = false;
+                for snapshot in registry_snapshots {
+                    has_issues |= !self.finish_registry_import(claim, snapshot).await?;
+                }
+                if has_issues {
+                    self.complete_with_issues(claim).await?;
                 }
                 Ok(())
             }
@@ -96,6 +123,11 @@ impl ReleaseExecutor {
                     .ok_or_else(|| invalid("Arquivo de origem não encontrado."))?;
                 let source = SourceFileType::from_str(&row.get::<String, _>("source_file_type"))
                     .map_err(|_| invalid("Família inválida."))?;
+                if !source.supports_record_date_cuts() {
+                    return Err(invalid(
+                        "Reprocessamento desta família está adiado até suportar cortes por data interna dos registros.",
+                    ));
+                }
                 let channel: String = row.get("acquisition_channel");
                 validate_profile(source, &row.get::<String, _>("format_profile"))?;
                 require_eligible(
@@ -110,20 +142,39 @@ impl ReleaseExecutor {
                     byte_size: row.get::<i64, _>("byte_size") as u64,
                     path: row.get::<String, _>("local_path").into(),
                 };
+                let requested_from: chrono::NaiveDate = row
+                    .get::<Option<chrono::NaiveDate>, _>("requested_from")
+                    .unwrap_or_else(|| row.get("period_start"));
+                let requested_to: chrono::NaiveDate = row
+                    .get::<Option<chrono::NaiveDate>, _>("requested_to")
+                    .unwrap_or_else(|| row.get("period_end"));
                 // Replay reads only a manifest-owned content-addressed artifact.
-                self.ingest_artifact(
-                    claim,
-                    source,
-                    &channel,
-                    &row.get::<String, _>("publication_key"),
-                    row.get("period_start"),
-                    row.get("period_end"),
-                    row.get("official_revision"),
-                    row.get("replaces_publication"),
-                    &row.get::<String, _>("format_profile"),
-                    raw,
-                )
-                .await
+                if let Some(revision) = self
+                    .ingest_artifact(
+                        claim,
+                        source,
+                        &channel,
+                        &row.get::<String, _>("publication_key"),
+                        row.get("period_start"),
+                        row.get("period_end"),
+                        row.get("official_revision"),
+                        row.get("replaces_publication"),
+                        requested_from,
+                        requested_to,
+                        &row.get::<String, _>("format_profile"),
+                        raw,
+                    )
+                    .await?
+                {
+                    if is_registry_source(source) {
+                        if !self.finish_registry_import(claim, revision).await? {
+                            self.complete_with_issues(claim).await?;
+                        }
+                    } else {
+                        self.finish_history_import(claim, revision).await?;
+                    }
+                }
+                Ok(())
             }
             JobCommand::PublishRevision {
                 revision_id,
@@ -148,6 +199,10 @@ impl ReleaseExecutor {
             JobCommand::RollbackRevision { revision_id } => {
                 jobs.set_phase(claim, JobPhase::Publication).await?;
                 history.rollback(claim, *revision_id).await
+            }
+            JobCommand::WithdrawWindow { from, to } => {
+                jobs.set_phase(claim, JobPhase::Publication).await?;
+                history.withdraw_window(claim, *from, *to).await
             }
             JobCommand::RebuildIdentity { from, to } => {
                 jobs.set_phase(claim, JobPhase::Identity).await?;
@@ -179,16 +234,18 @@ impl ReleaseExecutor {
         end: chrono::NaiveDate,
         official_revision: Option<i64>,
         replaces: bool,
+        requested_from: chrono::NaiveDate,
+        requested_to: chrono::NaiveDate,
         profile: &str,
         raw: RawArtifact,
-    ) -> Result<()> {
+    ) -> Result<Option<Uuid>> {
         let jobs = JobService::new(self.pool.clone());
         let file_id = Uuid::new_v4().to_string();
         let mut tx = jobs.begin_confirmation(claim).await?;
         sqlx::query("INSERT INTO b3_source_files(id,source_file_type,source_name,local_path,sha256,byte_size,downloaded_at,parser_version,status,acquisition_channel,job_id,job_generation) VALUES($1,$2,$2,$3,$4,$5,NOW(),'0.0.1','downloaded',$6,$7,$8)")
             .bind(&file_id).bind(source.as_str()).bind(raw.path.to_string_lossy().as_ref()).bind(&raw.sha256).bind(raw.byte_size as i64).bind(channel).bind(claim.id).bind(claim.generation).execute(&mut *tx).await?;
-        sqlx::query("UPDATE b3_source_files SET period_start=$2,period_end=$3,publication_key=$4,official_revision=$5,replaces_publication=$6,format_profile=$7,reference_date=$8 WHERE id=$1")
-            .bind(&file_id).bind(start).bind(end).bind(publication_key).bind(official_revision).bind(replaces).bind(profile).bind(if start==end{Some(start)}else{None}).execute(&mut *tx).await?;
+        sqlx::query("UPDATE b3_source_files SET period_start=$2,period_end=$3,publication_key=$4,official_revision=$5,replaces_publication=$6,format_profile=$7,reference_date=$8,requested_from=$9,requested_to=$10 WHERE id=$1")
+            .bind(&file_id).bind(start).bind(end).bind(publication_key).bind(official_revision).bind(replaces).bind(profile).bind(if start==end{Some(start)}else{None}).bind(requested_from).bind(requested_to).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO b3_job_outputs(job_id,output_kind,output_id) VALUES($1,'source_file',$2) ON CONFLICT DO NOTHING").bind(claim.id).bind(&file_id).execute(&mut *tx).await?;
         if let JobCommand::Reparse { source_file_id }
         | JobCommand::ReplayQuarantine { source_file_id } = &claim.command
@@ -253,8 +310,10 @@ impl ReleaseExecutor {
             SourceFileType::Bvbg028InstrumentsFile | SourceFileType::TradableSecurityList
         );
         let revision = if registry {
-            if start != end {
-                return Err(invalid("Cadastro exige uma data de referência singular."));
+            if start != end || start < requested_from || start > requested_to {
+                return Err(invalid(
+                    "A data de referência cadastral deve ser singular e estar dentro do intervalo solicitado.",
+                ));
             }
             history
                 .create_registry_snapshot(claim, &file_id, channel, start, source, selected as i32)
@@ -267,8 +326,8 @@ impl ReleaseExecutor {
                         source_file_id: file_id.clone(),
                         channel: channel.into(),
                         expected_members: selected as i32,
-                        period_start: start,
-                        period_end: end,
+                        period_start: requested_from,
+                        period_end: requested_to,
                         publication_key: publication_key.into(),
                         official_revision,
                         replaces_publication: replaces,
@@ -305,17 +364,24 @@ impl ReleaseExecutor {
                     let mut bytes = 0usize;
                     let mut detail_read = 0i64;
                     let mut rejected_read = 0i64;
+                    let mut out_of_scope = 0i64;
                     while let Some(event) = receiver.recv().await {
                         detail_read += 1;
                         match event {
                             CotahistEvent::Valid {
                                 row, line_number, ..
                             } => {
-                                bytes += 2048;
-                                rows.push(LocatedQuote {
-                                    record_index: line_number as i64,
-                                    row: *row,
-                                });
+                                if row.trade_date.is_some_and(|date| {
+                                    date >= requested_from && date <= requested_to
+                                }) {
+                                    bytes += 2048;
+                                    rows.push(LocatedQuote {
+                                        record_index: line_number as i64,
+                                        row: *row,
+                                    });
+                                } else {
+                                    out_of_scope += 1;
+                                }
                             }
                             CotahistEvent::Rejected {
                                 raw,
@@ -369,8 +435,9 @@ impl ReleaseExecutor {
                                     revision,
                                     &id,
                                     &MemberOutcome {
-                                        detail_read: summary.detail_records as i64,
-                                        rejected: summary.rejected_records as i64,
+                                        detail_read,
+                                        rejected: rejected_read,
+                                        out_of_scope,
                                         structural_valid: true,
                                     },
                                 )
@@ -386,6 +453,7 @@ impl ReleaseExecutor {
                                     &MemberOutcome {
                                         detail_read,
                                         rejected: rejected_read,
+                                        out_of_scope,
                                         structural_valid: false,
                                     },
                                 )
@@ -418,20 +486,68 @@ impl ReleaseExecutor {
         if registry {
             jobs.set_phase(claim, JobPhase::Sealing).await?;
             history.seal_registry_snapshot(claim, revision).await?;
-        } else {
-            jobs.set_phase(claim, JobPhase::Sealing).await?;
-            history.seal_candidate(claim, revision).await?;
         }
-        info!(job_id=%claim.id,run_id=%claim.owner_id,generation=claim.generation,source_file_id=%file_id,revision_id=%revision,phase="sealing",selected_member_count=selected,"Candidato validado para publicação explícita");
+        info!(job_id=%claim.id,run_id=%claim.owner_id,generation=claim.generation,source_file_id=%file_id,revision_id=%revision,phase=if registry{"sealing"}else{"staging"},selected_member_count=selected,"Artefato processado no escopo solicitado");
         let mut tx = jobs.begin_confirmation(claim).await?;
         sqlx::query("UPDATE b3_source_files SET status='parsed',parsed_at=NOW() WHERE id=$1")
             .bind(file_id)
             .execute(&mut *tx)
             .await?;
         tx.commit().await?;
+        Ok(Some(revision))
+    }
+
+    async fn finish_history_import(&self, claim: &JobClaim, revision: Uuid) -> Result<()> {
+        let jobs = JobService::new(self.pool.clone());
+        let history = HistoryRepository::new(self.pool.clone());
+        jobs.set_phase(claim, JobPhase::Sealing).await?;
+        history.seal_candidate(claim, revision).await?;
+        let clean: bool = sqlx::query_scalar("SELECT status='ready' AND rejected=0 AND conflicts=0 FROM b3_history_revisions WHERE id=$1")
+            .bind(revision)
+            .fetch_one(&self.pool)
+            .await?;
+        if clean {
+            jobs.set_phase(claim, JobPhase::Publication).await?;
+            history.publish(claim, revision, false).await?;
+        } else {
+            self.complete_with_issues(claim).await?;
+        }
+        Ok(())
+    }
+
+    async fn finish_registry_import(&self, claim: &JobClaim, snapshot: Uuid) -> Result<bool> {
+        let clean: bool = sqlx::query_scalar(
+            "SELECT status='ready' AND rejected=0 FROM b3_registry_snapshots WHERE id=$1",
+        )
+        .bind(snapshot)
+        .fetch_one(&self.pool)
+        .await?;
+        if clean {
+            let jobs = JobService::new(self.pool.clone());
+            jobs.set_phase(claim, JobPhase::Publication).await?;
+            HistoryRepository::new(self.pool.clone())
+                .publish(claim, snapshot, false)
+                .await?;
+        }
+        Ok(clean)
+    }
+
+    async fn complete_with_issues(&self, claim: &JobClaim) -> Result<()> {
+        let jobs = JobService::new(self.pool.clone());
+        let mut tx = jobs.begin_confirmation(claim).await?;
+        JobService::complete(&mut tx, claim, JobCompletion::SucceededWithIssues).await?;
+        tx.commit().await?;
         Ok(())
     }
 }
+
+fn is_registry_source(source: SourceFileType) -> bool {
+    matches!(
+        source,
+        SourceFileType::Bvbg028InstrumentsFile | SourceFileType::TradableSecurityList
+    )
+}
+
 fn invalid(message: &str) -> AppError {
     AppError::Validation(message.into())
 }

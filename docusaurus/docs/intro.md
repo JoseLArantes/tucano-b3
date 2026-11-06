@@ -21,7 +21,7 @@ O serviço mantém separados fatos de negociação, fotografias cadastrais e est
 
 ## Estado documentado
 
-A API REST inicial oferece consulta COTAHIST, evidências cadastrais publicadas e inspeção/submissão de operações duráveis. A API inclui também endpoints operacionais para arquivos, members, pendências, revisões, conflitos, quarentena, capacidades, diagnósticos e execuções. As fontes e operações permitidas dependem de registro e elegibilidade configurados no banco; a presença de uma rota não significa que haja dados ou autorização para distribuição externa.
+A API REST inicial oferece consulta COTAHIST e inspeção/submissão de operações duráveis. Endpoints cadastrais fazem parte do contrato técnico, mas BVBG.028 e Tradable Security List estão `deferred` no `0.0.1`: não é possível importar esses registros até que `from`/`to` possam ser aplicados a uma data interna adequada por registro. A API inclui também endpoints operacionais para arquivos, members, pendências, revisões, conflitos, quarentena, capacidades, diagnósticos e execuções. As fontes e operações permitidas dependem de registro e elegibilidade configurados no banco; a presença de uma rota não significa que haja dados ou autorização para distribuição externa.
 
 O escopo do produto inclui outras publicações oficiais B3, como BVBG.086, BVBG.186, BVBG.087 e composições de índices. Consulte o guia de fontes e o endpoint de capacidades para separar escopo planejado, implementação e disponibilidade real em um ambiente.
 

@@ -6,6 +6,10 @@ title: Cadastro de instrumentos
 
 O cadastro é uma fonte de identidade, não uma substituição das cotações. Cada observação identifica sua fotografia, família, data de referência, qualificadores e proveniência.
 
+## Estado no release 0.0.1
+
+BVBG.028 e Tradable Security List estão `deferred` no catálogo de capacidades e não podem ser importadas nesta versão. Uma data de arquivo/fotografia pode localizar uma publicação, mas não substitui o corte por data interna dos registros. A especificação Security Definition v1.0.1 publica `SecurityValidityTimestamp`, incluindo a sentinela `9999-12-31` para instrumentos sem vencimento; esse campo não é uma data genérica de observação de cada versão. Cotações COTAHIST permanecem preservadas com identidade `unresolved` quando não há cadastro habilitado.
+
 ## Famílias
 
 - **BVBG.028.02 / InstrumentsConsolidated**: publicação cadastral estruturada cuja observação deve ser interpretada conforme sua categoria e qualificador.

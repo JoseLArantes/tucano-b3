@@ -16,7 +16,7 @@ use crate::{
     error::{AppError, Result},
     services::{
         eligibility::{require_eligible, SourcePurpose},
-        jobs::{JobClaim, JobCompletion, JobService},
+        jobs::{JobClaim, JobService},
     },
 };
 
@@ -82,6 +82,45 @@ impl HistoryRepository {
                 "Canal, família ou inventário da revisão não corresponde ao artefato.".into(),
             ));
         }
+        let existing = sqlx::query("SELECT id,source_file_id,period_start,period_end FROM b3_history_revisions WHERE job_id=$1 AND revision_kind='ingest' AND status='draft' FOR UPDATE")
+            .bind(claim.id)
+            .fetch_optional(&mut *tx)
+            .await?;
+        if let Some(existing) = existing {
+            let id: Uuid = existing.get("id");
+            if existing.get::<NaiveDate, _>("period_start") != spec.period_start
+                || existing.get::<NaiveDate, _>("period_end") != spec.period_end
+            {
+                return Err(AppError::Validation(
+                    "Todos os artefatos do job devem pertencer ao mesmo intervalo solicitado."
+                        .into(),
+                ));
+            }
+            let attached: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM b3_history_revision_sources WHERE revision_id=$1 AND source_file_id=$2)")
+                .bind(id)
+                .bind(&spec.source_file_id)
+                .fetch_one(&mut *tx)
+                .await?;
+            if attached {
+                return Ok(id);
+            }
+            sqlx::query("INSERT INTO b3_history_revision_sources(revision_id,source_file_id,requested_from,requested_to) VALUES($1,$2,$3,$4)")
+                .bind(id)
+                .bind(&spec.source_file_id)
+                .bind(spec.period_start)
+                .bind(spec.period_end)
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query(
+                "UPDATE b3_history_revisions SET expected_members=expected_members+$2 WHERE id=$1",
+            )
+            .bind(id)
+            .bind(spec.expected_members)
+            .execute(&mut *tx)
+            .await?;
+            tx.commit().await?;
+            return Ok(id);
+        }
         let base: Option<Uuid> =
             sqlx::query_scalar("SELECT revision_id FROM b3_history_active WHERE singleton")
                 .fetch_one(&mut *tx)
@@ -92,6 +131,13 @@ impl HistoryRepository {
         if let Some(base) = base {
             sqlx::query("INSERT INTO b3_history_revision_quotes SELECT $1,fact_id,version_id,source_member_id,record_index,instrument_id,resolution_status,selected_publication_key,selected_official_revision FROM b3_history_revision_quotes WHERE revision_id=$2").bind(id).bind(base).execute(&mut *tx).await?;
         }
+        sqlx::query("INSERT INTO b3_history_revision_sources(revision_id,source_file_id,requested_from,requested_to) VALUES($1,$2,$3,$4)")
+            .bind(id)
+            .bind(&spec.source_file_id)
+            .bind(spec.period_start)
+            .bind(spec.period_end)
+            .execute(&mut *tx)
+            .await?;
         tx.commit().await?;
         Ok(id)
     }
@@ -111,7 +157,7 @@ impl HistoryRepository {
         tx: &mut Transaction<'_, Postgres>,
         revision: Uuid,
     ) -> Result<()> {
-        let allowed:bool=sqlx::query_scalar("WITH channels AS (SELECT DISTINCT f.source_file_type,f.acquisition_channel FROM b3_history_revision_quotes q JOIN b3_source_file_members m ON m.id=q.source_member_id JOIN b3_source_files f ON f.id=m.source_file_id WHERE q.revision_id=$1 UNION SELECT f.source_file_type,r.channel FROM b3_history_revisions r JOIN b3_source_files f ON f.id=r.source_file_id WHERE r.id=$1) SELECT NOT EXISTS(SELECT 1 FROM channels c CROSS JOIN unnest(ARRAY['processing','raw_retention','rest','mcp','third_party_delivery']) purpose WHERE NOT EXISTS(SELECT 1 FROM b3_source_eligibility e WHERE e.source_file_type=c.source_file_type AND e.channel=c.acquisition_channel AND e.purpose=purpose AND e.status='eligible' AND e.zero_cost AND e.verified_at IS NOT NULL AND length(trim(e.evidence_reference))>0))").bind(revision).fetch_one(&mut **tx).await?;
+        let allowed:bool=sqlx::query_scalar("WITH channels AS (SELECT DISTINCT f.source_file_type,f.acquisition_channel FROM b3_history_revision_quotes q JOIN b3_source_file_members m ON m.id=q.source_member_id JOIN b3_source_files f ON f.id=m.source_file_id WHERE q.revision_id=$1 UNION SELECT DISTINCT f.source_file_type,f.acquisition_channel FROM b3_history_revision_sources rs JOIN b3_source_files f ON f.id=rs.source_file_id WHERE rs.revision_id=$1) SELECT NOT EXISTS(SELECT 1 FROM channels c CROSS JOIN unnest(ARRAY['processing','raw_retention','rest','mcp','third_party_delivery']) purpose WHERE NOT EXISTS(SELECT 1 FROM b3_source_eligibility e WHERE e.source_file_type=c.source_file_type AND e.channel=c.acquisition_channel AND e.purpose=purpose AND e.status='eligible' AND e.zero_cost AND e.verified_at IS NOT NULL AND length(trim(e.evidence_reference))>0))").bind(revision).fetch_one(&mut **tx).await?;
         if !allowed {
             return Err(AppError::Validation(
                 "Revisão contém canal/finalidade sem elegibilidade comprovada.".into(),
@@ -143,13 +189,11 @@ impl HistoryRepository {
                 "Inventário de members obrigatório ainda incompleto.".into(),
             ));
         }
-        // A full, explicitly ordered replacement may remove only facts selected from that publication.
-        if rejected == 0
-            && spec.get::<bool, _>("replaces_publication")
-            && spec.get::<Option<i64>, _>("official_revision").is_some()
-        {
-            sqlx::query("DELETE FROM b3_history_revision_quotes q USING b3_cotahist_facts f WHERE q.revision_id=$1 AND q.fact_id=f.id AND q.selected_publication_key=$2 AND q.selected_official_revision<$3 AND f.trade_date BETWEEN $4 AND $5 AND NOT EXISTS(SELECT 1 FROM b3_cotahist_occurrences o JOIN b3_cotahist_versions v ON v.id=o.version_id WHERE o.revision_id=$1 AND v.fact_id=q.fact_id)")
-                .bind(revision).bind(spec.get::<String,_>("publication_key")).bind(spec.get::<Option<i64>,_>("official_revision")).bind(spec.get::<NaiveDate,_>("period_start")).bind(spec.get::<NaiveDate,_>("period_end")).execute(&mut *tx).await?;
+        // A complete, explicitly ordered source replacement may remove only facts
+        // from its publication and within the requested business-date cut.
+        if rejected == 0 {
+            sqlx::query("DELETE FROM b3_history_revision_quotes q USING b3_cotahist_facts f,b3_history_revisions r WHERE q.revision_id=$1 AND q.fact_id=f.id AND r.id=q.revision_id AND f.trade_date BETWEEN r.period_start AND r.period_end AND EXISTS(SELECT 1 FROM b3_history_revision_sources rs JOIN b3_source_files incoming ON incoming.id=rs.source_file_id WHERE rs.revision_id=r.id AND incoming.replaces_publication AND incoming.official_revision IS NOT NULL AND incoming.publication_key=q.selected_publication_key AND incoming.official_revision>COALESCE(q.selected_official_revision,-1) AND f.trade_date BETWEEN GREATEST(incoming.period_start,r.period_start) AND LEAST(incoming.period_end,r.period_end) AND NOT EXISTS(SELECT 1 FROM b3_cotahist_occurrences o JOIN b3_source_file_members m ON m.id=o.source_member_id JOIN b3_source_files observed ON observed.id=m.source_file_id JOIN b3_cotahist_versions v ON v.id=o.version_id WHERE o.revision_id=r.id AND v.fact_id=q.fact_id AND observed.publication_key=incoming.publication_key AND observed.official_revision=incoming.official_revision))")
+                .bind(revision).execute(&mut *tx).await?;
         }
         sqlx::query(
             "UPDATE b3_history_revisions SET status='ready',rejected=$2,conflicts=$3 WHERE id=$1",
@@ -175,41 +219,42 @@ impl HistoryRepository {
                 .publish_registry_snapshot(claim, revision, acknowledge_issues)
                 .await;
         }
-        let info=sqlx::query("SELECT sf.source_file_type,r.channel FROM b3_history_revisions r JOIN b3_source_files sf ON sf.id=r.source_file_id WHERE r.id=$1").bind(revision).fetch_one(&self.pool).await?;
-        let source: SourceFileType = info
-            .get::<String, _>("source_file_type")
-            .parse()
-            .map_err(AppError::Validation)?;
-        require_eligible(
-            &self.pool,
-            source,
-            &info.get::<String, _>("channel"),
-            &[
-                SourcePurpose::Processing,
-                SourcePurpose::RawRetention,
-                SourcePurpose::Rest,
-                SourcePurpose::Mcp,
-                SourcePurpose::ThirdPartyDelivery,
-            ],
-        )
-        .await?;
-        let jobs = JobService::new(self.pool.clone());
-        let mut tx = jobs.begin_confirmation(claim).await?;
-        sqlx::query("SELECT pg_advisory_xact_lock(7324031001)")
-            .execute(&mut *tx)
+        let info=sqlx::query("SELECT sf.source_file_type,r.channel,r.revision_kind FROM b3_history_revisions r JOIN b3_source_files sf ON sf.id=r.source_file_id WHERE r.id=$1").bind(revision).fetch_one(&self.pool).await?;
+        let withdrawal_only = info.get::<String, _>("revision_kind") == "withdrawal";
+        if !withdrawal_only {
+            let source: SourceFileType = info
+                .get::<String, _>("source_file_type")
+                .parse()
+                .map_err(AppError::Validation)?;
+            require_eligible(
+                &self.pool,
+                source,
+                &info.get::<String, _>("channel"),
+                &[
+                    SourcePurpose::Processing,
+                    SourcePurpose::RawRetention,
+                    SourcePurpose::Rest,
+                    SourcePurpose::Mcp,
+                    SourcePurpose::ThirdPartyDelivery,
+                ],
+            )
             .await?;
-        Self::check_selected_eligibility(&mut tx, revision).await?;
+        }
+        let jobs = JobService::new(self.pool.clone());
+        let mut tx = jobs.begin_locked_confirmation(claim, 7324031001).await?;
+        if !withdrawal_only {
+            Self::check_selected_eligibility(&mut tx, revision).await?;
+        }
         let active: Option<Uuid> = sqlx::query_scalar(
             "SELECT revision_id FROM b3_history_active WHERE singleton FOR UPDATE",
         )
         .fetch_one(&mut *tx)
         .await?;
-        let row = sqlx::query("SELECT r.*,r.revision_kind='identity' AS identity_only FROM b3_history_revisions r WHERE r.id=$1 FOR UPDATE OF r")
+        let row = sqlx::query("SELECT r.*,r.revision_kind='identity' AS identity_only,r.revision_kind='withdrawal' AS withdrawal_only FROM b3_history_revisions r WHERE r.id=$1 FOR UPDATE OF r")
             .bind(revision)
             .fetch_one(&mut *tx)
             .await?;
         if active == Some(revision) {
-            JobService::complete(&mut tx, claim, JobCompletion::Succeeded).await?;
             tx.commit().await?;
             return Ok(());
         }
@@ -237,11 +282,11 @@ impl HistoryRepository {
         .execute(&mut *tx)
         .await?;
         sqlx::query("INSERT INTO b3_history_publications(revision_id,previous_revision_id,job_id,action) VALUES($1,$2,$3,'publish')").bind(revision).bind(active).bind(claim.id).execute(&mut *tx).await?;
-        if !row.get::<bool, _>("identity_only") {
-            sqlx::query("UPDATE b3_source_files SET status='ingested',ingested_at=NOW(),row_count_raw=(SELECT COALESCE(sum(detail_read),0)::int FROM b3_history_revision_members WHERE revision_id=$1),row_count_quarantined=$2::int WHERE id=$3").bind(revision).bind(row.get::<i64,_>("rejected")).bind(row.get::<String,_>("source_file_id")).execute(&mut *tx).await?;
+        if !row.get::<bool, _>("identity_only") && !row.get::<bool, _>("withdrawal_only") {
+            sqlx::query("UPDATE b3_source_files f SET status='ingested',ingested_at=NOW(),row_count_raw=COALESCE(c.raw,0),row_count_quarantined=COALESCE(c.rejected,0) FROM (SELECT m.source_file_id,sum(rm.detail_read)::int raw,sum(rm.rejected)::int rejected FROM b3_history_revision_members rm JOIN b3_source_file_members m ON m.id=rm.source_member_id WHERE rm.revision_id=$1 GROUP BY m.source_file_id) c WHERE f.id=c.source_file_id")
+                .bind(revision).execute(&mut *tx).await?;
         }
-        sqlx::query("UPDATE b3_quarantine_records old SET resolution_status='reprocessed',reprocessed_at=NOW() FROM b3_source_files current,b3_history_revisions r,b3_source_file_members m,b3_cotahist_occurrences o,b3_cotahist_versions v,b3_history_revision_quotes selected WHERE r.id=$1 AND current.id=r.source_file_id AND old.source_file_id=current.replayed_from_file_id AND m.source_file_id=current.id AND m.member_name=old.source_member_name AND o.revision_id=r.id AND o.source_member_id=m.id AND o.record_index=old.source_record_index AND v.id=o.version_id AND selected.revision_id=r.id AND selected.fact_id=v.fact_id AND selected.version_id=v.id AND old.resolution_status='quarantined'").bind(revision).execute(&mut *tx).await?;
-        JobService::complete(&mut tx, claim, JobCompletion::Succeeded).await?;
+        sqlx::query("UPDATE b3_quarantine_records old SET resolution_status='reprocessed',reprocessed_at=NOW() FROM b3_source_files current,b3_source_file_members m,b3_cotahist_occurrences o,b3_cotahist_versions v,b3_history_revision_quotes selected WHERE m.source_file_id=current.id AND old.source_file_id=current.replayed_from_file_id AND m.member_name=old.source_member_name AND o.revision_id=$1 AND o.source_member_id=m.id AND o.record_index=old.source_record_index AND v.id=o.version_id AND selected.revision_id=$1 AND selected.fact_id=v.fact_id AND selected.version_id=v.id AND old.resolution_status='quarantined'").bind(revision).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(())
     }
@@ -251,10 +296,7 @@ impl HistoryRepository {
             return self.rollback_registry_snapshot(claim, revision).await;
         }
         let jobs = JobService::new(self.pool.clone());
-        let mut tx = jobs.begin_confirmation(claim).await?;
-        sqlx::query("SELECT pg_advisory_xact_lock(7324031001)")
-            .execute(&mut *tx)
-            .await?;
+        let mut tx = jobs.begin_locked_confirmation(claim, 7324031001).await?;
         let active: Option<Uuid> = sqlx::query_scalar(
             "SELECT revision_id FROM b3_history_active WHERE singleton FOR UPDATE",
         )
@@ -277,9 +319,69 @@ impl HistoryRepository {
             .execute(&mut *tx)
             .await?;
         sqlx::query("INSERT INTO b3_history_publications(revision_id,previous_revision_id,job_id,action) VALUES($1,$2,$3,'rollback')").bind(revision).bind(active).bind(claim.id).execute(&mut *tx).await?;
-        JobService::complete(&mut tx, claim, JobCompletion::Succeeded).await?;
         tx.commit().await?;
         Ok(())
+    }
+
+    /// Publish a new view that omits facts in an inclusive business-date window.
+    /// Immutable artifacts, facts, versions, occurrences, and prior revisions remain intact.
+    pub async fn withdraw_window(
+        &self,
+        claim: &JobClaim,
+        from: NaiveDate,
+        to: NaiveDate,
+    ) -> Result<()> {
+        if from > to {
+            return Err(AppError::Validation(
+                "Intervalo de remoção inválido.".into(),
+            ));
+        }
+        let jobs = JobService::new(self.pool.clone());
+        let mut tx = jobs.begin_locked_confirmation(claim, 7324031001).await?;
+        let active: Option<Uuid> = sqlx::query_scalar(
+            "SELECT revision_id FROM b3_history_active WHERE singleton FOR UPDATE",
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        let Some(active) = active else {
+            tx.commit().await?;
+            return Ok(());
+        };
+        let revision = Uuid::new_v4();
+        sqlx::query("INSERT INTO b3_history_revisions(id,job_id,base_revision_id,source_file_id,channel,period_start,period_end,publication_key,official_revision,replaces_publication,status,expected_members,rejected,conflicts,revision_kind) SELECT $1,$2,id,source_file_id,channel,$3,$4,publication_key,official_revision,FALSE,'ready',expected_members,0,0,'withdrawal' FROM b3_history_revisions WHERE id=$5")
+            .bind(revision)
+            .bind(claim.id)
+            .bind(from)
+            .bind(to)
+            .bind(active)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("INSERT INTO b3_history_revision_members(revision_id,source_member_id,status,detail_read,rejected,out_of_scope) SELECT $1,source_member_id,status,detail_read,rejected,out_of_scope FROM b3_history_revision_members WHERE revision_id=$2")
+            .bind(revision)
+            .bind(active)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("INSERT INTO b3_history_revision_sources(revision_id,source_file_id,requested_from,requested_to) SELECT $1,source_file_id,$2,$3 FROM b3_history_revision_sources WHERE revision_id=$4 ON CONFLICT DO NOTHING")
+            .bind(revision)
+            .bind(from)
+            .bind(to)
+            .bind(active)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("INSERT INTO b3_history_revision_quotes SELECT $1,q.fact_id,q.version_id,q.source_member_id,q.record_index,q.instrument_id,q.resolution_status,q.selected_publication_key,q.selected_official_revision FROM b3_history_revision_quotes q JOIN b3_cotahist_facts f ON f.id=q.fact_id WHERE q.revision_id=$2 AND f.trade_date NOT BETWEEN $3 AND $4")
+            .bind(revision)
+            .bind(active)
+            .bind(from)
+            .bind(to)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("INSERT INTO b3_job_outputs(job_id,output_kind,output_id) VALUES($1,'revision',$2) ON CONFLICT DO NOTHING")
+            .bind(claim.id)
+            .bind(revision.to_string())
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        self.publish(claim, revision, false).await
     }
 
     pub async fn revision(&self, id: Uuid) -> Result<Option<RevisionInfo>> {

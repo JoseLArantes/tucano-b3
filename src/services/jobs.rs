@@ -15,8 +15,21 @@ use crate::error::{AppError, Result};
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum JobCommand {
     Ingest {
+        /// Official B3 source with a supported record-level date field; no consumer upload is accepted.
         source: SourceFileType,
+        /// Inclusive cut on the business date inside each COTAHIST detail record.
+        #[schema(example = "2025-01-02")]
         from: NaiveDate,
+        /// Inclusive cut on the business date inside each COTAHIST detail record.
+        #[schema(example = "2025-01-31")]
+        to: NaiveDate,
+    },
+    WithdrawWindow {
+        /// Inclusive first business date to omit from the active historical view.
+        #[schema(example = "2025-01-02")]
+        from: NaiveDate,
+        /// Inclusive last business date to omit from the active historical view.
+        #[schema(example = "2025-01-31")]
         to: NaiveDate,
     },
     Reparse {
@@ -43,6 +56,11 @@ impl JobCommand {
         match self {
             Self::Ingest { source, from, to } => {
                 validate_dates(*from, *to)?;
+                if !source.supports_record_date_cuts() {
+                    return Err(AppError::Validation(
+                        "Esta família ainda não pode aplicar cortes às datas internas dos registros.".into(),
+                    ));
+                }
                 Ok(format!("ingest:{source}:{from}:{to}"))
             }
             Self::Reparse { source_file_id } | Self::ReplayQuarantine { source_file_id } => {
@@ -51,6 +69,10 @@ impl JobCommand {
             Self::RebuildIdentity { from, to } => {
                 validate_dates(*from, *to)?;
                 Ok(format!("identity:{from}:{to}"))
+            }
+            Self::WithdrawWindow { from, to } => {
+                validate_dates(*from, *to)?;
+                Ok(format!("withdraw:{from}:{to}"))
             }
             Self::PublishRevision { .. } | Self::RollbackRevision { .. } => {
                 Ok("publication:cotahist".into())
@@ -253,6 +275,23 @@ impl JobService {
     /// Its row lock serializes cancellation and claim replacement with confirmation.
     pub async fn begin_confirmation(&self, claim: &JobClaim) -> Result<Transaction<'_, Postgres>> {
         let mut tx = self.pool.begin().await?;
+        Self::check_owner(&mut tx, claim, false).await?;
+        Ok(tx)
+    }
+
+    /// Acquire a potentially contended publication lock before locking the job row.
+    /// This lets heartbeats and a replacement claim proceed while the worker waits;
+    /// ownership is then revalidated under the row lock before protected writes.
+    pub async fn begin_locked_confirmation(
+        &self,
+        claim: &JobClaim,
+        advisory_lock: i64,
+    ) -> Result<Transaction<'_, Postgres>> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("SELECT pg_advisory_xact_lock($1)")
+            .bind(advisory_lock)
+            .execute(&mut *tx)
+            .await?;
         Self::check_owner(&mut tx, claim, false).await?;
         Ok(tx)
     }

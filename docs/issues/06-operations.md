@@ -1,6 +1,6 @@
 # 06 — Operar descoberta, fila e manutenção com recuperação
 
-Status: needs-info
+Status: completed
 
 Data: 05/11/2026. Marco: G5. Dependências: 02; desenvolvimento conjunto com 03/04.
 
@@ -31,7 +31,7 @@ PostgreSQL 16 real, comandos Compose obrigatórios, build e smoke de API/worker 
 
 ## Prontidão para execução
 
-Jobs, descoberta e recuperação estão integrados. A issue permanece aberta para qualificação de capacidade (benchmark concorrente, budgets derivados de medição, smoke das imagens correntes e validação da aplicação após restore); o calendário real depende de evidência oficial versionada.
+Jobs, descoberta e recuperação foram qualificados para o software 0.0.1 com testes PostgreSQL, build e smoke API/worker, benchmark e restore com consulta REST. O benchmark sintético não define budgets de produção. Calendário e descoberta de um canal real exigem evidência oficial e elegibilidade específica; sem isso, a cobertura permanece desconhecida e o canal desligado.
 
 ## Comments
 
@@ -41,3 +41,4 @@ Jobs, descoberta e recuperação estão integrados. A issue permanece aberta par
 
 - 06/11/2026 — Issue incorporada ao backlog em `docs/issues`; dependências e prontidão revistas, sem declarar pré-requisitos concluídos.
 - 06/11/2026 — Jobs integrados a API/CLI/worker, ingestão e publicação passam por fencing; testes PostgreSQL cobrem retry, cancelamento, lease expirada e dois processos reais. Discovery registra pendências sem ingerir, usa evidência de calendário e preserva `unknown`. Build/smoke e benchmark/restauração com 20.000 fatos sintéticos passaram e estão registrados no guia operacional; budgets de produção aguardam corpus autorizado/hardware-alvo.
+- 06/11/2026 — Fechado para o aceite de plataforma 0.0.1. A definição de budgets de implantação, operação com fonte real e calendário versionado segue como trabalho por canal após elegibilidade, sem reabrir G5 do software.

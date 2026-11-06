@@ -1,6 +1,6 @@
 # 05 — Publicar consulta histórica REST e MCP com cobertura explícita
 
-Status: needs-info
+Status: completed
 
 Data: 05/11/2026. Marco: G4. Dependências: 01, 02 e 04.
 
@@ -27,7 +27,7 @@ Consumidores precisam distinguir ausência, falha, identidade incerta e base nom
 
 ## Prontidão para execução
 
-REST e MCP stdio com serviços compartilhados foram implementados para os recursos habilitados no 0.0.1. O aceite de release requer dataset publicado e homologado, smoke da imagem atual e confirmação de elegibilidade da issue 01 para entrega a terceiros.
+REST e MCP stdio com serviços compartilhados foram qualificados para os recursos habilitados no 0.0.1, incluindo consulta e proveniência COTAHIST com dados de teste, OpenAPI, autenticação e MCP real com role read-only. Não se exige dataset real publicado para o release do software. Entrega de dados reais a terceiros depende da elegibilidade da issue 01.
 
 ## Comments
 
@@ -35,3 +35,4 @@ REST e MCP stdio com serviços compartilhados foram implementados para os recurs
 
 - 06/11/2026 — Issue incorporada ao backlog em `docs/issues`; dependências e prontidão revistas, sem declarar pré-requisitos concluídos.
 - 06/11/2026 — Testes cobrem auth read/admin, OpenAPI, paginação, revisão, precisão e proveniência; MCP roda como processo real com role read-only e rejeita mutações. Rotas de detalhe de instrumento, histórico de identifiers e TSL preservam lineage e não fazem fallback entre famílias.
+- 06/11/2026 — Smoke da API na imagem de qualificação, build Docusaurus e suíte REST/MCP/PostgreSQL passaram. A API sobre base restaurada retornou a mesma revisão e proveniência do backup; registro B3 permanece `deferred` no catálogo.

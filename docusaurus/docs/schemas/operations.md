@@ -22,7 +22,10 @@ Os comandos têm discriminador operation e não aceitam propriedades extras:
 - replay_quarantine: source_file_id;
 - rebuild_identity: from, to;
 - publish_revision: revision_id, acknowledge_issues;
-- rollback_revision: revision_id.
+- rollback_revision: revision_id;
+- withdraw_window: from, to inclusivos, sem remoção física.
+
+`ingest.from`/`to` são cortes inclusivos na data de negócio dos registros. No `0.0.1`, somente COTAHIST é aceito e usa `DATA DO PREGÃO`; metadados de publicação ajudam a selecionar artefatos, mas não substituem esse filtro. BVBG.028 e Tradable Security List são rejeitadas até que os registros tenham uma referência interna adequada. Upload de arquivo por consumidor não é suportado.
 
 ## JobView
 
@@ -32,7 +35,9 @@ Status descreve execução: queued, running, succeeded, succeeded_with_issues, f
 
 ## Revisão, conflito e quarentena
 
-RevisionView contém family, id, base_revision_id, period_start, period_end, status, expected_members, rejected, conflicts, created_at, published_at e provenance. family separa cotahist de registry; status pode ser draft, ready, published ou invalid.
+RevisionView contém family, id, revision_kind, source_file_ids, base_revision_id, period_start, period_end, status, expected_members, rejected, out_of_scope, conflicts, created_at, published_at e provenance. `family` separa cotahist de registry; `revision_kind` é ingest, identity, withdrawal ou registry_snapshot; status pode ser draft, ready, published ou invalid. Para COTAHIST, o intervalo é o corte solicitado e inclusivo. `out_of_scope` conta detalhes válidos no artefato que não pertencem ao corte.
+
+Um import limpo é promovido automaticamente. Rejeições e conflitos mantêm a candidata fora da visão ativa até decisão administrativa. Uma revisão `withdrawal` omite as datas solicitadas, mas preserva a evidência histórica para rollback/reimportação.
 
 ConflictView localiza o fato e as duas versões conflitantes, member, índice e proveniência. RejectionView informa source_member_id, record_index, byte_offset quando disponível, reason_code, mensagem controlada e proveniência. A resposta comum não devolve arbitrariamente o payload bruto.
 

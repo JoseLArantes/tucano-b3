@@ -88,6 +88,15 @@ impl Fixture {
         key: &str,
         edition: Option<i64>,
     ) -> Uuid {
+        sqlx::query("UPDATE b3_source_files SET period_start=$2,period_end=$2,publication_key=$3,official_revision=$4,replaces_publication=$5 WHERE id=$1")
+            .bind(&file)
+            .bind(date())
+            .bind(key)
+            .bind(edition)
+            .bind(edition.is_some())
+            .execute(&self.pool)
+            .await
+            .unwrap();
         repo.create_candidate(
             claim,
             CandidateSpec {
@@ -130,6 +139,7 @@ async fn seal(repo: &HistoryRepository, claim: &JobClaim, id: Uuid, member: &str
         &MemberOutcome {
             detail_read: count,
             rejected: 0,
+            out_of_scope: 0,
             structural_valid: true,
         },
     )
@@ -247,6 +257,7 @@ async fn conflicts_rejections_and_invalid_structure_never_silently_replace() {
         &MemberOutcome {
             detail_read: 1,
             rejected: 0,
+            out_of_scope: 0,
             structural_valid: false,
         },
     )
@@ -280,6 +291,7 @@ async fn conflicts_rejections_and_invalid_structure_never_silently_replace() {
         &MemberOutcome {
             detail_read: 2,
             rejected: 1,
+            out_of_scope: 0,
             structural_valid: true,
         },
     )

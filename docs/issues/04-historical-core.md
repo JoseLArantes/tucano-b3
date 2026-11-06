@@ -1,6 +1,6 @@
 # 04 — Entregar núcleo histórico COTAHIST e identidade disponível
 
-Status: needs-info
+Status: completed
 
 Data: 05/11/2026. Marco: G3. Dependências: 01, 02 e 03; coordenação com 06.
 
@@ -31,11 +31,12 @@ PostgreSQL 16 real para NULLs, transações, concorrência e auditoria; repetir 
 
 ## Prontidão para execução
 
-O núcleo técnico foi implementado sobre as issues 02, 03 e 06, com publicação explícita e fixtures sintéticas no PostgreSQL. O aceite completo ainda depende do corpus elegível da issue 01, da reconciliação entre granulações e do benchmark com uma amostra permitida.
+O núcleo COTAHIST foi qualificado com fixtures sintéticas no PostgreSQL 16: cortes inclusivos por data interna, revisão multi-artefato, gates de qualidade, publicação automática de import limpo, retirada, reimport idempotente e rollback. Corpus real e elegibilidade são necessários para operar um canal com dados reais, não para concluir o software. Fontes cadastrais estão adiadas neste primeiro contrato.
 
 ## Comments
 
 - 05/11/2026 — Detalhamento nas seções 7–12 e 18 do [PRD](../b3_prd.md). Não adicionar preços ajustados ou integração CVM.
 
 - 06/11/2026 — Issue incorporada ao backlog em `docs/issues`; dependências e prontidão revistas, sem declarar pré-requisitos concluídos.
-- 06/11/2026 — Testes streaming cobrem largura/encoding/precisão, isolamento de linhas inválidas, falhas estruturais, correção/conflito/rollback e rebuild cadastral. Dois workers de processo real validam claim/recovery/publicação explícita; uma fixture tipada valida TSL. Sem corpus oficial, isso não constitui homologação de produção.
+- 06/11/2026 — Estado de uma iteração anterior ao contrato de auto-publicação: testes streaming cobriam largura/encoding/precisão, falhas e rebuild; dois workers validavam claim/recovery e uma fixture tipada exercitava TSL. O estado atual, com COTAHIST auto-publicado após gates e cadastro adiado, está registrado na atualização seguinte.
+- 06/11/2026 — Qualificação integrada concluída no escopo COTAHIST sintético; import limpo publica automaticamente e fluxo de retirada/reimport/rollback passou. Os dados da fixture não são publicação B3 nem critério de cobertura de produção.

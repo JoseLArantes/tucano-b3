@@ -60,6 +60,15 @@ pub enum RevisionFamily {
     Cotahist,
     Registry,
 }
+/// Kind of atomic revision operation.
+#[derive(Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum RevisionKind {
+    Ingest,
+    Identity,
+    Withdrawal,
+    RegistrySnapshot,
+}
 /// Inspeção do candidato sem interpretação ou publicação em tempo de consulta.
 #[derive(Serialize, ToSchema)]
 pub struct RevisionView {
@@ -67,6 +76,10 @@ pub struct RevisionView {
     pub family: RevisionFamily,
     /// UUID da revisão.
     pub id: Uuid,
+    /// Operação que criou a revisão.
+    pub revision_kind: RevisionKind,
+    /// Arquivos oficiais reunidos na revisão, ordenados por UUID.
+    pub source_file_ids: Vec<String>,
     /// Revisão-base usada pelo candidato.
     pub base_revision_id: Option<Uuid>,
     /// Início do período declarado.
@@ -79,6 +92,8 @@ pub struct RevisionView {
     pub expected_members: i32,
     /// Ocorrências rejeitadas.
     pub rejected: i64,
+    /// Registros válidos lidos fora do corte de datas solicitado.
+    pub out_of_scope: i64,
     /// Conflitos sem precedência admissível.
     pub conflicts: i64,
     /// Momento de criação, UTC.
@@ -208,7 +223,7 @@ pub struct PendingView {
 }
 impl QueryService {
     pub async fn revision(&self, id: Uuid) -> Result<RevisionView, QueryError> {
-        let r = sqlx::query("SELECT id,base_revision_id,period_start,period_end,status,expected_members,rejected,conflicts,created_at,published_at,source_file_id,'cotahist'::text AS family FROM b3_history_revisions WHERE id=$1 UNION ALL SELECT id,base_snapshot_id,reference_date,reference_date,status,expected_members,rejected,0::bigint,created_at,published_at,source_file_id,'registry'::text FROM b3_registry_snapshots WHERE id=$1 AND NOT EXISTS(SELECT 1 FROM b3_history_revisions WHERE id=$1)")
+        let r = sqlx::query("SELECT r.id,r.base_revision_id,r.period_start,r.period_end,r.status,r.expected_members,r.rejected,r.conflicts,r.created_at,r.published_at,r.source_file_id,'cotahist'::text AS family,r.revision_kind,ARRAY(SELECT source_file_id FROM b3_history_revision_sources s WHERE s.revision_id=r.id ORDER BY source_file_id) AS source_file_ids,COALESCE((SELECT sum(out_of_scope) FROM b3_history_revision_members m WHERE m.revision_id=r.id),0)::bigint AS out_of_scope FROM b3_history_revisions r WHERE r.id=$1 UNION ALL SELECT id,base_snapshot_id,reference_date,reference_date,status,expected_members,rejected,0::bigint,created_at,published_at,source_file_id,'registry'::text,'registry_snapshot'::text,ARRAY[source_file_id]::varchar[],0::bigint FROM b3_registry_snapshots WHERE id=$1 AND NOT EXISTS(SELECT 1 FROM b3_history_revisions WHERE id=$1)")
             .bind(id)
             .fetch_optional(&self.pool)
             .await?
@@ -219,12 +234,18 @@ impl QueryService {
             family: serde_json::from_value(serde_json::Value::String(r.get("family")))
                 .map_err(|_| QueryError::Unavailable)?,
             id: r.get("id"),
+            revision_kind: serde_json::from_value(serde_json::Value::String(
+                r.get("revision_kind"),
+            ))
+            .map_err(|_| QueryError::Unavailable)?,
+            source_file_ids: r.get("source_file_ids"),
             base_revision_id: r.get("base_revision_id"),
             period_start: r.get("period_start"),
             period_end: r.get("period_end"),
             status,
             expected_members: r.get("expected_members"),
             rejected: r.get("rejected"),
+            out_of_scope: r.get("out_of_scope"),
             conflicts: r.get("conflicts"),
             created_at: r.get("created_at"),
             published_at: r.get("published_at"),

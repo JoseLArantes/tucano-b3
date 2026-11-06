@@ -27,6 +27,7 @@ pub struct LocatedRejection {
 pub struct MemberOutcome {
     pub detail_read: i64,
     pub rejected: i64,
+    pub out_of_scope: i64,
     pub structural_valid: bool,
 }
 #[derive(Debug, Default)]
@@ -247,10 +248,10 @@ impl HistoryRepository {
             ));
         }
         let valid: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM b3_source_file_members WHERE id=$1 AND source_file_id=$2)",
+            "SELECT EXISTS(SELECT 1 FROM b3_source_file_members m JOIN b3_history_revision_sources s ON s.source_file_id=m.source_file_id WHERE m.id=$1 AND s.revision_id=$2)",
         )
         .bind(member)
-        .bind(spec.get::<String, _>("source_file_id"))
+        .bind(revision)
         .fetch_one(&mut *tx)
         .await?;
         if !valid {
@@ -307,7 +308,7 @@ impl HistoryRepository {
         sqlx::query("INSERT INTO b3_cotahist_facts(trade_date,ticker_symbol,market_type,bdi_code,distribution_number,term_days) SELECT DISTINCT trade_date,ticker_symbol,market_type,bdi_code,distribution_number,term_days FROM b3_history_stage ON CONFLICT DO NOTHING").execute(&mut *tx).await?;
         sqlx::query("INSERT INTO b3_cotahist_versions(fact_id,business_hash,issuer_short_name,paper_specification,currency,open_price,high_price,low_price,average_price,last_price,best_bid_price,best_ask_price,trades_count,traded_quantity,traded_volume,option_exercise_price,price_correction_indicator,maturity_date,quotation_factor,exercise_price_points,isin,field_changed_at) SELECT DISTINCT f.id,s.business_hash,s.issuer_short_name,s.paper_specification,s.currency,s.open_price,s.high_price,s.low_price,s.average_price,s.last_price,s.best_bid_price,s.best_ask_price,s.trades_count,s.traded_quantity,s.traded_volume,s.option_exercise_price,s.price_correction_indicator,s.maturity_date,s.quotation_factor,s.exercise_price_points,s.isin,COALESCE(old.field_changed_at,'{}'::jsonb)||COALESCE((SELECT jsonb_object_agg(n.key,to_jsonb(NOW())) FROM jsonb_each(to_jsonb(s)-ARRAY['record_index','business_hash','trade_date','ticker_symbol','market_type','bdi_code','distribution_number','term_days']) n LEFT JOIN LATERAL jsonb_each(to_jsonb(old)) o ON o.key=n.key WHERE n.value IS DISTINCT FROM o.value AND (old.id IS NOT NULL OR n.value<>'null'::jsonb)),'{}'::jsonb) FROM b3_history_stage s JOIN b3_cotahist_facts f ON f.trade_date IS NOT DISTINCT FROM s.trade_date AND f.ticker_symbol IS NOT DISTINCT FROM s.ticker_symbol AND f.market_type IS NOT DISTINCT FROM s.market_type AND f.bdi_code IS NOT DISTINCT FROM s.bdi_code AND f.distribution_number IS NOT DISTINCT FROM s.distribution_number AND f.term_days IS NOT DISTINCT FROM s.term_days LEFT JOIN b3_history_revision_quotes previous ON previous.revision_id=$1 AND previous.fact_id=f.id LEFT JOIN b3_cotahist_versions old ON old.id=previous.version_id ON CONFLICT DO NOTHING").bind(revision).execute(&mut *tx).await?;
         sqlx::query("CREATE TEMP TABLE b3_history_incoming ON COMMIT DROP AS SELECT s.record_index,f.id fact_id,v.id version_id FROM b3_history_stage s JOIN b3_cotahist_facts f ON f.trade_date IS NOT DISTINCT FROM s.trade_date AND f.ticker_symbol IS NOT DISTINCT FROM s.ticker_symbol AND f.market_type IS NOT DISTINCT FROM s.market_type AND f.bdi_code IS NOT DISTINCT FROM s.bdi_code AND f.distribution_number IS NOT DISTINCT FROM s.distribution_number AND f.term_days IS NOT DISTINCT FROM s.term_days JOIN b3_cotahist_versions v ON v.fact_id=f.id AND v.business_hash=s.business_hash").execute(&mut *tx).await?;
-        sqlx::query("INSERT INTO b3_history_conflicts(revision_id,fact_id,existing_version_id,incoming_version_id,source_member_id,record_index) SELECT $1,i.fact_id,q.version_id,i.version_id,$2,i.record_index FROM b3_history_incoming i JOIN b3_history_revision_quotes q ON q.revision_id=$1 AND q.fact_id=i.fact_id JOIN b3_history_revisions r ON r.id=$1 WHERE q.version_id<>i.version_id AND NOT COALESCE(r.replaces_publication AND q.selected_publication_key=r.publication_key AND r.official_revision>q.selected_official_revision,FALSE) ON CONFLICT DO NOTHING").bind(revision).bind(member).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO b3_history_conflicts(revision_id,fact_id,existing_version_id,incoming_version_id,source_member_id,record_index) SELECT $1,i.fact_id,q.version_id,i.version_id,$2,i.record_index FROM b3_history_incoming i JOIN b3_history_revision_quotes q ON q.revision_id=$1 AND q.fact_id=i.fact_id JOIN b3_source_file_members m ON m.id=$2 JOIN b3_source_files incoming ON incoming.id=m.source_file_id JOIN b3_history_revisions r ON r.id=$1 WHERE q.version_id<>i.version_id AND NOT COALESCE(incoming.replaces_publication AND q.selected_publication_key=incoming.publication_key AND incoming.official_revision>q.selected_official_revision,FALSE) ON CONFLICT DO NOTHING").bind(revision).bind(member).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO b3_history_conflicts(revision_id,fact_id,existing_version_id,incoming_version_id,source_member_id,record_index) SELECT $1,a.fact_id,a.version_id,b.version_id,$2,b.record_index FROM b3_history_incoming a JOIN b3_history_incoming b ON a.fact_id=b.fact_id AND a.version_id<>b.version_id AND a.record_index<b.record_index ON CONFLICT DO NOTHING").bind(revision).bind(member).execute(&mut *tx).await?;
         let counts=sqlx::query("WITH classified AS (SELECT i.*,row_number() OVER(PARTITION BY i.fact_id ORDER BY i.record_index) AS rn,EXISTS(SELECT 1 FROM b3_cotahist_occurrences o JOIN b3_cotahist_versions v ON v.id=o.version_id WHERE o.revision_id=$1 AND v.fact_id=i.fact_id) AS seen FROM b3_history_incoming i) SELECT count(*) FILTER(WHERE rn=1 AND NOT seen AND q.fact_id IS NULL)::bigint inserted,count(*) FILTER(WHERE rn=1 AND NOT seen AND q.version_id<>i.version_id)::bigint changed,count(*) FILTER(WHERE rn=1 AND NOT seen AND q.version_id=i.version_id)::bigint unchanged,count(*) FILTER(WHERE rn>1 OR seen)::bigint duplicates FROM classified i LEFT JOIN b3_history_revision_quotes q ON q.revision_id=$1 AND q.fact_id=i.fact_id").bind(revision).fetch_one(&mut *tx).await?;
         let stats = BatchStats {
@@ -316,9 +317,9 @@ impl HistoryRepository {
             unchanged: counts.get("unchanged"),
             duplicate_in_scope: counts.get("duplicates"),
         };
-        sqlx::query("INSERT INTO b3_field_changes(id,source_file_id,table_name,record_pk,field_name,old_value_text,new_value_text,history_revision_id) SELECT gen_random_uuid()::text,r.source_file_id,'b3_cotahist_versions',i.fact_id::text,n.key,o.value #>> '{}',n.value #>> '{}',$1 FROM (SELECT DISTINCT fact_id,version_id FROM b3_history_incoming) i JOIN b3_history_revision_quotes q ON q.revision_id=$1 AND q.fact_id=i.fact_id AND q.version_id<>i.version_id JOIN b3_cotahist_versions old ON old.id=q.version_id JOIN b3_cotahist_versions new ON new.id=i.version_id JOIN b3_history_revisions r ON r.id=$1 CROSS JOIN LATERAL jsonb_each(to_jsonb(new)-ARRAY['id','fact_id','business_hash','created_at','data_changed_at','field_changed_at']) n JOIN LATERAL jsonb_each(to_jsonb(old)) o ON o.key=n.key WHERE n.value IS DISTINCT FROM o.value AND NOT EXISTS(SELECT 1 FROM b3_history_conflicts c WHERE c.revision_id=$1 AND c.fact_id=i.fact_id)").bind(revision).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO b3_field_changes(id,source_file_id,table_name,record_pk,field_name,old_value_text,new_value_text,history_revision_id) SELECT gen_random_uuid()::text,m.source_file_id,'b3_cotahist_versions',i.fact_id::text,n.key,o.value #>> '{}',n.value #>> '{}',$1 FROM (SELECT DISTINCT fact_id,version_id FROM b3_history_incoming) i JOIN b3_history_revision_quotes q ON q.revision_id=$1 AND q.fact_id=i.fact_id AND q.version_id<>i.version_id JOIN b3_cotahist_versions old ON old.id=q.version_id JOIN b3_cotahist_versions new ON new.id=i.version_id JOIN b3_source_file_members m ON m.id=$2 CROSS JOIN LATERAL jsonb_each(to_jsonb(new)-ARRAY['id','fact_id','business_hash','created_at','data_changed_at','field_changed_at']) n JOIN LATERAL jsonb_each(to_jsonb(old)) o ON o.key=n.key WHERE n.value IS DISTINCT FROM o.value AND NOT EXISTS(SELECT 1 FROM b3_history_conflicts c WHERE c.revision_id=$1 AND c.fact_id=i.fact_id)").bind(revision).bind(member).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO b3_cotahist_occurrences(revision_id,source_member_id,record_index,version_id) SELECT $1,$2,record_index,version_id FROM b3_history_incoming ON CONFLICT DO NOTHING").bind(revision).bind(member).execute(&mut *tx).await?;
-        sqlx::query("INSERT INTO b3_history_revision_quotes(revision_id,fact_id,version_id,source_member_id,record_index,selected_publication_key,selected_official_revision) SELECT DISTINCT ON(i.fact_id) $1,i.fact_id,i.version_id,$2,i.record_index,r.publication_key,r.official_revision FROM b3_history_incoming i JOIN b3_history_revisions r ON r.id=$1 ORDER BY i.fact_id,i.record_index ON CONFLICT(revision_id,fact_id) DO UPDATE SET version_id=EXCLUDED.version_id,source_member_id=EXCLUDED.source_member_id,record_index=EXCLUDED.record_index,selected_publication_key=EXCLUDED.selected_publication_key,selected_official_revision=EXCLUDED.selected_official_revision WHERE NOT EXISTS(SELECT 1 FROM b3_history_conflicts c WHERE c.revision_id=$1 AND c.fact_id=EXCLUDED.fact_id)").bind(revision).bind(member).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO b3_history_revision_quotes(revision_id,fact_id,version_id,source_member_id,record_index,selected_publication_key,selected_official_revision) SELECT DISTINCT ON(i.fact_id) $1,i.fact_id,i.version_id,$2,i.record_index,COALESCE(incoming.publication_key,r.publication_key),COALESCE(incoming.official_revision,r.official_revision) FROM b3_history_incoming i JOIN b3_history_revisions r ON r.id=$1 JOIN b3_source_file_members m ON m.id=$2 JOIN b3_source_files incoming ON incoming.id=m.source_file_id ORDER BY i.fact_id,i.record_index ON CONFLICT(revision_id,fact_id) DO UPDATE SET version_id=EXCLUDED.version_id,source_member_id=EXCLUDED.source_member_id,record_index=EXCLUDED.record_index,selected_publication_key=EXCLUDED.selected_publication_key,selected_official_revision=EXCLUDED.selected_official_revision WHERE NOT EXISTS(SELECT 1 FROM b3_history_conflicts c WHERE c.revision_id=$1 AND c.fact_id=EXCLUDED.fact_id)").bind(revision).bind(member).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(stats)
     }
@@ -339,12 +340,12 @@ impl HistoryRepository {
         }
         let jobs = JobService::new(self.pool.clone());
         let mut tx = jobs.begin_confirmation(claim).await?;
-        let spec = Self::draft(&mut tx, revision).await?;
+        Self::draft(&mut tx, revision).await?;
         let valid: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM b3_source_file_members WHERE id=$1 AND source_file_id=$2)",
+            "SELECT EXISTS(SELECT 1 FROM b3_source_file_members m JOIN b3_history_revision_sources s ON s.source_file_id=m.source_file_id WHERE m.id=$1 AND s.revision_id=$2)",
         )
         .bind(member)
-        .bind(spec.get::<String, _>("source_file_id"))
+        .bind(revision)
         .fetch_one(&mut *tx)
         .await?;
         if !valid {
@@ -369,7 +370,7 @@ impl HistoryRepository {
                 .execute(&mut *tx)
                 .await?;
         }
-        sqlx::query("INSERT INTO b3_quarantine_records(id,source_file_id,source_member_name,source_file_type,reference_date,source_line_number,reason_code,error_message,raw_payload,history_revision_id,source_record_index,byte_offset) SELECT gen_random_uuid()::text,s.id,m.member_name,s.source_file_type,s.reference_date,CASE WHEN r.record_index<=2147483647 THEN r.record_index::int END,r.reason_code,r.message,jsonb_build_object('raw',r.raw_payload),$1,r.record_index,r.byte_offset FROM b3_history_rejections r JOIN b3_history_revisions h ON h.id=r.revision_id JOIN b3_source_files s ON s.id=h.source_file_id JOIN b3_source_file_members m ON m.id=r.source_member_id WHERE r.revision_id=$1 AND r.source_member_id=$2 ON CONFLICT DO NOTHING").bind(revision).bind(member).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO b3_quarantine_records(id,source_file_id,source_member_name,source_file_type,reference_date,source_line_number,reason_code,error_message,raw_payload,history_revision_id,source_record_index,byte_offset) SELECT gen_random_uuid()::text,s.id,m.member_name,s.source_file_type,s.reference_date,CASE WHEN r.record_index<=2147483647 THEN r.record_index::int END,r.reason_code,r.message,jsonb_build_object('raw',r.raw_payload),$1,r.record_index,r.byte_offset FROM b3_history_rejections r JOIN b3_source_file_members m ON m.id=r.source_member_id JOIN b3_source_files s ON s.id=m.source_file_id WHERE r.revision_id=$1 AND r.source_member_id=$2 ON CONFLICT DO NOTHING").bind(revision).bind(member).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(())
     }
@@ -383,21 +384,22 @@ impl HistoryRepository {
     ) -> Result<()> {
         let jobs = JobService::new(self.pool.clone());
         let mut tx = jobs.begin_confirmation(claim).await?;
-        let spec = Self::draft(&mut tx, revision).await?;
+        Self::draft(&mut tx, revision).await?;
         let valid: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM b3_source_file_members WHERE id=$1 AND source_file_id=$2)",
+            "SELECT EXISTS(SELECT 1 FROM b3_source_file_members m JOIN b3_history_revision_sources s ON s.source_file_id=m.source_file_id WHERE m.id=$1 AND s.revision_id=$2)",
         )
         .bind(member)
-        .bind(spec.get::<String, _>("source_file_id"))
+        .bind(revision)
         .fetch_one(&mut *tx)
         .await?;
-        if !valid || outcome.detail_read < 0 || outcome.rejected < 0 {
+        if !valid || outcome.detail_read < 0 || outcome.rejected < 0 || outcome.out_of_scope < 0 {
             return Err(AppError::Validation("Resultado de member inválido.".into()));
         }
         let accepted:i64=sqlx::query_scalar("SELECT count(*) FROM b3_cotahist_occurrences WHERE revision_id=$1 AND source_member_id=$2").bind(revision).bind(member).fetch_one(&mut *tx).await?;
         let rejected:i64=sqlx::query_scalar("SELECT count(*) FROM b3_history_rejections WHERE revision_id=$1 AND source_member_id=$2").bind(revision).bind(member).fetch_one(&mut *tx).await?;
         if outcome.structural_valid
-            && (accepted + rejected != outcome.detail_read || rejected != outcome.rejected)
+            && (accepted + rejected + outcome.out_of_scope != outcome.detail_read
+                || rejected != outcome.rejected)
         {
             return Err(AppError::Validation(
                 "Contadores não fecham com ocorrências/rejeições persistidas.".into(),
@@ -408,7 +410,7 @@ impl HistoryRepository {
         } else {
             "invalid"
         };
-        sqlx::query("INSERT INTO b3_history_revision_members(revision_id,source_member_id,status,detail_read,rejected) VALUES($1,$2,$3,$4,$5) ON CONFLICT(revision_id,source_member_id) DO UPDATE SET status=EXCLUDED.status,detail_read=EXCLUDED.detail_read,rejected=EXCLUDED.rejected").bind(revision).bind(member).bind(status).bind(outcome.detail_read).bind(rejected).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO b3_history_revision_members(revision_id,source_member_id,status,detail_read,rejected,out_of_scope) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(revision_id,source_member_id) DO UPDATE SET status=EXCLUDED.status,detail_read=EXCLUDED.detail_read,rejected=EXCLUDED.rejected,out_of_scope=EXCLUDED.out_of_scope").bind(revision).bind(member).bind(status).bind(outcome.detail_read).bind(rejected).bind(outcome.out_of_scope).execute(&mut *tx).await?;
         if !outcome.structural_valid {
             sqlx::query("UPDATE b3_history_revisions SET status='invalid' WHERE id=$1")
                 .bind(revision)

@@ -18,7 +18,13 @@ Operações usam os mesmos jobs e estados PostgreSQL compartilhados entre API, C
 | GET /api/v1/b3/sync-runs | Admin | Lista execuções refletidas no registro operacional |
 | GET /api/v1/b3/sync-runs/&#123;id&#125; | Admin | Consulta a execução durável por identificador |
 
-POST /jobs recebe idempotency_key, command, priority e max_attempts opcional. max_attempts padrão 3, faixa de 1 a 100. Commands são ingest, reparse, replay_quarantine, rebuild_identity, publish_revision ou rollback_revision. Reuso da chave com comando idêntico retorna o mesmo job; uso incompatível retorna 409. O POST não faz download ou parsing dentro da requisição.
+POST /jobs recebe idempotency_key, command, priority e max_attempts opcional. max_attempts padrão 3, faixa de 1 a 100. Commands são ingest, reparse, replay_quarantine, rebuild_identity, publish_revision, rollback_revision ou withdraw_window. Reuso da chave com comando idêntico retorna o mesmo job; uso incompatível retorna 409. O POST não faz download ou parsing dentro da requisição.
+
+`ingest` exige uma família B3 oficial configurada e `from`/`to` inclusivos sobre a data de negócio. No `0.0.1`, somente COTAHIST diário, mensal ou anual é aceito: o worker seleciona cada fato pela `DATA DO PREGÃO`; o período declarado do arquivo só localiza possíveis publicações. O administrador envia o ano inteiro explicitamente se esse for o corte desejado. Publicações COTAHIST múltiplas selecionadas no mesmo job são consolidadas em uma revisão atômica. BVBG.028 e Tradable Security List permanecem `deferred` e são rejeitadas no comando de ingestão.
+
+Não há endpoint de upload. Importação local é configuração administrativa controlada para artefato oficial rastreável, não uma forma de consumidores enviarem dados. Os canais/finalidades sem elegibilidade permanecem desabilitados.
+
+Um import limpo publica automaticamente após os gates estruturais, de rejeição, conflito e elegibilidade. Falhas de qualidade deixam a candidata não ativa e o job `succeeded_with_issues`. `withdraw_window` publica uma nova visão sem as datas inclusivas solicitadas; raw, fatos, versões, ocorrências e revisões anteriores não são apagados e rollback pode restaurar a visão anterior.
 
 ## Descoberta e pendências
 
