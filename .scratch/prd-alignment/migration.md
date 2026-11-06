@@ -193,6 +193,6 @@ sequenceDiagram
 - [ ] **Gate G2 (Acquisition & Artifacts)**: `blocked` — Blocked by P1 in-memory download buffering and silent ZIP depth truncation ([Issue 03](docs/issues/03-artifact-acquisition.md)).
 - [ ] **Gate G3 (Historical Core)**: `blocked` — Blocked by P1 persistence gap (lack of atomic transaction boundary across facts, audits, and status) and permissive COTAHIST trailer check ([Issue 04](docs/issues/04-historical-core.md)).
 - [ ] **Gate G4 (Query Product)**: `blocked` — Blocked by P2 architecture gap (lack of shared query services between REST and MCP) ([Issue 05](docs/issues/05-query-product.md)).
-- [ ] **Gate G5 (Operations)**: `blocked` — Blocked by P1 coordination gap (lack of populated trading calendar, worker timezone drift, and lack of retained connection locks in sync service) ([Issue 06](docs/issues/06-operations.md)).
+- [ ] **Gate G5 (Operations)**: `blocked` — Blocked by P1 coordination gap (lack of populated trading calendar, worker timezone drift, and lack of durable worker leases) ([Issue 06](docs/issues/06-operations.md)).
 - [ ] **Gate G6 (Price Reports)**: `blocked` — Blocked on platform prerequisites G1–G5 ([Issue 07](docs/issues/07-price-reports.md)).
 - [ ] **Gate G7 (Indices & Portfolios)**: `blocked` — Blocked on platform prerequisites G1–G5 ([Issue 08](docs/issues/08-indices-and-portfolios.md)).
