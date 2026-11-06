@@ -96,7 +96,7 @@ pub fn parse_bvbg_028<R: BufRead>(reader: R) -> Result<ParsedOutput<Bvbg028Row>>
                                 current_row.security_source = canonicalize_string(Some(text));
                             }
                         }
-                        "marketidentifiercode" | "mic" => {
+                        "marketidentifiercode" | "mic" | "mktidrcd" => {
                             if current_row.market_identifier_code.is_none() {
                                 current_row.market_identifier_code =
                                     canonicalize_string(Some(text));
@@ -133,7 +133,8 @@ pub fn parse_bvbg_028<R: BufRead>(reader: R) -> Result<ParsedOutput<Bvbg028Row>>
                                 current_row.segment_name = canonicalize_string(Some(text));
                             }
                         }
-                        "tickersymbol" | "ticker_symbol" | "ticker" | "tckrsymb" => {
+                        "tickersymbol" | "ticker_symbol" | "ticker" | "tckrsymb"
+                        | "plrtytckrsymb" => {
                             if current_row.ticker_symbol.is_none() {
                                 current_row.ticker_symbol = canonicalize_ticker(Some(text));
                             }

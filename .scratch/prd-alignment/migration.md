@@ -101,12 +101,13 @@ Scope: Architecture, Data Safeguards, Implementation Sequence, and Release Gates
 ### Package 5: Shared Query Services Layer (PRD Step 6)
 - **Scope**:
   - Extract query SQL duplicated between `src/api/routers/` and `src/mcp/tools.rs` into:
-    - `src/services/query/instruments.rs`: search, detail, temporal coverage, corporate actions.
-    - `src/services/query/quotes.rs`: daily OHLCV series, price reports, simplified quotes, raw price warning envelope.
-    - `src/services/query/indices.rs`: theoretical portfolio compositions, index weights.
-    - `src/services/query/governance.rs`: companies, economic groups, sectors.
+    - `src/services/query/instruments.rs`: search, detail by security_id/ticker/isin, temporal identifiers history, and coverage diagnostics.
+    - `src/services/query/quotes.rs`: COTAHIST raw historical OHLCV series with unadjusted prices disclaimer, BVBG.086 PriceReport quotes, BVBG.186 simplified quotes, and 086 vs 186 price comparison.
+    - `src/services/query/indices.rs`: BVBG.087 registered indices list, index close/settlement values by date/code, theoretical portfolio compositions by index and date, and reverse ticker membership.
+    - `src/services/query/source_files.rs`: source files catalog, archive member details, ingestion sync runs status/counters, and quarantine records inspection.
   - Wire Axum handlers and MCP tools to call these shared services.
   - Guarantee 100% parameter, ordering, pagination (`PaginatedResponse<T>`), and envelope parity between transports.
+  - **Scope Boundary**: Corporate actions, external CVM enrichment, economic groups, and sector classifications are strictly excluded from this query layer, in full compliance with `AGENTS.md` and `PRODUCT.md`.
 
 ### Package 6: Worker Scheduler & Discovery Decoupling (PRD Step 6)
 - **Scope**:

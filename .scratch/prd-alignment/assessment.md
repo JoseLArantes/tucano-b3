@@ -4,9 +4,9 @@ Generated according to the evaluation framework in [PRD section 19](docs/b3_prd.
 
 Date: 2026-11-06, America/Sao_Paulo  
 Baseline Commit: `1e7ec9de97466376e85f37cdfad6a0615ed80641` (main)  
-Review Execution Commits: `466ccee`, `de33876`, `aeacc8f`, `a2d6e88`  
+Review Execution Commits: `466ccee`, `de33876`, `aeacc8f`, `a2d6e88`, `32f6281`, `077e8e1`  
 Validation Environment: PostgreSQL 16.11 (Alpine) on port 5433, Docker Compose development service  
-Test Suite Result: 35 tests executed; 35 passed; 0 failed; 0 skipped.
+Test Suite Result: 37 tests executed; 37 passed; 0 failed; 0 skipped.
 
 > [!WARNING]
 > While the test suite passes 100%, static code analysis and test coverage inspection confirm critical gaps in coordination, persistence atomicity, memory boundedness, and worker scheduling. Release gates G2 through G5 remain **blocked** pending implementation of the remediation packages.
@@ -65,12 +65,12 @@ graph TD
 | **ACQ-001** (PRD §10.3) | Downloads must be bounded and streamed to disk | `src/services/download_service.rs:94` | Code inspection: uses `resp.bytes().await?.to_vec()`. High memory risk on multi-hundred MB files. | `gap` | `code-inspection` | P1 | `extend` | [Issue 03](docs/issues/03-artifact-acquisition.md) |
 | **ACQ-002** (PRD §10.3) | URL host must be restricted to official B3 hosts | `src/services/download_service.rs:37` | `test_download_service_rejects_non_b3_host` passed in `download_and_lock_tests.rs`. | `aligned` | `runtime-verified` | P2 | `retain` | None |
 | **ACQ-003** (PRD §10.4) | Path traversal protection on local raw files | `src/services/download_service.rs:60` | `test_download_service_allows_local_raw_files` passed in `download_and_lock_tests.rs`. | `aligned` | `runtime-verified` | P1 | `retain` | None |
-| **ARC-001** (PRD §10.3) | ZIP recursion depth limit must fail visibly | `src/parsers/mod.rs:70` | `test_zip_extraction_depth_limit` passed, but code inspection shows silent exit `if depth > 4 { return Ok(()); }`. PRD requires explicit error. | `partial` | `runtime-verified` + `code-inspection` | P1 | `extend` | [Issue 03](docs/issues/03-artifact-acquisition.md) |
+| **ARC-001** (PRD §10.3) | ZIP recursion depth limit must fail visibly | `src/parsers/mod.rs:70` | `test_zip_extraction_depth_limit` passed: composite archive containing a valid shallow member alongside an over-depth nested archive visibly returns `AppError::Layout` instead of silently omitting nested members. | `aligned` | `runtime-verified` | P1 | `retain` | None |
 | **ARC-002** (PRD §10.3) | Extracted members must have immutable SHA-256 | `src/parsers/mod.rs:99` | Code inspection and `test_sync_bvbg_028_idempotency_and_audit` verify SHA-256 computation. | `aligned` | `runtime-verified` | P2 | `retain` | None |
 | **PAR-001** (PRD §6.7) | COTAHIST 245-byte fixed width, scales, sentinel dates | `src/parsers/cotahist.rs:56` | `test_parse_cotahist_fixed_width` & `test_parse_cotahist_invalid_record_size` passed in `parser_tests.rs`. | `aligned` | `runtime-verified` | P0 | `retain` | [Issue 04](docs/issues/04-historical-core.md) |
 | **PAR-002** (PRD §6.7) | COTAHIST trailer count validation | `src/parsers/cotahist.rs:118` | Code inspection: line 118 tolerates `trailer_count != quotes_len && trailer_count != quotes_len + 2` permissively without recording failure reason. PRD requires structural validation. | `partial` | `code-inspection` | P1 | `extend` | [Issue 04](docs/issues/04-historical-core.md) |
-| **PAR-003** (PRD §6.1) | BVBG.028 ISO 20022 XML parsing and namespaces | `src/parsers/bvbg_028.rs` | `test_parse_bvbg_028_iso_20022_structure_and_namespaces` & `test_parse_bvbg_028_instrument` passed. | `aligned` | `runtime-verified` | P1 | `retain & extend` | [Issue 03](docs/issues/03-artifact-acquisition.md) |
-| **PAR-004** (PRD §6.3, 6.4) | BVBG.086 vs BVBG.186 strict separation | `src/parsers/bvbg_086.rs`, `bvbg_186.rs` | `test_parse_bvbg_086_and_186` & `test_parse_bvbg_086_iso_20022_structure` passed in `parser_tests.rs`. | `aligned` | `runtime-verified` | P1 | `retain` | [Issue 07](docs/issues/07-price-reports.md) |
+| **PAR-003** (PRD §6.1) | BVBG.028 ISO 20022 XML parsing and namespaces | `src/parsers/bvbg_028.rs` | `test_parse_bvbg_028_synthetic_simplified_xml` and `test_parse_bvbg_028_representative_nested_iso_20022` passed (testing `FinInstrmId/OthrId/Id`, `TradDt/Dt`, `PlrtyTckrSymb`, `ISIN`). Full real corpus homologation pending under Issue 01. | `partial` | `runtime-verified` (structures) + `needs-info` (corpus) | P1 | `retain & extend` | [Issue 01](docs/issues/01-source-viability.md), [Issue 03](docs/issues/03-artifact-acquisition.md) |
+| **PAR-004** (PRD §6.3, 6.4) | BVBG.086 vs BVBG.186 strict separation | `src/parsers/bvbg_086.rs`, `bvbg_186.rs` | `test_parse_bvbg_086_and_186`, `test_parse_bvbg_086_synthetic_simplified_xml`, and `test_parse_bvbg_086_representative_nested_iso_20022` passed in `parser_tests.rs`. | `aligned` | `runtime-verified` | P1 | `retain` | [Issue 07](docs/issues/07-price-reports.md) |
 | **PER-001** (PRD §8) | Natural keys with NULLS NOT DISTINCT | `migrations/0001_initial_b3_schema.sql` | `test_nulls_not_distinct_uniqueness_invariant` passed in `upsert_and_audit_tests.rs`. | `aligned` | `runtime-verified` | P0 | `retain` | None |
 | **PER-002** (PRD §8) | Idempotent upserts and field changes audit | `src/db/upsert.rs:11` | `test_granular_field_audit_and_idempotency` passed in `upsert_and_audit_tests.rs`. | `aligned` | `runtime-verified` | P0 | `retain` | [Issue 04](docs/issues/04-historical-core.md) |
 | **PER-003** (PRD §19.2) | Atomic transaction boundary for data, audit, and status | `src/services/sync_service.rs:122` | Code inspection: lock tx is acquired, but child queries run on pool. No atomic rollback across facts, audit, and status. | `gap` | `code-inspection` | P1 | `extend` | [Issue 04](docs/issues/04-historical-core.md) |
@@ -146,17 +146,19 @@ test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
      Running tests/parser_tests.rs (target/debug/deps/parser_tests-e044a2ec3f56ef83)
 
-running 8 tests
-test test_parse_bvbg_028_iso_20022_structure_and_namespaces ... ok
+running 10 tests
 test test_parse_bvbg_028_instrument ... ok
-test test_parse_bvbg_086_iso_20022_structure ... ok
-test test_parse_bvbg_087 ... ok
+test test_parse_bvbg_028_synthetic_simplified_xml ... ok
 test test_parse_bvbg_086_and_186 ... ok
+test test_parse_bvbg_086_representative_nested_iso_20022 ... ok
+test test_parse_bvbg_086_synthetic_simplified_xml ... ok
+test test_parse_bvbg_087 ... ok
 test test_parse_cotahist_fixed_width ... ok
 test test_parse_cotahist_invalid_record_size ... ok
 test test_parse_tradable_and_index_composition_csv ... ok
+test test_parse_bvbg_028_representative_nested_iso_20022 ... ok
 
-test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
      Running tests/resolver_and_rebuild_tests.rs (target/debug/deps/resolver_and_rebuild_tests-702f68006cac2b1c)
 
@@ -194,7 +196,7 @@ test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
 ### Analysis of Demonstrated vs. Undemonstrated Capabilities
 
-The 35 tests above demonstrate:
+The 37 tests above demonstrate:
 1. `rust_decimal::Decimal` fixed-point calculations and implied decimal parsing.
 2. Canonicalization of dates, tickers, ISINs, and stable row hashing.
 3. PostgreSQL 16 `UNIQUE NULLS NOT DISTINCT` constraint enforcement.
@@ -203,6 +205,8 @@ The 35 tests above demonstrate:
 6. Advisory lock fencing helpers (`try_acquire_pg_advisory_xact_lock_tx`, `try_acquire_session_advisory_lock`).
 7. OpenAPI 3.1 documentation generation and COTAHIST unadjusted prices disclaimer envelope.
 8. Basic read-only MCP tool execution.
+9. Visible failure upon exceeding ZIP recursion depth limit (depth > 4) even when valid shallow members are present in the archive.
+10. XML parsing of both simplified tags and representative nested ISO 20022 paths (`FinInstrmId/OthrId/Id`, `PlrtyTckrSymb`, `ISIN`, `TradDt/Dt`).
 
 The suite **DOES NOT** demonstrate (Gaps to remediate):
 - **B3 Calendar Validation**: No tests for official holiday calendars, special sessions, or half-day trading sessions.

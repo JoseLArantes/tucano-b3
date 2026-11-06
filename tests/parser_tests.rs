@@ -1,3 +1,4 @@
+use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use std::io::Cursor;
 
@@ -193,7 +194,7 @@ fn test_parse_cotahist_invalid_record_size() {
 }
 
 #[test]
-fn test_parse_bvbg_028_iso_20022_structure_and_namespaces() {
+fn test_parse_bvbg_028_synthetic_simplified_xml() {
     let xml = r#"<?xml version="1.0" encoding="utf-8"?>
     <bvbg:Document xmlns:bvbg="urn:bvmf.052.01.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
       <bvbg:BizData>
@@ -230,8 +231,68 @@ fn test_parse_bvbg_028_iso_20022_structure_and_namespaces() {
     );
 }
 
+/// Representative ISO 20022 nested structure test with official B3 element hierarchy:
+/// - Provenance: Official B3 Entry Point / BVBG.028.02 InstrumentsConsolidated XML specification.
+/// - Exercises nested paths: `InstrmInf/Instrm/FinInstrmId/OthrId/Id`, `FinInstrmGnlAttrbts/PlrtyTckrSymb`,
+///   `FinInstrmGnlAttrbts/ISIN`, and `TradDt/Dt`.
 #[test]
-fn test_parse_bvbg_086_iso_20022_structure() {
+fn test_parse_bvbg_028_representative_nested_iso_20022() {
+    let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+    <bvbg:Document xmlns:bvbg="urn:bvmf.052.01.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+      <bvbg:BizData>
+        <bvbg:Pyld>
+          <bvbg:Document>
+            <bvbg:InstrmInf>
+              <bvbg:Instrm>
+                <bvbg:FinInstrmId>
+                  <bvbg:OthrId>
+                    <bvbg:Id>20000001</bvbg:Id>
+                    <bvbg:Tp>
+                      <bvbg:Prtry>SctyId</bvbg:Prtry>
+                    </bvbg:Tp>
+                  </bvbg:OthrId>
+                  <bvbg:PlcOfListg>
+                    <bvbg:MktIdrCd>BVMF</bvbg:MktIdrCd>
+                  </bvbg:PlcOfListg>
+                </bvbg:FinInstrmId>
+                <bvbg:FinInstrmGnlAttrbts>
+                  <bvbg:PlrtyTckrSymb>VALE3</bvbg:PlrtyTckrSymb>
+                  <bvbg:ISIN>BRVALEACNOR0</bvbg:ISIN>
+                  <bvbg:AsstDesc>VALE S.A. ON</bvbg:AsstDesc>
+                  <bvbg:Asst>VALE</bvbg:Asst>
+                </bvbg:FinInstrmGnlAttrbts>
+                <bvbg:TradDt>
+                  <bvbg:Dt>2026-03-01</bvbg:Dt>
+                </bvbg:TradDt>
+              </bvbg:Instrm>
+            </bvbg:InstrmInf>
+          </bvbg:Document>
+        </bvbg:Pyld>
+      </bvbg:BizData>
+    </bvbg:Document>
+    "#;
+
+    let parsed = parse_bvbg_028(Cursor::new(xml)).unwrap();
+    assert_eq!(parsed.rows.len(), 1);
+    assert_eq!(parsed.rows[0].security_id, "20000001");
+    assert_eq!(parsed.rows[0].ticker_symbol.as_deref(), Some("VALE3"));
+    assert_eq!(parsed.rows[0].isin.as_deref(), Some("BRVALEACNOR0"));
+    assert_eq!(
+        parsed.rows[0].market_identifier_code.as_deref(),
+        Some("BVMF")
+    );
+    assert_eq!(
+        parsed.rows[0].asset_description.as_deref(),
+        Some("VALE S.A. ON")
+    );
+    assert_eq!(
+        parsed.rows[0].reference_date,
+        NaiveDate::from_ymd_opt(2026, 3, 1)
+    );
+}
+
+#[test]
+fn test_parse_bvbg_086_synthetic_simplified_xml() {
     let xml = r#"<?xml version="1.0" encoding="utf-8"?>
     <Document xmlns="urn:bvmf.086.01.xsd">
       <PricRpt>
@@ -251,6 +312,50 @@ fn test_parse_bvbg_086_iso_20022_structure() {
     let parsed = parse_bvbg_086(Cursor::new(xml)).unwrap();
     assert_eq!(parsed.rows.len(), 1);
     assert_eq!(parsed.rows[0].ticker_symbol.as_deref(), Some("PETR4"));
+    assert_eq!(parsed.rows[0].last_price, Some(Decimal::new(3600, 2)));
+    assert_eq!(parsed.rows[0].first_price, Some(Decimal::new(3550, 2)));
+}
+
+/// Representative ISO 20022 nested structure test with official B3 element hierarchy:
+/// - Provenance: Official B3 BVBG.086.01 PriceReport XML specification.
+/// - Exercises nested paths: `PricRpt/TradDt/Dt`, `PricRpt/SctyId/OthrId/Id`, and `PricRpt/MktIdrCd`.
+#[test]
+fn test_parse_bvbg_086_representative_nested_iso_20022() {
+    let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+    <Document xmlns="urn:bvmf.086.01.xsd">
+      <PricRpt>
+        <TradDt>
+          <Dt>2026-03-01</Dt>
+        </TradDt>
+        <SctyId>
+          <OthrId>
+            <Id>10000001</Id>
+          </OthrId>
+        </SctyId>
+        <TckrSymb>PETR4</TckrSymb>
+        <MktIdrCd>BVMF</MktIdrCd>
+        <FrstPric>35.50</FrstPric>
+        <MinPric>35.10</MinPric>
+        <MaxPric>36.20</MaxPric>
+        <TradAvrgPric>35.80</TradAvrgPric>
+        <LastPric>36.00</LastPric>
+        <NtlRglrVol>125000000.00</NtlRglrVol>
+      </PricRpt>
+    </Document>
+    "#;
+
+    let parsed = parse_bvbg_086(Cursor::new(xml)).unwrap();
+    assert_eq!(parsed.rows.len(), 1);
+    assert_eq!(parsed.rows[0].security_id.as_deref(), Some("10000001"));
+    assert_eq!(parsed.rows[0].ticker_symbol.as_deref(), Some("PETR4"));
+    assert_eq!(
+        parsed.rows[0].market_identifier_code.as_deref(),
+        Some("BVMF")
+    );
+    assert_eq!(
+        parsed.rows[0].trade_date,
+        NaiveDate::from_ymd_opt(2026, 3, 1)
+    );
     assert_eq!(parsed.rows[0].last_price, Some(Decimal::new(3600, 2)));
     assert_eq!(parsed.rows[0].first_price, Some(Decimal::new(3550, 2)));
 }

@@ -76,7 +76,7 @@ fn test_zip_extraction_depth_limit() {
     use tucano_b3::parsers::extract_archive_members;
     use zip::write::{FileOptions, ZipWriter};
 
-    // Create a 6-level deep nested zip (exceeding depth > 4)
+    // 1. Build an over-depth nested archive (nested 5 levels deep, reaching depth 5 > 4)
     let mut current_bytes = Vec::new();
     {
         let mut zw = ZipWriter::new(std::io::Cursor::new(&mut current_bytes));
@@ -98,10 +98,34 @@ fn test_zip_extraction_depth_limit() {
         current_bytes = next_bytes;
     }
 
-    // Attempt extraction on depth > 4 nested archive
-    let result = extract_archive_members(SourceFileType::Bvbg028InstrumentsFile, &current_bytes);
-    // At depth > 4, the current implementation silently drops entries, returning Layout error because members is empty
-    assert!(result.is_err(), "Deeply nested archive beyond max depth should fail rather than silently produce partial results");
+    // 2. Build the root archive containing BOTH a valid shallow member AND the over-depth archive.
+    // If the depth limit dropped entries silently, this root archive would erroneously succeed with
+    // only the shallow member instead of safely rejecting the corrupted/over-depth archive.
+    let mut root_archive_bytes = Vec::new();
+    {
+        let mut zw = ZipWriter::new(std::io::Cursor::new(&mut root_archive_bytes));
+        zw.start_file("valid_shallow.xml", FileOptions::<()>::default())
+            .unwrap();
+        zw.write_all(b"<root><shallow>valid</shallow></root>")
+            .unwrap();
+        zw.start_file("over_depth_archive.zip", FileOptions::<()>::default())
+            .unwrap();
+        zw.write_all(&current_bytes).unwrap();
+        zw.finish().unwrap();
+    }
+
+    // Attempt extraction on the composite archive
+    let result =
+        extract_archive_members(SourceFileType::Bvbg028InstrumentsFile, &root_archive_bytes);
+    assert!(
+        result.is_err(),
+        "Archive containing an over-depth nested member alongside a valid shallow member must visibly fail rather than silently omitting nested content"
+    );
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("Profundidade máxima de descompactação") || err_msg.contains("4"),
+        "Error must specifically indicate recursion depth limit exceeded, got: {err_msg}"
+    );
 }
 
 #[tokio::test]

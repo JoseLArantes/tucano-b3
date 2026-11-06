@@ -68,7 +68,9 @@ fn extract_zip_recursive(
     depth: usize,
 ) -> Result<()> {
     if depth > 4 {
-        return Ok(());
+        return Err(AppError::Layout(
+            "Profundidade máxima de descompactação recursiva de ZIP (4) excedida.".to_string(),
+        ));
     }
 
     let cursor = Cursor::new(bytes);
