@@ -11,17 +11,26 @@ Scope: Architecture, Data Safeguards, Implementation Sequence, and Release Gates
 
 1. **Immutable Baseline Migration**:
    - `migrations/0001_initial_b3_schema.sql` is frozen and must never be altered retroactively.
-   - All future structural additions (e.g., `b3_trading_calendar`, worker task leases, indexes) must be introduced in sequential, additive migrations (`0002_coordination_and_calendar.sql`).
+   - All future structural additions or column enhancements must be introduced in sequential, additive migrations (`0002_coordination_and_calendar.sql`).
 2. **Preservation of Market Facts**:
    - Historical quotes in `b3_cotahist_quotes`, `b3_price_report_quotes`, and `b3_equities_simplified_price_quotes` must never be altered, overwritten, or deduplicated by ticker alone.
    - `NULLS NOT DISTINCT` uniqueness invariants on natural keys guarantee facts remain distinct and uncorrupted.
 3. **Audit History Continuity**:
    - Existing records in `b3_field_changes`, `b3_sync_runs`, and `b3_quarantine_records` must remain intact as immutable historical evidence.
 4. **Zero-Downtime Consumer Parity**:
-   - All 42 public REST endpoints retain their exact URL path (`/api/v1/b3/...`), query parameter names, and response envelope (`data`, `meta`, `provenance`, `unadjusted_warning`).
-   - Internal refactorings (such as shared query service extraction) must produce byte-level compatible JSON responses.
-5. **No Bypassing of Transports**:
-   - MCP and REST must execute identical business and analytical queries via shared service layers.
+   - All 44 public/protected REST endpoints retain their exact URL path (`/api/v1/b3/...`), query parameter names, and standard response envelope:
+     ```json
+     {
+       "items": [ ... ],
+       "total": 1520,
+       "limit": 100,
+       "offset": 0,
+       "disclaimer": "..."
+     }
+     ```
+   - Internal refactorings (such as shared query service extraction) must produce byte-level compatible JSON responses matching `PaginatedResponse<T>`.
+5. **Strict Transport Boundary**:
+   - MCP and REST must execute identical analytical queries via shared service layers (`src/services/query/`).
    - MCP remains strictly read-only and never performs DDL migrations or ingestion mutations.
 
 ---
@@ -38,14 +47,37 @@ Scope: Architecture, Data Safeguards, Implementation Sequence, and Release Gates
 
 ### Package 2: Additive Coordination & Calendar Schema (PRD Steps 2 & 3)
 - **Target Migration**: `migrations/0002_coordination_and_calendar.sql`
-- **Scope**:
-  - Create `b3_trading_calendar`:
-    - Columns: `calendar_date DATE PRIMARY KEY`, `is_trading_day BOOLEAN NOT NULL`, `session_type VARCHAR(32) NOT NULL`, `open_time TIME`, `close_time TIME`, `notes TEXT`.
-    - Populate with official B3 holiday and special session data from 1986 to present.
-  - Create `b3_worker_leases`:
-    - Columns: `lease_id UUID PRIMARY KEY`, `resource_name VARCHAR(128) NOT NULL UNIQUE`, `owner_worker_id VARCHAR(128) NOT NULL`, `acquired_at TIMESTAMPTZ NOT NULL`, `heartbeat_at TIMESTAMPTZ NOT NULL`, `lease_duration_seconds INT NOT NULL`.
-  - Safe rollback (`down.sql`):
-    - Drops `b3_worker_leases` and `b3_trading_calendar` without touching market facts or sync tables.
+- **Context & Safeguards**:
+  - `b3_trading_calendar` was **already created** in `migrations/0001_initial_b3_schema.sql` with columns `(calendar_date DATE PRIMARY KEY, is_trading_day BOOLEAN NOT NULL DEFAULT TRUE, holiday_name VARCHAR(255), source_note VARCHAR(255), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`.
+  - **Never drop or recreate `b3_trading_calendar`**: Doing so would corrupt existing baseline schemas and destroy calendar data on rollback.
+- **Additive Scope**:
+  - Enhance `b3_trading_calendar` with non-destructive, additive columns:
+    ```sql
+    ALTER TABLE b3_trading_calendar ADD COLUMN IF NOT EXISTS session_type VARCHAR(32) NOT NULL DEFAULT 'REGULAR';
+    ALTER TABLE b3_trading_calendar ADD COLUMN IF NOT EXISTS settlement_day BOOLEAN NOT NULL DEFAULT TRUE;
+    ```
+  - Populate/seed official B3 trading calendar records (1986–present), including national holidays, Carnival, Corpus Christi, and special half-day sessions (Ash Wednesday).
+  - Create `b3_worker_leases` for durable task claiming and heartbeat fencing:
+    ```sql
+    CREATE TABLE IF NOT EXISTS b3_worker_leases (
+        lease_id UUID PRIMARY KEY,
+        resource_name VARCHAR(128) NOT NULL UNIQUE,
+        owner_worker_id VARCHAR(128) NOT NULL,
+        acquired_at TIMESTAMPTZ NOT NULL,
+        heartbeat_at TIMESTAMPTZ NOT NULL,
+        lease_duration_seconds INT NOT NULL
+    );
+    ```
+  - **Safe Rollback Strategy (`down.sql`)**:
+    - Drops `b3_worker_leases`:
+      ```sql
+      DROP TABLE IF EXISTS b3_worker_leases;
+      ```
+    - Removes only the added columns from `b3_trading_calendar`, preserving the base table and its rows:
+      ```sql
+      ALTER TABLE b3_trading_calendar DROP COLUMN IF EXISTS settlement_day;
+      ALTER TABLE b3_trading_calendar DROP COLUMN IF EXISTS session_type;
+      ```
 
 ### Package 3: Streaming Acquisition & Resilient Extraction (PRD Step 4)
 - **Scope**:
@@ -58,12 +90,13 @@ Scope: Architecture, Data Safeguards, Implementation Sequence, and Release Gates
     - Enforce maximum uncompressed member size limit (e.g., 500 MB).
 
 ### Package 4: Transactional Persistence & Session-Lock Fencing (PRD Steps 4 & 5)
-- **Scope**:
-  - Update `B3SyncService`:
-    - Acquire session advisory lock via `try_acquire_session_advisory_lock` on a dedicated checkout connection from `PgPool`.
-    - Route all single-date ingestion, parsing, domain fact insertion, `b3_field_changes` auditing, and `b3_sync_runs` status transitions through a single atomic transaction or the locked connection.
-    - Release lock deterministically in RAII drop guard or cleanup block upon completion or failure.
-    - Quarantine invalid individual records without failing the entire valid batch.
+- **Architecture & Invariants**:
+  - **Exclusion vs. Atomicity Separation**: A session advisory lock provides process-level **mutual exclusion**; it does **not** provide transactional rollback for SQL statements executed on the connection. Therefore, locking and transaction management must be strictly decoupled:
+    1. **Concurrency Exclusion**: Acquire a session-level advisory lock (`pg_try_advisory_lock`) on a dedicated checkout connection from `PgPool` across the task duration. This guarantees that only one worker can process a given source file scope/date at any time.
+    2. **Transactional Atomicity**: All state mutations for a member or file — domain facts (`b3_cotahist_quotes`, etc.), granular field audits (`b3_field_changes`), member state (`b3_source_file_members`), quarantine entries (`b3_quarantine_records`), and run counters (`b3_sync_runs`) — **must be executed inside an explicit PostgreSQL transaction (`BEGIN ... COMMIT`)**.
+    3. **Failure Rollback**: In the event of an unrecoverable failure during ingestion, the transaction issues an explicit `ROLLBACK`. No autocommitted facts or partial batches remain in the database.
+    4. **Publication Mechanism**: New dataset revisions or historical slices become visible to readers atomically only when the transaction commits, transitioning `b3_source_files` and `b3_sync_runs` to status `completed`. External queries observe only committed, valid revisions via PostgreSQL snapshot isolation.
+    5. **Lock Lifecycle**: The session advisory lock is released in an RAII drop guard or explicit `finally` block before returning the connection to the pool.
 
 ### Package 5: Shared Query Services Layer (PRD Step 6)
 - **Scope**:
@@ -73,7 +106,7 @@ Scope: Architecture, Data Safeguards, Implementation Sequence, and Release Gates
     - `src/services/query/indices.rs`: theoretical portfolio compositions, index weights.
     - `src/services/query/governance.rs`: companies, economic groups, sectors.
   - Wire Axum handlers and MCP tools to call these shared services.
-  - Guarantee 100% parameter, ordering, pagination, and envelope parity between transports.
+  - Guarantee 100% parameter, ordering, pagination (`PaginatedResponse<T>`), and envelope parity between transports.
 
 ### Package 6: Worker Scheduler & Discovery Decoupling (PRD Step 6)
 - **Scope**:
@@ -104,7 +137,8 @@ sequenceDiagram
     participant Prod as Production Pipeline
 
     Raw->>Shadow: Ingest via Streaming I/O (Disk-buffered)
-    Shadow->>DB: Atomically persist facts + audits in transaction
+    Note over Shadow,DB: Atomically persist facts + audits in explicit transaction
+    Shadow->>DB: BEGIN -> INSERT facts/audits -> COMMIT
     Raw->>Prod: Legacy Ingestion
     Prod->>DB: Persist legacy baseline
     Verifier->>DB: Compare natural keys, stable_row_hash, field changes
@@ -137,6 +171,6 @@ sequenceDiagram
 - [ ] **Gate G2 (Acquisition & Artifacts)**: `blocked` — Blocked by P1 in-memory download buffering and silent ZIP depth truncation ([Issue 03](docs/issues/03-artifact-acquisition.md)).
 - [ ] **Gate G3 (Historical Core)**: `blocked` — Blocked by P1 persistence gap (lack of atomic transaction boundary across facts, audits, and status) and permissive COTAHIST trailer check ([Issue 04](docs/issues/04-historical-core.md)).
 - [ ] **Gate G4 (Query Product)**: `blocked` — Blocked by P2 architecture gap (lack of shared query services between REST and MCP) ([Issue 05](docs/issues/05-query-product.md)).
-- [ ] **Gate G5 (Operations)**: `blocked` — Blocked by P1 coordination gap (lack of `b3_trading_calendar`, worker timezone drift, and lack of retained connection locks in sync service) ([Issue 06](docs/issues/06-operations.md)).
+- [ ] **Gate G5 (Operations)**: `blocked` — Blocked by P1 coordination gap (lack of populated trading calendar, worker timezone drift, and lack of retained connection locks in sync service) ([Issue 06](docs/issues/06-operations.md)).
 - [ ] **Gate G6 (Price Reports)**: `blocked` — Blocked on platform prerequisites G1–G5 ([Issue 07](docs/issues/07-price-reports.md)).
 - [ ] **Gate G7 (Indices & Portfolios)**: `blocked` — Blocked on platform prerequisites G1–G5 ([Issue 08](docs/issues/08-indices-and-portfolios.md)).
