@@ -52,12 +52,24 @@ async fn test_auth_whitelist_and_rejection() {
         .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
 
-    // 2. /api/v1/health is public
+    // 2. /api/v1/health and /api/v1/b3/worker/health are public
     let res = app
         .clone()
         .oneshot(
             Request::builder()
                 .uri("/api/v1/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/b3/worker/health")
                 .body(Body::empty())
                 .unwrap(),
         )

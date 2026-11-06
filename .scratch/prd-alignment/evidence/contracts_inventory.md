@@ -8,24 +8,29 @@ Baseline commit: `1e7ec9de97466376e85f37cdfad6a0615ed80641`
 ## 1. Authentication and Authorization Model
 
 - **Protected Path Prefix**: `/api/v1/b3/*` enforced via `axum::middleware::from_fn_with_state(app_state, require_bearer_token)`.
-- **Public Exceptions**:
-  - `/health`
-  - `/health/worker`
+- **Public Exceptions** (`src/api/auth.rs`):
+  - `/healthz`
+  - `/api/v1/health`
+  - `/api/v1/b3/worker/health`
   - `/metrics`
   - `/openapi.json`
   - `/docs` (Swagger UI)
   - `/redoc` (Redoc UI)
-- **Token Configuration**: `B3_API_BEARER_TOKEN` (default: `dev-token`). Missing or invalid header returns `401 Unauthorized` with JSON payload `{"error":"Unauthorized","message":"Token de autenticação ausente ou inválido. Use 'Authorization: Bearer <token>'."}`.
+- **Token Configuration**: `TUCANO_B3_TOKEN` (default: `dev-token`, configured in `src/config.rs:55` and verified in `src/api/auth.rs:45`). Missing or invalid header returns `401 Unauthorized` with JSON payload `{"error":"Unauthorized","message":"Token de autenticação ausente ou inválido. Use 'Authorization: Bearer <token>'."}`.
 
 ---
 
-## 2. Effective Endpoints Matrix (44 Protected + 3 Public Routes)
+## 2. Effective Endpoints Matrix (44 Protected + 7 Public Endpoints)
 
 | Group / Tag | Method | Path | Summary & Business Scope | Invariants & Filters |
 |---|---|---|---|---|
-| **Health & Metrics** | `GET` | `/health` | API & Database connectivity | Public |
-| | `GET` | `/health/worker` | Background worker status | Public |
+| **Health & Metrics** | `GET` | `/healthz` | Simple liveness probe | Public |
+| | `GET` | `/api/v1/health` | Comprehensive API & PostgreSQL 16 connectivity | Public |
+| | `GET` | `/api/v1/b3/worker/health` | Background worker daemon status & PostgreSQL 16 connectivity | Public |
 | | `GET` | `/metrics` | Prometheus metrics scrape | Public |
+| | `GET` | `/openapi.json` | OpenAPI 3.1 JSON specification | Public |
+| | `GET` | `/docs` | Swagger UI interactive API documentation | Public |
+| | `GET` | `/redoc` | Redoc interactive API documentation | Public |
 | **BVBG.028.02 (Instruments)** | `GET` | `/api/v1/b3/instruments` | Instruments root list | `limit` (1-1000), `offset`, `ticker`, `isin`, `security_id`, `market_code` |
 | | `GET` | `/api/v1/b3/instruments/{id}` | Instrument by primary UUID | 404 on missing |
 | | `GET` | `/api/v1/b3/instruments/by-security-id/{security_id}` | Instrument by numeric security_id | Primary root lookup |
@@ -115,14 +120,15 @@ When `include_internal=true`, the item also includes `internal_metadata`:
 
 ## 4. Persistent Schema Invariants (migrations/0001_initial_b3_schema.sql)
 
-- Total tables in migration 0001: 15 tables.
+- Total tables in migration 0001: **17 tables** (`b3_pending_updates`, `b3_source_files`, `b3_source_file_members`, `b3_sync_runs`, `b3_quarantine_records`, `b3_field_changes`, `b3_trading_calendar`, `b3_instruments`, `b3_instrument_identifiers`, `b3_tradable_securities`, `b3_tradable_securities_staging`, `b3_price_report_quotes`, `b3_equities_simplified_price_quotes`, `b3_indices`, `b3_index_report_values`, `b3_index_portfolio_compositions`, `b3_cotahist_quotes`).
 - **Natural Key Constraints (`UNIQUE NULLS NOT DISTINCT`)**:
   - `uq_cotahist_nk`: `b3_cotahist_quotes(trade_date, ticker_symbol, market_type, bdi_code, distribution_number)`
   - `uq_price_report_nk`: `b3_price_report_quotes(trade_date, security_id, ticker_symbol, market_identifier_code, days_to_settlement)`
   - `uq_equities_simplified_nk`: `b3_equities_simplified_price_quotes(trade_date, security_id, ticker_symbol, market_identifier_code)`
-  - `uq_index_report_nk`: `b3_index_report_quotes(trade_date, index_code, value_type)`
-  - `uq_index_composition_nk`: `b3_index_compositions(composition_date, index_code, ticker_symbol, instrument_id)`
+  - `uq_index_report_nk`: `b3_index_report_values(trade_date, index_code, value_type)`
+  - `uq_index_composition_nk`: `b3_index_portfolio_compositions(composition_date, index_code, ticker_symbol, instrument_id)`
   - `uq_tradable_nk`: `b3_tradable_securities(reference_date, security_id, ticker_symbol, market_code)`
+  - `uq_indices_code`: `b3_indices(index_code)`
 - **Instrument Root & Window Constraints**:
   - `b3_instruments(security_id)` — Root canonical identity.
   - `uq_instrument_identifiers`: `b3_instrument_identifiers(identifier_type, identifier_value, COALESCE(market_code, ''), COALESCE(valid_from, '1900-01-01'))`
