@@ -28,6 +28,12 @@ Disponibilidade pública, coleta automatizada, persistência e redistribuição 
 
 Bypass de restrições, contratação paga, migração de runtime e implementação de novos coletores antes da elegibilidade.
 
+## Prontidão para execução
+
+Informações externas de elegibilidade e corpus ainda pendentes. Preparação de perguntas e inventário podem avançar; aquisição real e conclusão dependem de evidência suficiente. O status deve mudar para `ready-for-agent` somente após registrar a evidência que libera a entrega completa.
+
 ## Comments
 
-- 05/11/2026 — Criada a partir da [pesquisa](../RESEARCH.md) e da seção 4 do [PRD](../../../docs/b3_prd.md). Requer evidência externa; os demais trabalhos offline independentes podem avançar conforme o PRD vigente.
+- 05/11/2026 — Criada a partir da [pesquisa](../RESEARCH.md) e da seção 4 do [PRD](../b3_prd.md). Requer evidência externa; os demais trabalhos offline independentes podem avançar conforme o PRD vigente.
+
+- 06/11/2026 — Issue incorporada ao backlog em `docs/issues`; dependências e prontidão revistas, sem declarar pré-requisitos concluídos.

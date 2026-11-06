@@ -8,7 +8,7 @@ Responsável pela decisão de produto: mantenedor do projeto.
 
 Este é o **único PRD de produto vigente** do `tucano-b3`. Define escopo e comportamento-alvo; sua adoção não significa que todas as capacidades estejam implementadas. Contratos publicados e migrations existentes permanecem sujeitos às regras de compatibilidade e migração deste documento.
 
-Documentos associados: [pesquisa e fontes oficiais](../.scratch/b3-historical-data/RESEARCH.md), [vocabulário de domínio](../.scratch/b3-historical-data/CONTEXT.md) e [issues de execução](#20-plano-de-entrega-e-issues).
+Documentos associados: [pesquisa e fontes oficiais](RESEARCH.md), [vocabulário de domínio](domain/CONTEXT.md) e [issues de execução](#20-plano-de-entrega-e-issues).
 
 ## 1. Direção de produto
 
@@ -20,7 +20,7 @@ O centro do produto é a confiabilidade do histórico. A stack Rust/Tokio/Axum/S
 
 Recomendações centrais:
 
-1. **COTAHIST como base candidata do histórico longo de cotações.** A B3 apresenta a série desde 1986, sem ajustes retroativos; a cobertura efetiva será demonstrada por arquivos e períodos [R01](../.scratch/b3-historical-data/RESEARCH.md#r01).
+1. **COTAHIST como base candidata do histórico longo de cotações.** A B3 apresenta a série desde 1986, sem ajustes retroativos; a cobertura efetiva será demonstrada por arquivos e períodos [R01](RESEARCH.md#r01).
 2. **Registro B3 como raiz de identidade, com fontes distintas.** `BVBG.028`, Tradable Security List e `InstrumentsConsolidated` devem ser cruzados por evidência, preservando seus contratos e diferenças.
 3. **Boletins diários como produtos específicos.** `BVBG.086`, `BVBG.186` e `BVBG.087` mantêm tabelas, DTOs, edições e linhagem próprias.
 4. **Histórico antes de abrangência.** Entregar primeiro cotações históricas, identidade temporal, cobertura, replay e governança. Índices e demais famílias entram por marcos próprios, sem omissão dos requisitos finais.
@@ -93,7 +93,7 @@ O novo desenho não usa as limitações do código para reduzir invariantes de p
 
 ### 4.1 Evidência que precisa orientar o lançamento
 
-Os [termos institucionais](https://www.b3.com.br/pt_br/termos-de-uso-e-protecao-de-dados/termos-de-uso/) impõem condições de uso e difusão. Páginas de dados públicos apresentam restrição à automação; as políticas de Market Data distinguem modalidades e finalidades. A política regulatória estabelece divulgação gratuita para grupos específicos. Esses textos precisam ser considerados em conjunto, sem concluir que um deles concede direitos irrestritos sobre todos os demais [R03–R08](../.scratch/b3-historical-data/RESEARCH.md#r03).
+Os [termos institucionais](https://www.b3.com.br/pt_br/termos-de-uso-e-protecao-de-dados/termos-de-uso/) impõem condições de uso e difusão. Páginas de dados públicos apresentam restrição à automação; as políticas de Market Data distinguem modalidades e finalidades. A política regulatória estabelece divulgação gratuita para grupos específicos. Esses textos precisam ser considerados em conjunto, sem concluir que um deles concede direitos irrestritos sobre todos os demais [R03–R08](RESEARCH.md#r03).
 
 **Conclusão de pesquisa:** a disponibilidade pública das fontes técnicas foi documentada; a viabilidade de uma API para terceiros com custo zero de licença permanece **não comprovada**.
 
@@ -158,7 +158,7 @@ As três últimas linhas **não ampliam automaticamente** a lista de fontes acei
 
 ### 5.3 Cadastro e Tradable Security List
 
-Recomenda-se ingerir primeiro as fotografias de cadastro disponíveis para o período pretendido e priorizar a preservação diária dessas evidências. O documento do Tradable Security List acrescenta informação útil de identidade; o cadastro consolidado não garante os mesmos campos [R09–R11](../.scratch/b3-historical-data/RESEARCH.md#r09).
+Recomenda-se ingerir primeiro as fotografias de cadastro disponíveis para o período pretendido e priorizar a preservação diária dessas evidências. O documento do Tradable Security List acrescenta informação útil de identidade; o cadastro consolidado não garante os mesmos campos [R09–R11](RESEARCH.md#r09).
 
 O pipeline histórico não deverá ficar bloqueado pela impossibilidade de obter cadastro de uma época remota. Um registro de preço válido e não resolvido é um resultado preservável. A API por ticker/mercado/data continua disponível; consultas por instrumento retornam apenas vínculos sustentados por evidência.
 
@@ -174,7 +174,7 @@ Preservar distinções de termo, leilão, exercício, mercado fracionário e out
 
 No BVBG.087, cada bloco recebe DTO e unidade compatíveis. Um valor de IOPV ou referência de BDR não vira fechamento de índice por compartilharem um arquivo.
 
-Para carteiras, guardar `index_code`, data-base, publicação conhecida, vigência, estágio (`preview` ou `effective`) e member de origem. Pesos diários não são constantes durante toda a vigência de uma carteira. A API não usará composição atual como substituto de um dia passado [R17](../.scratch/b3-historical-data/RESEARCH.md#r17).
+Para carteiras, guardar `index_code`, data-base, publicação conhecida, vigência, estágio (`preview` ou `effective`) e member de origem. Pesos diários não são constantes durante toda a vigência de uma carteira. A API não usará composição atual como substituto de um dia passado [R17](RESEARCH.md#r17).
 
 Endpoints internos de frontend, como `GetPortfolioDay` ou `DownloadPortfolioDay`, são candidatos de implementação. Só entram no catálogo operacional após confirmar acesso, formato, semântica de data, paginação e histórico. Não há garantia de estabilidade derivada de seu uso pelo site.
 
@@ -303,7 +303,7 @@ Uma versão nova de arquivo pode corrigir ou retirar uma linha. Remoções só s
 
 ### 9.2 COTAHIST: contrato de interpretação
 
-O leiaute oficial orienta a leitura; detalhes confirmados estão em [R12](../.scratch/b3-historical-data/RESEARCH.md#r12). Requisitos de implementação propostos:
+O leiaute oficial orienta a leitura; detalhes confirmados estão em [R12](RESEARCH.md#r12). Requisitos de implementação propostos:
 
 - Validar largura em bytes antes da decodificação; tratar CRLF/LF e final de arquivo sem alterar os 245 bytes do registro.
 - Selecionar encoding por perfil homologado. Não tratar ISO-8859-1 e Windows-1252 como equivalentes universais.
@@ -806,7 +806,7 @@ As observações abaixo não são um laudo de execução nem significam que os t
 | Resolver inicial por security_id não recebe todos os qualificadores; fallback reúne candidatos | Homologar precedência e conflitos, sem ampliar vínculo indevidamente |
 | OpenAPI registra parte dos handlers e há DTOs/projeções com documentação desigual | Inventariar a superfície real antes de declarar cobertura contratual completa |
 | Há testes de integração que retornam cedo sem PostgreSQL | Corrigir a comprovação de integração, sem presumir que um verde atual cobre banco |
-| Não há context map/ADRs B3 na árvore examinada | Registrar vocabulário e decisões reais sem importar os contextos CVM |
+| A inspeção inicial não encontrou context map/ADRs B3 | Vocabulário incorporado ao [mapa de contextos](../CONTEXT-MAP.md); registrar novas decisões reais sem importar contextos CVM |
 
 O README descreve algumas propriedades como entregues que precisam de comprovação de execução e desempenho. Corrigir essas afirmações no marco de implementação correspondente, com evidência de comportamento e sem substituir instruções operacionais atuais por funcionalidades planejadas.
 
@@ -826,14 +826,14 @@ Os marcos abaixo não são estimativas de prazo. A incerteza de acesso e corpus 
 
 | Marco | Resultado | Saída obrigatória | Issue |
 | --- | --- | --- | --- |
-| G0 | Viabilidade e corpus homologável | Canal/finalidade sem custo confirmados, formatos e lacunas registrados | [01](../.scratch/b3-historical-data/issues/01-source-viability.md) |
-| G1 | Contratos e modelo de identidade | Inventário v1, chaves testáveis, janelas e revisão especificadas | [02](../.scratch/b3-historical-data/issues/02-domain-and-contracts.md) |
-| G2 | Aquisição e replay seguros | Raw, inventário, limites, integridade e mocks determinísticos | [03](../.scratch/b3-historical-data/issues/03-artifact-acquisition.md) |
-| G3 | Núcleo histórico completo | COTAHIST + cadastros disponíveis + promoção/auditoria/recuperação | [04](../.scratch/b3-historical-data/issues/04-historical-core.md) |
-| G4 | Produto consultável | REST/MCP, cobertura, documentação e compatibilidade | [05](../.scratch/b3-historical-data/issues/05-query-product.md) |
-| G5 | Manutenção contínua confiável | Scanner, fila, calendário, prioridade, cancelamento e fencing | [06](../.scratch/b3-historical-data/issues/06-operations.md) |
-| G6 | Boletins complementares | 086/186 separados, edições, comparação explícita | [07](../.scratch/b3-historical-data/issues/07-price-reports.md) |
-| G7 | Índices e carteiras | 087 e composições com vigência/estágio, qualidade e fontes permitidas | [08](../.scratch/b3-historical-data/issues/08-indices-and-portfolios.md) |
+| G0 | Viabilidade e corpus homologável | Canal/finalidade sem custo confirmados, formatos e lacunas registrados | [01](issues/01-source-viability.md) |
+| G1 | Contratos e modelo de identidade | Inventário v1, chaves testáveis, janelas e revisão especificadas | [02](issues/02-domain-and-contracts.md) |
+| G2 | Aquisição e replay seguros | Raw, inventário, limites, integridade e mocks determinísticos | [03](issues/03-artifact-acquisition.md) |
+| G3 | Núcleo histórico completo | COTAHIST + cadastros disponíveis + promoção/auditoria/recuperação | [04](issues/04-historical-core.md) |
+| G4 | Produto consultável | REST/MCP, cobertura, documentação e compatibilidade | [05](issues/05-query-product.md) |
+| G5 | Manutenção contínua confiável | Scanner, fila, calendário, prioridade, cancelamento e fencing | [06](issues/06-operations.md) |
+| G6 | Boletins complementares | 086/186 separados, edições, comparação explícita | [07](issues/07-price-reports.md) |
+| G7 | Índices e carteiras | 087 e composições com vigência/estágio, qualidade e fontes permitidas | [08](issues/08-indices-and-portfolios.md) |
 
 G1 e desenvolvimento offline de G2 podem avançar durante a análise de G0. G3 depende de G1/G2 e de corpus obtido de forma permitida; G4 requer G3. G5 precisa começar junto de G2/G3 para não adiar recuperação e locks; G6/G7 exigem a plataforma comum e homologação própria de fonte.
 
@@ -859,7 +859,7 @@ Questões que exigem evidência externa: permissões e custos por finalidade; ho
 
 ## 22. Documentação e governança do produto
 
-`docs/b3_prd.md` é a fonte única dos requisitos de produto. Pesquisa, glossário e issues são documentos de apoio e não constituem PRDs alternativos. Alterações de escopo devem ser registradas neste documento; decisões arquiteturais efetivamente tomadas pertencem aos ADRs. O [glossário](../.scratch/b3-historical-data/CONTEXT.md) acompanha esta versão; sua organização canônica deve seguir `CONTEXT-MAP.md` e glossários locais por responsabilidade quando esses contextos forem estabelecidos.
+`docs/b3_prd.md` é a fonte única dos requisitos de produto. Pesquisa, glossário e issues são documentos de apoio e não constituem PRDs alternativos. Alterações de escopo devem ser registradas neste documento; decisões arquiteturais efetivamente tomadas pertencem aos ADRs. O [glossário](domain/CONTEXT.md) acompanha esta versão; sua organização canônica está indicada no [mapa de contextos](../CONTEXT-MAP.md). O [backlog](issues/README.md) distingue trabalho pronto e dependências ainda pendentes.
 
 Em cada implementação de contrato/fluxo: atualizar OpenAPI, README, documentação de consumidor/operação e `docs/frontend_api_changelog.md` com a data real da alteração. Configuração nova exige `.env.example`, Compose e instruções alinhadas. Não registrar esta pesquisa como mudança de API entregue.
 

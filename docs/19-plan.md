@@ -109,7 +109,7 @@ Compare README claims and operational commands with actual behavior. Investigate
 
 ### R2 — Review source acquisition, parsing, and raw recovery
 
-**Work:** map allowed families and granularities to adapters, configuration, payload formats, parser versions, and raw storage. Link access/retention evidence from the [source research](../.scratch/b3-historical-data/RESEARCH.md); identify unresolved eligibility separately from implementation gaps. Do not repeat external research conclusions as newly verified permission.
+**Work:** map allowed families and granularities to adapters, configuration, payload formats, parser versions, and raw storage. Link access/retention evidence from the [source research](RESEARCH.md); identify unresolved eligibility separately from implementation gaps. Do not repeat external research conclusions as newly verified permission.
 
 Use deterministic HTTP mocks and authorized/synthetic fixtures to test acquisition, redirects, token expiry, interruption, false HTML success, archive limits, nested members, and replay after the remote source disappears. Verify that filenames and formats do not silently select an incorrect parser.
 
@@ -163,7 +163,7 @@ Verify MCP with a compatible client, including initialization, tools/list, tools
 
 **Work:** complete all matrix rows; distinguish verified compliance, confirmed gaps, contradictory requirements, external blockers and missing evidence. Reconcile the preliminary leads with the actual results, including findings disproved by recent changes.
 
-For each subsystem, choose retain/extend/replace with supporting evidence. Record B3-specific decisions where hard-to-reverse tradeoffs justify ADRs. Open or refine local issues, reusing the [existing delivery issues](../.scratch/b3-historical-data/issues/02-domain-and-contracts.md) where scopes overlap. Do not duplicate the backlog or alter requirements to match current shortcuts.
+For each subsystem, choose retain/extend/replace with supporting evidence. Record B3-specific decisions where hard-to-reverse tradeoffs justify ADRs. Open or refine local issues, reusing the [existing delivery issues](issues/02-domain-and-contracts.md) where scopes overlap. Do not duplicate the backlog or alter requirements to match current shortcuts.
 
 **Deliverables:** assessment report, reuse map, prioritized backlog, migration design and release-gate checklist.
 
@@ -280,7 +280,7 @@ Create populated artifacts under `.scratch/prd-alignment/` as execution produces
 - `assessment.md`: requirement matrix, severity-ranked findings and subsystem summary.
 - `evidence/`: baseline manifest, sanitized OpenAPI/responses, validation results, fixture manifests and comparison reports. Do not commit credentials or raw market files without compatible rights.
 - `migration.md`: selected designs, additive schema/backfill plan, cutover and rollback checklist.
-- `issues/<NN>-<slug>.md`: scoped remediation only when not already covered by existing issues; use project triage statuses, dependencies, acceptance evidence and `## Comments`.
+Accepted remediation issues belong in `docs/issues/<NN>-<slug>.md`, using the next available number and the [backlog index](issues/README.md). Keep only drafts under `.scratch/prd-alignment/`; avoid duplicating existing issues. Use project triage statuses, dependencies, acceptance evidence and `## Comments`.
 
 Each implementation slice should include its regression tests, migration and related documentation. Use focused commits following the repository's existing convention, for example `fix(ingestion): ...` or `test(identity): ...`. Do not commit unrelated working-tree changes or describe a feature as verified when evidence is incomplete.
 
@@ -300,3 +300,5 @@ Final review delivery must state: what was retained; what was replaced and why; 
 ## Comments
 
 - 2026-11-06 — Requested an English development plan in `docs/` to review existing code against the adopted PRD, specifically section 19. Preliminary code inspection informed the review leads; no implementation, runtime validation or migration was performed while authoring this plan.
+
+- 2026-11-06 — Source research, domain glossary and delivery backlog promoted to permanent locations. [Issue 09](issues/09-prd-alignment-review.md) is the executable entry point for this plan.

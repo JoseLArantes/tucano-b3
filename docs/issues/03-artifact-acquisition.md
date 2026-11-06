@@ -1,6 +1,6 @@
 # 03 — Implementar aquisição limitada e inventário recuperável
 
-Status: needs-triage
+Status: needs-info
 
 Data: 05/11/2026. Marco: G2. Dependências: 02; 01 para aquisição de dados externos.
 
@@ -29,6 +29,12 @@ Download e extração atuais materializam conteúdo em memória. Falha, limites 
 
 Comandos Compose obrigatórios do PRD; build e smoke API/worker se houver mudança de runtime. Nenhuma aquisição real automática nos testes.
 
+## Prontidão para execução
+
+Aguardar o contrato de artefatos/escopos da issue 02; acesso externo depende da issue 01. Mocks e desenho offline podem ser preparados sem habilitar coletores reais. O status deve mudar para `ready-for-agent` somente após registrar a evidência que libera a entrega completa.
+
 ## Comments
 
-- 05/11/2026 — Requisitos nas seções 10, 11 e 18 do [PRD](../../../docs/b3_prd.md). Coordenar cancelamento e fencing com a issue 06 desde o início.
+- 05/11/2026 — Requisitos nas seções 10, 11 e 18 do [PRD](../b3_prd.md). Coordenar cancelamento e fencing com a issue 06 desde o início.
+
+- 06/11/2026 — Issue incorporada ao backlog em `docs/issues`; dependências e prontidão revistas, sem declarar pré-requisitos concluídos.

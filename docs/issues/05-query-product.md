@@ -1,6 +1,6 @@
 # 05 — Publicar consulta histórica REST e MCP com cobertura explícita
 
-Status: needs-triage
+Status: needs-info
 
 Data: 05/11/2026. Marco: G4. Dependências: 01, 02 e 04.
 
@@ -25,6 +25,12 @@ Consumidores precisam distinguir ausência, falha, identidade incerta e base nom
 - MCP não migra banco, não aceita SQL arbitrário e não expõe mutações.
 - Testes verificam endpoints efetivos contra OpenAPI e cliente MCP compatível.
 
+## Prontidão para execução
+
+Aguardar baseline/contratos da issue 02 e núcleo publicável da issue 04; exposição externa depende da finalidade elegível da issue 01. O status deve mudar para `ready-for-agent` somente após registrar a evidência que libera a entrega completa.
+
 ## Comments
 
-- 05/11/2026 — Referência nas seções 13–16 e 22 do [PRD](../../../docs/b3_prd.md). Exposição a terceiros depende de finalidade elegível, mesmo com Bearer.
+- 05/11/2026 — Referência nas seções 13–16 e 22 do [PRD](../b3_prd.md). Exposição a terceiros depende de finalidade elegível, mesmo com Bearer.
+
+- 06/11/2026 — Issue incorporada ao backlog em `docs/issues`; dependências e prontidão revistas, sem declarar pré-requisitos concluídos.

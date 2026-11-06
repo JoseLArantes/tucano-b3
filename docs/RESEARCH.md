@@ -1,10 +1,10 @@
 # Pesquisa de fontes oficiais para o Tucano B3 histórico
 
-Status: needs-triage
+Status: referência consolidada
 
 Data da pesquisa: **05/11/2026**, America/Sao_Paulo.
 
-Este relatório fundamenta a [PRD vigente](../../docs/b3_prd.md). Distingue fatos documentados, observações do repositório e recomendações. Não constitui confirmação de cobertura integral, autorização de coleta ou homologação dos conectores.
+Este relatório fundamenta o [PRD vigente](b3_prd.md). Distingue fatos documentados, observações do repositório e recomendações. Não constitui confirmação de cobertura integral, autorização de coleta ou homologação dos conectores.
 
 ## 1. Método e limites
 
@@ -247,3 +247,5 @@ Os hashes abaixo identificam os bytes de documentação lidos nesta pesquisa. N�
 
 - 05/11/2026 — Solicitação: repensar o PRD com pesquisa profunda, dados oficiais gratuitos e históricos, preservando a stack e usando `tucano-cvm` como referência de resultado e organização.
 - 05/11/2026 — Resultado: fontes e limitações registradas; conectores, permissões e cobertura histórica continuam pendentes de homologação. A pesquisa não implementou alterações de runtime.
+
+- 06/11/2026 — Relatório incorporado à documentação permanente do projeto; a promoção documental não confirma as permissões ou homologações ainda pendentes.

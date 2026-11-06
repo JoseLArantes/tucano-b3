@@ -1,0 +1,21 @@
+{
+  "timestamp": "2026-11-06T08:58:45-03:00",
+  "git": {
+    "commit": "1e7ec9de97466376e85f37cdfad6a0615ed80641",
+    "branch": "main",
+    "working_tree_clean": true
+  },
+  "hashes": {
+    "prd_md_sha256": "4b6ec39a48f4bbd05fe7b3a97d7cbf89e6ebda19cf0e87d19736c5b06603a11b",
+    "cargo_lock_sha256": "9b15b3dfac16f2c0316496ecfaea75a9e334df568e64c3990ee4284534ef0357"
+  },
+  "runtime": {
+    "rust_edition": "2021",
+    "compose_services": ["b3_postgres", "b3_api", "b3_worker"],
+    "ports": {
+      "api": 8010,
+      "postgres": 5433
+    }
+  }
+}
+

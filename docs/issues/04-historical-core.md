@@ -1,6 +1,6 @@
 # 04 — Entregar núcleo histórico COTAHIST e identidade disponível
 
-Status: needs-triage
+Status: needs-info
 
 Data: 05/11/2026. Marco: G3. Dependências: 01, 02 e 03; coordenação com 06.
 
@@ -29,6 +29,12 @@ O histórico precisa continuar útil sem cadastro antigo completo, preservando m
 
 PostgreSQL 16 real para NULLs, transações, concorrência e auditoria; repetir comandos Compose exigidos. Cobrir upgrade e banco vazio.
 
+## Prontidão para execução
+
+Aguardar os contratos da issue 02, aquisição recuperável da issue 03 e corpus elegível da issue 01; coordenar recuperação com a issue 06. O status deve mudar para `ready-for-agent` somente após registrar a evidência que libera a entrega completa.
+
 ## Comments
 
-- 05/11/2026 — Detalhamento nas seções 7–12 e 18 do [PRD](../../../docs/b3_prd.md). Não adicionar preços ajustados ou integração CVM.
+- 05/11/2026 — Detalhamento nas seções 7–12 e 18 do [PRD](../b3_prd.md). Não adicionar preços ajustados ou integração CVM.
+
+- 06/11/2026 — Issue incorporada ao backlog em `docs/issues`; dependências e prontidão revistas, sem declarar pré-requisitos concluídos.

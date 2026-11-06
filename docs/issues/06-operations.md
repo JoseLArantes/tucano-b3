@@ -1,6 +1,6 @@
 # 06 — Operar descoberta, fila e manutenção com recuperação
 
-Status: needs-triage
+Status: needs-info
 
 Data: 05/11/2026. Marco: G5. Dependências: 02; desenvolvimento conjunto com 03/04.
 
@@ -29,6 +29,12 @@ Um loop que dispara ingestões a cada minuto e verifica finais de semana não de
 
 PostgreSQL 16 real, comandos Compose obrigatórios, build e smoke de API/worker com aquisição externa controlada.
 
+## Prontidão para execução
+
+Aguardar a definição de escopos e estados da issue 02. Desenvolver em conjunto com 03/04, sem criar dependência circular de conclusão entre esses trabalhos. O status deve mudar para `ready-for-agent` somente após registrar a evidência que libera a entrega completa.
+
 ## Comments
 
-- 05/11/2026 — Seções 10–11, 14 e 17–18 do [PRD](../../../docs/b3_prd.md). Este marco começa antes da conclusão do núcleo histórico; recuperação não é fase opcional posterior.
+- 05/11/2026 — Seções 10–11, 14 e 17–18 do [PRD](../b3_prd.md). Este marco começa antes da conclusão do núcleo histórico; recuperação não é fase opcional posterior.
+
+- 06/11/2026 — Issue incorporada ao backlog em `docs/issues`; dependências e prontidão revistas, sem declarar pré-requisitos concluídos.

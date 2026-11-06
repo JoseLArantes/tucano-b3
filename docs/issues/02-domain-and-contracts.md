@@ -1,6 +1,6 @@
 # 02 — Fixar granularidade, identidade temporal e migração de contratos
 
-Status: needs-triage
+Status: needs-info
 
 Data: 05/11/2026. Marco: G1. Dependências: resultados de corpus de 01 para decisões definitivas.
 
@@ -24,6 +24,12 @@ Ticker, instrumento, distribuição, fotografia de cadastro e revisão de arquiv
 - Históricos anteriores não recebem validade, publicação ou proveniência inventadas.
 - Migration inicial permanece intacta; upgrade e inicialização vazia são previstos.
 
+## Prontidão para execução
+
+Concluir a revisão de aderência da issue 09 e obter os resultados aplicáveis da issue 01 para homologar chaves e relações. Inventário offline e hipóteses de projeto podem avançar antes do corpus, sem serem apresentados como homologação. O status deve mudar para `ready-for-agent` somente após registrar a evidência que libera a entrega completa.
+
 ## Comments
 
-- 05/11/2026 — Requisitos em [PRD, seções 7–9, 12–13 e 19](../../../docs/b3_prd.md). O [glossário](../CONTEXT.md) acompanha o PRD vigente.
+- 05/11/2026 — Requisitos em [PRD, seções 7–9, 12–13 e 19](../b3_prd.md). O [glossário](../domain/CONTEXT.md) acompanha o PRD vigente.
+
+- 06/11/2026 — Issue incorporada ao backlog em `docs/issues`; dependências e prontidão revistas, sem declarar pré-requisitos concluídos.

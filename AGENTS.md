@@ -14,7 +14,7 @@ This file guides the project's intended evolution. The rules below are requireme
 - Preserve published contracts or explicitly plan their migration. Identify discrepancies between the PRD, README, and code, and address them within the task's scope.
 - Fix root causes and maintain module boundaries. Do not perpetuate shortcuts merely because they already exist or make unrelated refactors.
 - Use `rg` for search and `apply_patch` for manual edits. Do not revert user changes or use destructive Git commands.
-- Keep `AGENTS.md` and `PRODUCT.md` in English. Write product documentation and user-facing text in Brazilian Portuguese unless the task explicitly requires otherwise. Preserve technical identifiers and official source names.
+- Keep `AGENTS.md` and `PRODUCT.md` in English. Agent communication remains in English. Write product documentation and product-facing text in Brazilian Portuguese unless the task explicitly requires otherwise. Preserve technical identifiers and official source names.
 - Operational and consumer documentation describes implemented, verified behavior. PRDs, ADRs, and plans may describe the target state while identifying pending requirements.
 - PRD performance targets remain targets until measured. Do not publish latency, memory, or throughput figures as results without reproducible evidence.
 
@@ -123,8 +123,8 @@ Do not document planned capabilities as delivered or copy Python/Celery/Redis in
 
 ## Work organization and domain documentation
 
-- Feature issues and PRDs use local Markdown under `.scratch/<feature-slug>/`; `docs/b3_prd.md` remains the overall product PRD. Do not use external PRs as the default triage surface.
-- When a task requires traceable planning, use `PRD.md` and `issues/<NN>-<slug>.md`, numbered from `01`, with `Status:` near the top and conversation history under `## Comments`.
+- `docs/b3_prd.md` is the sole product PRD. Draft feature plans and issues use local Markdown under `.scratch/<feature-slug>/`; accepted issues belong in `docs/issues/`, with readiness and dependencies tracked in its README. Do not use external PRs as the default triage surface.
+- When a task requires traceable planning, reference the product PRD and use a scoped plan plus `issues/<NN>-<slug>.md`, numbered from `01` without reusing existing numbers. Include `Status:` near the top and conversation history under `## Comments`. Do not create competing product PRDs.
 - Triage vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`.
 - Domain documentation follows a multi-context layout: root `CONTEXT-MAP.md` points to each context's `CONTEXT.md`; global decisions live in `docs/adr/`, and local decisions live alongside the context as indicated in the map.
 - Use context vocabulary in code, tests, and proposals. Record new definitions and decisions when resolved; do not create empty documents just to fill the structure. If these files do not yet exist, proceed with the PRD.
