@@ -39,3 +39,4 @@ Live historical backfills, contacting the B3 without explicit authorization, pai
 ## Comments
 
 - 2026-11-06 — Added while promoting accepted research, glossary and issues into permanent project documentation. Ready for an agent to execute the existing review plan; downstream implementation prerequisites remain open.
+- 2026-11-06 — Avaliação R0–R6 executada conforme o plano `docs/19-plan.md`. Artefatos gerados sob `.scratch/prd-alignment/` (`assessment.md`, `migration.md`, `evidence/baseline_manifest.json`, `evidence/contracts_inventory.md`). Status mantido para acompanhamento ou fechamento conforme governança do projeto.
