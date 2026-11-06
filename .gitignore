@@ -35,3 +35,9 @@ Cargo.lock.bak
 *.db
 *.sqlite3
 
+# Docusaurus generated files
+docusaurus/node_modules/
+docusaurus/build/
+docusaurus/.docusaurus/
+docusaurus/.cache/
+

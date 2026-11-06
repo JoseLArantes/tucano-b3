@@ -2,6 +2,8 @@
 
 Glossário de apoio ao [PRD vigente](../b3_prd.md), adotado em 06/11/2026. Define o vocabulário de domínio utilizado pelos requisitos; não declara todas as capacidades implementadas.
 
+Para guias narrativos de consumo e operação, veja o [site Docusaurus](../../docusaurus/docs/intro.md). Este glossário e o PRD continuam sendo as fontes de vocabulário e requisitos do projeto.
+
 ## Language
 
 ### Instrumentos e negociação

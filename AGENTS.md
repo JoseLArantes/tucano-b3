@@ -4,7 +4,7 @@
 
 Target stack: Rust, Tokio, Axum, SQLx, PostgreSQL 16, quick-xml, rust_decimal, and Utoipa/OpenAPI 3.1. The API, worker, and MCP share the same service library; coordination and queues use PostgreSQL.
 
-This file guides the project's intended evolution. The rules below are requirements, not a claim that every capability already exists. `tucano-cvm` is the reference for architecture, documentation, and organization; domain and technology decisions belong to `tucano-b3`.
+This file guides the project's intended evolution. The rules below are requirements, not a claim that every capability already exists. `tucano-cvm` is the reference for architecture, documentation, and organization; domain and technology decisions belong to `tucano-b3`. The Docusaurus site in `docusaurus/` is the detailed public and operational documentation surface for this project.
 
 ## Working rules and sources of truth
 
@@ -31,7 +31,7 @@ docker compose run --rm cargo cargo test --all-targets --all-features
 - Keep these commands aligned with `docker-compose.yml` and CI when infrastructure changes.
 - Persistence, migration, concurrency, and lock tests require PostgreSQL 16 accessible through `DATABASE_URL`. A test that returns early because the database is unavailable does not validate the integration.
 - Runtime, Docker, configuration, or startup changes require a build and smoke test of the API and worker. Check actual Compose ports, services, and commands before running them.
-- Documentation-only changes require reviewing consistency, links, paths, and commands. Run the documentation build when a configured site or generator is affected.
+- Documentation-only changes require reviewing consistency, links, paths, and commands. Run `npm --prefix docusaurus run build` when Docusaurus content, configuration, or its generator is affected.
 - At delivery, report what was validated, what was not run, and why. Do not claim success for skipped or unavailable checks.
 
 ## Architectural map and boundaries
@@ -89,7 +89,14 @@ Every persisted structural change requires a new SQLx migration in `migrations/`
 ## REST and MCP contracts
 
 - Use `/api/v1/b3/...` for the B3 domain and group endpoints, schemas, and OpenAPI tags by file family according to the PRD.
-- All endpoints must be thoroughly documented in OpenAPI: every endpoint must include an extensive `summary`, a detailed multi-line `description` (explaining official B3 data origin, file family, business logic, filters, and idempotency guarantees), typed parameter descriptions with examples and default values, exhaustive HTTP response codes (200, 400, 401, 404, 409, 500), and comprehensive doc comments (`///`) on all schema fields and DTOs.
+- Document every operation comprehensively in the generated OpenAPI. Each operation must include:
+  - An informative summary and a detailed, multi-line description of official B3 origin, file family, business rules, filters, ordering and pagination, precision, identity, provenance, idempotency, and relevant limitations.
+  - Typed path, query, and header parameters with their meaning, constraints, defaults, and realistic examples.
+  - Closed request and response DTOs with field-level descriptions, formats, units, nullability, and examples.
+  - Every applicable success and error response, including authentication, authorization, validation, not-found, conflict, unavailable-dependency, and server failures.
+- Add comprehensive Rust doc comments (`///`) to every public schema, DTO, enum, and field so Utoipa does not publish unexplained shapes. Document authentication and the COTAHIST nominal-price warning at operation and schema level where relevant.
+- The Docusaurus site must provide equally detailed, task-oriented guides for consumers and operators. Maintain separate concept, data-source, endpoint, schema, operations, and reference guides. Endpoint pages explain method, permission level, parameters/defaults, ordering, request/response fields, state transitions, idempotency, status/error behavior, examples, provenance, identity, revision consistency, and source limitations. Schema pages explain fields, formats, units, optionality, and interpretation.
+- Keep Docusaurus, generated OpenAPI, and implementation aligned. Link to `/openapi.json` as the machine-readable contract and distinguish it from the running API's minimal `/docs` page and the Docusaurus site.
 - Public contracts must be closed and typed. Do not expose internal structures or arbitrary payloads as substitutes for domain DTOs.
 - Apply Bearer authentication to protected routes and keep public exceptions explicit and tested. Do not extend a health or documentation exception to ingestion operations.
 - List endpoints require documented filters, `limit` defaulting to 100 with a maximum of 1000, `offset`, and deterministic ordering with a unique tie-breaker.
@@ -114,12 +121,14 @@ Every persisted structural change requires a new SQLx migration in `migrations/`
 When a change affects endpoints, payloads, filters, fields, configuration, or operational flows, update the corresponding artifacts in the same delivery:
 
 - Utoipa-generated OpenAPI, including detailed descriptions of fields, units, sources, parameters, examples, errors, authentication, and limitations.
+- Docusaurus pages under `docusaurus/docs/`, with detailed consumer and operator guides that match the generated OpenAPI and implemented behavior.
 - README and consumer/operational documentation in `docs/`, reflecting behavior actually available.
 - `docs/frontend_api_changelog.md` for consumer-visible changes. Create it on the first applicable change; record the correct session date, endpoints, fields, and compatibility impact.
 - `.env.example`, Compose, and runtime instructions when environment variables or operational dependencies change.
 - The PRD, context documents, and ADRs when a decision changes scope, vocabulary, or target architecture. Do not weaken requirements to justify an incomplete implementation.
 
 Do not document planned capabilities as delivered or copy Python/Celery/Redis instructions from the reference project. New pages must clearly distinguish public contracts, operations, and architectural decisions.
+- Any public contract change must update the matching OpenAPI operation/schema and Docusaurus endpoint/schema pages in the same delivery; review the full contract-to-docs mapping before delivery. Run the Docusaurus production build after edits and report its result.
 
 ## Work organization and domain documentation
 
@@ -136,4 +145,4 @@ Do not document planned capabilities as delivered or copy Python/Celery/Redis in
 3. Add a migration and regression tests when applicable.
 4. Run formatting, Clippy, and tests; confirm required integration tests actually used PostgreSQL.
 5. Update OpenAPI, consumer/operational documentation, and the changelog when applicable.
-6. Validate builds and execution of affected components; report results and remaining gaps without confusing intent with implementation.
+6. Build Docusaurus when affected, then validate builds and execution of affected components; report results and remaining gaps without confusing intent with implementation.

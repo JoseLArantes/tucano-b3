@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-labelledby="title">
+  <title id="title">Marca geométrica do Tucano B3</title>
+  <rect x="8" y="8" width="224" height="224" rx="38" fill="#12332d"/>
+  <path d="M47 153c10-31 35-51 72-51 21 0 39 7 53 20l31-8-18 25c-5 36-32 61-70 61-32 0-55-17-68-47Z" fill="#e9f3ed"/>
+  <path d="m151 125 60-12-37 34-36-2Z" fill="#e5a83c"/>
+  <circle cx="155" cy="126" r="5" fill="#12332d"/>
+  <path d="M48 184h145" stroke="#55b79b" stroke-width="9" stroke-linecap="round"/>
+  <path d="M67 181v-24m27 24v-42m27 42v-31m27 31v-56" stroke="#55b79b" stroke-width="10" stroke-linecap="round"/>
+</svg>

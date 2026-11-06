@@ -18,5 +18,6 @@ O contexto atualmente documentado é compartilhado por aquisição, persistênci
 - [Pesquisa de fontes](docs/RESEARCH.md): evidências, datas e limitações da pesquisa.
 - [Plano de revisão e migração](docs/19-plan.md): avaliação do código existente.
 - [Backlog](docs/issues/README.md): prontidão, dependências e critérios de aceite.
+- [Documentação Docusaurus](docusaurus/README.md): site público de guias para consumidores e operadores, alinhado ao OpenAPI gerado.
 
 Decisões globais efetivamente tomadas devem ser registradas em `docs/adr/` quando justificadas; decisões locais ficam junto ao contexto correspondente. Não há ADR novo criado apenas pela promoção dos documentos.

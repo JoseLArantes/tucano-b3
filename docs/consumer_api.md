@@ -2,6 +2,8 @@
 
 Status: contrato inicial implementado e coberto por testes/ smoke sintéticos. Consultar o OpenAPI gerado em `/openapi.json` para o conjunto exato de operações registrado pelo binário. A publicação externa depende dos gates de elegibilidade e qualificação, não somente da presença das rotas.
 
+Para a referência narrativa de endpoints, parâmetros, schemas e fluxos operacionais, consulte o [site Docusaurus](../docusaurus/docs/intro.md). O JSON em /openapi.json é a fonte de contrato legível por máquina; a rota /docs do serviço é uma página mínima com link para esse JSON, não o site Docusaurus.
+
 ## Autenticação e filtros
 
 Enviar `Authorization: Bearer <credencial-de-leitura>` nas consultas protegidas. Credencial administrativa é separada e não deve ser distribuída a consumidores. `include_internal=true` não amplia permissões nem revela tokens/caminhos privados.

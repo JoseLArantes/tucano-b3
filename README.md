@@ -81,4 +81,16 @@ O arquivo de comando é tipado; não contém SQL arbitrário. Configurar `DATABA
 
 O [guia operacional](docs/release_operations.md) descreve backups consistentes SQL/raw, restore em banco novo, limites e evidências de medição. O [changelog de contratos](docs/frontend_api_changelog.md) acompanha mudanças voltadas a consumidores.
 
+## Documentação
+
+O site para consumidores e operadores está configurado para publicação em [Tucano B3 Docs](https://joselarantes.github.io/b3-tucano/); o workflow de GitHub Pages publica alterações em docusaurus/ na branch main. O código fonte fica em [docusaurus/](docusaurus/). Consulte os guias de conceitos, fontes B3, endpoints, schemas e operações; eles acompanham o contrato gerado em /openapi.json.
+
+Para servir e validar o site localmente:
+
+    npm --prefix docusaurus ci
+    npm --prefix docusaurus start
+    npm --prefix docusaurus run build
+
+O servidor Docusaurus usa http://localhost:3000. Ele é separado da API em execução: /docs e /openapi.json são rotas do serviço, enquanto o site Docusaurus contém guias completos para pessoas e documentação operacional.
+
 Referências: [marcos](docs/prd_dev_milestones.md), [backlog](docs/issues/README.md), [pesquisa de fontes](docs/RESEARCH.md), [guia B3](docs/B3.md), [referência técnica das famílias](docs/ref_b3.md), [contextos](CONTEXT-MAP.md) e [revisão inicial](docs/19-plan.md). Documentação e aprovação de PRD não equivalem a uma publicação externa.
