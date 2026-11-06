@@ -6,31 +6,24 @@ use tucano_b3::db::locks::try_acquire_pg_advisory_lock;
 use tucano_b3::db::{create_pool, run_migrations};
 use tucano_b3::services::sync_service::B3SyncService;
 
-async fn get_test_pool() -> Option<PgPool> {
+async fn get_test_pool() -> PgPool {
     let url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5433/tucano_b3".to_string());
 
-    match create_pool(&url).await {
-        Ok(pool) => {
-            if run_migrations(&pool).await.is_ok() {
-                Some(pool)
-            } else {
-                None
-            }
-        }
-        Err(_) => None,
-    }
+    let pool = create_pool(&url)
+        .await
+        .expect("Integration test requires PostgreSQL; connect failed");
+
+    run_migrations(&pool)
+        .await
+        .expect("Integration test requires database migrations to succeed");
+
+    pool
 }
 
 #[tokio::test]
 async fn test_db_migration_and_advisory_lock() {
-    let pool = match get_test_pool().await {
-        Some(p) => p,
-        None => {
-            eprintln!("Postgres not reachable, skipping integration test");
-            return;
-        }
-    };
+    let pool = get_test_pool().await;
 
     let locked = try_acquire_pg_advisory_lock(&pool, "test:lock:key")
         .await
@@ -40,13 +33,7 @@ async fn test_db_migration_and_advisory_lock() {
 
 #[tokio::test]
 async fn test_sync_bvbg_028_idempotency_and_audit() {
-    let pool = match get_test_pool().await {
-        Some(p) => p,
-        None => {
-            eprintln!("Postgres not reachable, skipping integration test");
-            return;
-        }
-    };
+    let pool = get_test_pool().await;
 
     let date = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap();
 
@@ -177,13 +164,7 @@ async fn test_sync_bvbg_028_idempotency_and_audit() {
 
 #[tokio::test]
 async fn test_sync_cotahist_and_resolution() {
-    let pool = match get_test_pool().await {
-        Some(p) => p,
-        None => {
-            eprintln!("Postgres not reachable, skipping integration test");
-            return;
-        }
-    };
+    let pool = get_test_pool().await;
 
     let date = NaiveDate::from_ymd_opt(2026, 2, 2).unwrap();
 

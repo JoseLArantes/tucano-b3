@@ -4,31 +4,24 @@ use tucano_b3::db::enums::ResolutionStatus;
 use tucano_b3::db::resolver::RelationshipResolver;
 use tucano_b3::db::{create_pool, run_migrations};
 
-async fn get_test_pool() -> Option<PgPool> {
+async fn get_test_pool() -> PgPool {
     let url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5433/tucano_b3".to_string());
 
-    match create_pool(&url).await {
-        Ok(pool) => {
-            if run_migrations(&pool).await.is_ok() {
-                Some(pool)
-            } else {
-                None
-            }
-        }
-        Err(_) => None,
-    }
+    let pool = create_pool(&url)
+        .await
+        .expect("Integration test requires PostgreSQL; connect failed");
+
+    run_migrations(&pool)
+        .await
+        .expect("Integration test requires database migrations to succeed");
+
+    pool
 }
 
 #[tokio::test]
 async fn test_temporal_identifier_window_and_priority() {
-    let pool = match get_test_pool().await {
-        Some(p) => p,
-        None => {
-            eprintln!("Postgres not reachable, skipping test");
-            return;
-        }
-    };
+    let pool = get_test_pool().await;
 
     let resolver = RelationshipResolver::new(&pool);
 
@@ -149,13 +142,7 @@ async fn test_temporal_identifier_window_and_priority() {
 
 #[tokio::test]
 async fn test_ambiguous_collision_detection() {
-    let pool = match get_test_pool().await {
-        Some(p) => p,
-        None => {
-            eprintln!("Postgres not reachable, skipping test");
-            return;
-        }
-    };
+    let pool = get_test_pool().await;
 
     let resolver = RelationshipResolver::new(&pool);
 

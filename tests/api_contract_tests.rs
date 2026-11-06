@@ -12,19 +12,17 @@ use tucano_b3::db::{create_pool, run_migrations};
 use tucano_b3::mcp::tools::*;
 use tucano_b3::services::sync_service::B3SyncService;
 
-async fn setup_test_app() -> Option<axum::Router> {
+async fn setup_test_app() -> axum::Router {
     let url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5433/tucano_b3".to_string());
 
-    let pool = match create_pool(&url).await {
-        Ok(p) => {
-            if run_migrations(&p).await.is_err() {
-                return None;
-            }
-            p
-        }
-        Err(_) => return None,
-    };
+    let pool = create_pool(&url)
+        .await
+        .expect("Integration test requires PostgreSQL; connect failed");
+
+    run_migrations(&pool)
+        .await
+        .expect("Integration test requires database migrations to succeed");
 
     let settings = Arc::new(B3Settings::default());
     let sync_service = Arc::new(B3SyncService::new(pool.clone(), (*settings).clone()));
@@ -34,18 +32,12 @@ async fn setup_test_app() -> Option<axum::Router> {
         sync_service,
     });
 
-    Some(create_router(state))
+    create_router(state)
 }
 
 #[tokio::test]
 async fn test_auth_whitelist_and_rejection() {
-    let app = match setup_test_app().await {
-        Some(a) => a,
-        None => {
-            eprintln!("Skipping test: Database not available");
-            return;
-        }
-    };
+    let app = setup_test_app().await;
 
     // 1. Healthz is public
     let res = app
@@ -156,13 +148,7 @@ async fn test_auth_whitelist_and_rejection() {
 
 #[tokio::test]
 async fn test_openapi_schema_contains_b3_specs_and_disclaimer() {
-    let app = match setup_test_app().await {
-        Some(a) => a,
-        None => {
-            eprintln!("Skipping test: Database not available");
-            return;
-        }
-    };
+    let app = setup_test_app().await;
 
     let res = app
         .oneshot(
@@ -197,13 +183,7 @@ async fn test_openapi_schema_contains_b3_specs_and_disclaimer() {
 
 #[tokio::test]
 async fn test_cotahist_envelope_includes_disclaimer() {
-    let app = match setup_test_app().await {
-        Some(a) => a,
-        None => {
-            eprintln!("Skipping test: Database not available");
-            return;
-        }
-    };
+    let app = setup_test_app().await;
 
     let res = app
         .oneshot(
@@ -233,13 +213,7 @@ async fn test_cotahist_envelope_includes_disclaimer() {
 
 #[tokio::test]
 async fn test_diagnostics_coverage_endpoint() {
-    let app = match setup_test_app().await {
-        Some(a) => a,
-        None => {
-            eprintln!("Skipping test: Database not available");
-            return;
-        }
-    };
+    let app = setup_test_app().await;
 
     let res = app
         .oneshot(
@@ -267,13 +241,9 @@ async fn test_mcp_tools_execution() {
     let url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5433/tucano_b3".to_string());
 
-    let pool = match create_pool(&url).await {
-        Ok(p) => p,
-        Err(_) => {
-            eprintln!("Skipping MCP test: Database not reachable");
-            return;
-        }
-    };
+    let pool = create_pool(&url)
+        .await
+        .expect("Integration test requires PostgreSQL; connect failed");
 
     // 1. Healthcheck
     let health = handle_healthcheck(&pool).await;
@@ -292,13 +262,7 @@ async fn test_mcp_tools_execution() {
 
 #[tokio::test]
 async fn test_rebuild_identity_and_quarantine_endpoints() {
-    let app = match setup_test_app().await {
-        Some(a) => a,
-        None => {
-            eprintln!("Skipping test: Database not available");
-            return;
-        }
-    };
+    let app = setup_test_app().await;
 
     // Rebuild identity
     let res = app

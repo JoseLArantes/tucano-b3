@@ -6,31 +6,24 @@ use tucano_b3::db::enums::{SourceFileType, SyncRunStatus};
 use tucano_b3::db::{create_pool, run_migrations};
 use tucano_b3::services::sync_service::B3SyncService;
 
-async fn get_test_pool() -> Option<PgPool> {
+async fn get_test_pool() -> PgPool {
     let url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5433/tucano_b3".to_string());
 
-    match create_pool(&url).await {
-        Ok(pool) => {
-            if run_migrations(&pool).await.is_ok() {
-                Some(pool)
-            } else {
-                None
-            }
-        }
-        Err(_) => None,
-    }
+    let pool = create_pool(&url)
+        .await
+        .expect("Integration test requires PostgreSQL; connect failed");
+
+    run_migrations(&pool)
+        .await
+        .expect("Integration test requires database migrations to succeed");
+
+    pool
 }
 
 #[tokio::test]
 async fn test_granular_field_audit_and_idempotency() {
-    let pool = match get_test_pool().await {
-        Some(p) => p,
-        None => {
-            eprintln!("Postgres not reachable, skipping integration test");
-            return;
-        }
-    };
+    let pool = get_test_pool().await;
 
     let date = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
 
