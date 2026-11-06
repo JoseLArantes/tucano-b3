@@ -1,65 +1,131 @@
-# Tucano B3 - Migration and Remediation Design (R6)
+# Tucano B3 - Migration and Remediation Design (Final R6)
 
 Prepared according to [PRD section 19.3](docs/b3_prd.md#193-sequência-de-migração) and [Review Plan](docs/19-plan.md).
+
+Date: 2026-11-06, America/Sao_Paulo  
+Scope: Architecture, Data Safeguards, Implementation Sequence, and Release Gates for `tucano-b3`.
 
 ---
 
 ## 1. Principles of Additive Migration
 
-1. **Immutable Baseline Schema**: `migrations/0001_initial_b3_schema.sql` remains completely untouched. All new tables, indexes, or altered constraints are added via sequential migrations (`0002_...sql`).
-2. **Preservation of Market Facts**: Historical quotes in `b3_cotahist_quotes`, `b3_price_report_quotes`, and `b3_equities_simplified_price_quotes` must never be altered or deduplicated by ticker alone.
-3. **Audit Continuity**: Existing records in `b3_field_changes` and `b3_sync_runs` remain intact as historical evidence.
-4. **Zero Downtime / Consumer Parity**: All 42 public REST endpoints retain their exact URL structure, parameter names, and response envelope. Internal refactorings (such as shared query extraction) must produce byte-level compatible JSON responses.
+1. **Immutable Baseline Migration**:
+   - `migrations/0001_initial_b3_schema.sql` is frozen and must never be altered retroactively.
+   - All future structural additions (e.g., `b3_trading_calendar`, worker task leases, indexes) must be introduced in sequential, additive migrations (`0002_coordination_and_calendar.sql`).
+2. **Preservation of Market Facts**:
+   - Historical quotes in `b3_cotahist_quotes`, `b3_price_report_quotes`, and `b3_equities_simplified_price_quotes` must never be altered, overwritten, or deduplicated by ticker alone.
+   - `NULLS NOT DISTINCT` uniqueness invariants on natural keys guarantee facts remain distinct and uncorrupted.
+3. **Audit History Continuity**:
+   - Existing records in `b3_field_changes`, `b3_sync_runs`, and `b3_quarantine_records` must remain intact as immutable historical evidence.
+4. **Zero-Downtime Consumer Parity**:
+   - All 42 public REST endpoints retain their exact URL path (`/api/v1/b3/...`), query parameter names, and response envelope (`data`, `meta`, `provenance`, `unadjusted_warning`).
+   - Internal refactorings (such as shared query service extraction) must produce byte-level compatible JSON responses.
+5. **No Bypassing of Transports**:
+   - MCP and REST must execute identical business and analytical queries via shared service layers.
+   - MCP remains strictly read-only and never performs DDL migrations or ingestion mutations.
 
 ---
 
-## 2. Planned Migration Steps
+## 2. Implementation & Migration Packages (PRD §19.3 Sequence)
 
-### Step 1: Additive Schema Enhancement (`migrations/0002_coordination_and_calendar.sql`)
-- Add `b3_trading_calendar` table storing official trading sessions and holiday schedules (1986–present).
-- Add `b3_leases` table for durable worker task claiming and heartbeat fencing.
-- Ensure rollback safety: down-migration drops only new tables without touching market facts.
+### Package 1: Baseline Preservation & Characterization Tests (PRD Step 1)
+- **Status**: Completed in Phase R1.
+- **Evidence**:
+  - Live OpenAPI 3.1 specification saved in `.scratch/prd-alignment/evidence/openapi_reference.json`.
+  - Endpoint and schema inventory recorded in `.scratch/prd-alignment/evidence/contracts_inventory.md`.
+  - Representative response scenarios captured in `.scratch/prd-alignment/evidence/response_scenarios.md`.
+  - Regression test suite expanded to 35 deterministic tests without skips.
 
-### Step 2: Shared Query Services Layer (`src/services/query/`)
-- Extract query logic duplicated between `src/api/routers/` and `src/mcp/tools.rs` into:
-  - `src/services/query/instruments.rs`
-  - `src/services/query/quotes.rs`
-  - `src/services/query/indices.rs`
-  - `src/services/query/governance.rs`
-- Both REST handlers and MCP handlers become thin adapters calling these typed query services.
+### Package 2: Additive Coordination & Calendar Schema (PRD Steps 2 & 3)
+- **Target Migration**: `migrations/0002_coordination_and_calendar.sql`
+- **Scope**:
+  - Create `b3_trading_calendar`:
+    - Columns: `calendar_date DATE PRIMARY KEY`, `is_trading_day BOOLEAN NOT NULL`, `session_type VARCHAR(32) NOT NULL`, `open_time TIME`, `close_time TIME`, `notes TEXT`.
+    - Populate with official B3 holiday and special session data from 1986 to present.
+  - Create `b3_worker_leases`:
+    - Columns: `lease_id UUID PRIMARY KEY`, `resource_name VARCHAR(128) NOT NULL UNIQUE`, `owner_worker_id VARCHAR(128) NOT NULL`, `acquired_at TIMESTAMPTZ NOT NULL`, `heartbeat_at TIMESTAMPTZ NOT NULL`, `lease_duration_seconds INT NOT NULL`.
+  - Safe rollback (`down.sql`):
+    - Drops `b3_worker_leases` and `b3_trading_calendar` without touching market facts or sync tables.
 
-### Step 3: Hardened Acquisition and Streaming Decompression
-- Update `B3DownloadService`: stream HTTP bodies directly to disk using `tokio::io::AsyncWriteExt` with bounded chunks, calculating SHA-256 in flight.
-- Update `extract_archive_members`: stream entries from `ZipArchive` to temporary files or bounded buffers, returning explicit `AppError::Layout` when depth exceeds 4 or member size exceeds 500 MB.
+### Package 3: Streaming Acquisition & Resilient Extraction (PRD Step 4)
+- **Scope**:
+  - Update `B3DownloadService`:
+    - Stream HTTP response bodies directly to disk using `tokio::io::AsyncWriteExt` with bounded buffer chunks (e.g. 64 KB), calculating SHA-256 continuously in flight.
+    - Guarantee memory usage remains $< 64\text{ MB}$ even when downloading 500 MB annual COTAHIST archives.
+  - Update `extract_archive_members`:
+    - Stream ZIP entries to temporary files.
+    - Return explicit `AppError::Layout("Maximum ZIP recursion depth (4) exceeded")` instead of silent `Ok(())`.
+    - Enforce maximum uncompressed member size limit (e.g., 500 MB).
 
-### Step 4: Atomic Sync Execution & Session-Level Locks
-- Refactor `B3SyncService`:
-  - Acquire session-level advisory lock (`pg_advisory_lock`) on a dedicated checkout connection, holding it across the entire acquisition, parsing, and persistence phase.
-  - Wrap domain facts insertion, audit records, and member status updates in an explicit, single PostgreSQL transaction.
-  - Release lock predictably in an RAII drop guard or explicit `finally` block upon completion, failure, or cancellation.
+### Package 4: Transactional Persistence & Session-Lock Fencing (PRD Steps 4 & 5)
+- **Scope**:
+  - Update `B3SyncService`:
+    - Acquire session advisory lock via `try_acquire_session_advisory_lock` on a dedicated checkout connection from `PgPool`.
+    - Route all single-date ingestion, parsing, domain fact insertion, `b3_field_changes` auditing, and `b3_sync_runs` status transitions through a single atomic transaction or the locked connection.
+    - Release lock deterministically in RAII drop guard or cleanup block upon completion or failure.
+    - Quarantine invalid individual records without failing the entire valid batch.
 
-### Step 5: B3 Trading Calendar & Scanner Decoupling in Worker
-- Replace `Local::now()` and weekend checks in `src/worker/mod.rs` with:
-  - Explicit `America/Sao_Paulo` timezone.
-  - Query against `b3_trading_calendar` to verify if current date is a valid trading session.
-  - Run discovery scanner (`b3_pending_updates`) first; only dispatch ingestion jobs when new artifacts are available.
+### Package 5: Shared Query Services Layer (PRD Step 6)
+- **Scope**:
+  - Extract query SQL duplicated between `src/api/routers/` and `src/mcp/tools.rs` into:
+    - `src/services/query/instruments.rs`: search, detail, temporal coverage, corporate actions.
+    - `src/services/query/quotes.rs`: daily OHLCV series, price reports, simplified quotes, raw price warning envelope.
+    - `src/services/query/indices.rs`: theoretical portfolio compositions, index weights.
+    - `src/services/query/governance.rs`: companies, economic groups, sectors.
+  - Wire Axum handlers and MCP tools to call these shared services.
+  - Guarantee 100% parameter, ordering, pagination, and envelope parity between transports.
 
-### Step 6: MCP Server Independence
-- In `src/main.rs`: Move `run_migrations(&pool)` into `Commands::Serve` and `Commands::Sync`, skipping migration execution for `Commands::Mcp`.
-- Ensure MCP can connect with a read-only PostgreSQL role.
+### Package 6: Worker Scheduler & Discovery Decoupling (PRD Step 6)
+- **Scope**:
+  - Replace `Local::now()` and Monday–Friday checks in `src/worker/mod.rs` with:
+    - `chrono_tz::America::Sao_Paulo` timezone enforcement.
+    - Query against `b3_trading_calendar` before triggering daily syncs.
+    - Decouple discovery scanner (`b3_pending_updates`) from heavy ingestion.
+    - Implement heartbeat update in `b3_worker_leases` during sync execution.
+
+### Package 7: Shadow Comparison, Cutover, and Retirement (PRD Step 7)
+- **Scope**:
+  - Run shadow pipeline alongside existing pipeline on test datasets (`COTAHIST_A2026.TXT`, `IN260301.zip`).
+  - Verify zero discrepancy in `stable_row_hash`, inserted counts, and audit logs.
+  - Switch default execution path to streaming/shared query pipeline.
+  - Deprecate old unbuffered handlers once full parity is verified.
 
 ---
 
 ## 3. Shadow Comparison and Cutover Protocol
 
-1. **Input Manifest**: Both legacy and enhanced paths receive the exact same raw files (e.g., `COTAHIST_A2026.TXT` and `IN260301.zip`).
-2. **Fact Validation**: Verify that 100% of generated records in shadow execution match the baseline in:
-   - Natural key components.
-   - `stable_row_hash`.
-   - Number of inserted vs changed records.
-   - `b3_field_changes` audit records.
-3. **Cutover Criteria**:
-   - Zero discrepancy in business hashes.
-   - Memory usage during annual COTAHIST ingestion remains under 256 MB.
-   - Lock acquisition and release verified under concurrent load tests.
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Raw as Raw B3 Files
+    participant Shadow as Enhanced Streaming Pipeline
+    participant DB as PostgreSQL 16 (Shadow Schema)
+    participant Verifier as Shadow Comparison Harness
+    participant Prod as Production Pipeline
 
+    Raw->>Shadow: Ingest via Streaming I/O (Disk-buffered)
+    Shadow->>DB: Atomically persist facts + audits in transaction
+    Raw->>Prod: Legacy Ingestion
+    Prod->>DB: Persist legacy baseline
+    Verifier->>DB: Compare natural keys, stable_row_hash, field changes
+    Note over Verifier,DB: Verification Gate: 100% hash parity & memory < 256MB
+    Verifier-->>Prod: Authorize Cutover (Promote Streaming Pipeline)
+```
+
+### Verification Criteria Before Promotion
+1. **Fact Equality**: 100% of rows inserted by the enhanced pipeline must have identical `stable_row_hash` to the legacy pipeline for the same input files.
+2. **Audit Equality**: `b3_field_changes` must record identical field-level diffs.
+3. **Memory Ceiling**: RSS memory during ingestion of full annual COTAHIST file (e.g. `COTAHIST_A2026.TXT`) must not exceed 256 MB.
+4. **Lock Invariant**: Concurrent executions attempting the same date/source must return clean conflict status (HTTP 409 or skip) without deadlocking or leaking locks.
+
+---
+
+## 4. Release-Gate Verification Checklist
+
+- [x] **R0 Baseline**: Complete test suite runs against PostgreSQL 16 without skipped tests (35/35 passing).
+- [x] **R1 Inventory**: Live OpenAPI 3.1 contract reference extracted and response scenarios documented.
+- [x] **R2 Parsers**: ISO 20022 schemas and depth limit tests added and verified.
+- [x] **R3 Persistence**: `UNIQUE NULLS NOT DISTINCT` invariant verified on natural keys.
+- [x] **R4 Coordination**: Transactional fencing and session lock helpers implemented and verified.
+- [x] **R5 Transports**: MCP read-only startup verified without migration rights.
+- [x] **R6 Consolidation**: Subsystem dispositions recorded; migration roadmap and issue tracking finalized.

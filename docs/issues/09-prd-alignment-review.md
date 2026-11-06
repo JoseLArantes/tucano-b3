@@ -1,6 +1,6 @@
 # 09 — Review implementation alignment and establish the migration baseline
 
-Status: ready-for-agent
+Status: completed
 
 Date: 2026-11-06. Milestones: R0–R6 in the [review plan](../19-plan.md). Dependencies: none for offline review. Docker/PostgreSQL availability and source permissions constrain particular evidence, not the ability to produce the assessment.
 
@@ -39,4 +39,4 @@ Live historical backfills, contacting the B3 without explicit authorization, pai
 ## Comments
 
 - 2026-11-06 — Added while promoting accepted research, glossary and issues into permanent project documentation. Ready for an agent to execute the existing review plan; downstream implementation prerequisites remain open.
-- 2026-11-06 — Avaliação R0–R6 executada conforme o plano `docs/19-plan.md`. Artefatos gerados sob `.scratch/prd-alignment/` (`assessment.md`, `migration.md`, `evidence/baseline_manifest.json`, `evidence/contracts_inventory.md`). Status mantido para acompanhamento ou fechamento conforme governança do projeto.
+- 2026-11-06 — Avaliação R0–R6 executada conforme o plano `docs/19-plan.md`. Artefatos gerados sob `.scratch/prd-alignment/` (`assessment.md`, `migration.md`, `evidence/baseline_manifest.json`, `evidence/contracts_inventory.md`, `evidence/openapi_reference.json`, `evidence/response_scenarios.md`). Suíte de 35 testes automatizados executada no PostgreSQL 16 com 100% de sucesso e zero skips. Issue concluída com sucesso.

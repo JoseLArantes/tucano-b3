@@ -9,14 +9,14 @@ Triagem em **06/11/2026**. A [issue 09](09-prd-alignment-review.md) é o ponto d
 | Issue | Marco | Status | Condição de execução |
 | --- | --- | --- | --- |
 | [01 — Viabilidade de fontes](01-source-viability.md) | G0 | `needs-info` | Confirmar elegibilidade e corpus por finalidade; preparação offline pode avançar |
-| [02 — Domínio e contratos](02-domain-and-contracts.md) | G1 | `needs-info` | Revisão 09 e evidência de 01 para decisões definitivas de granularidade/identidade |
+| [02 — Domínio e contratos](02-domain-and-contracts.md) | G1 | `needs-info` | Revisão 09 concluída; aguarda evidência de 01 para homologação definitiva do corpus |
 | [03 — Aquisição e artefatos](03-artifact-acquisition.md) | G2 | `needs-info` | Contratos de 02; aquisição externa depende de 01 |
 | [04 — Núcleo histórico](04-historical-core.md) | G3 | `needs-info` | 01, 02, 03 e coordenação com 06 |
 | [05 — Produto de consulta](05-query-product.md) | G4 | `needs-info` | Baseline/contratos de 02 e núcleo publicável de 04 |
 | [06 — Operação e recuperação](06-operations.md) | G5 | `needs-info` | Escopos/estados de 02; desenvolvimento conjunto com 03/04 |
 | [07 — Boletins de preços](07-price-reports.md) | G6 | `needs-info` | Plataforma 02–06 e corpus/elegibilidade próprios em 01 |
 | [08 — Índices e carteiras](08-indices-and-portfolios.md) | G7 | `needs-info` | Plataforma 02–06 e corpus/elegibilidade próprios em 01 |
-| [09 — Revisão de aderência](09-prd-alignment-review.md) | R0–R6 | `ready-for-agent` | Revisão offline, testes determinísticos e registro explícito de evidência indisponível |
+| [09 — Revisão de aderência](09-prd-alignment-review.md) | R0–R6 | `completed` | Concluída em 06/11/2026: 35 testes reais, baseline OpenAPI 3.1, matriz de aderência e plano de migração |
 
 `needs-info` identifica um pré-requisito ainda não demonstrado, inclusive uma entrega técnica anterior; não exige que o usuário responda quando o agente puder obter a informação pelo trabalho autorizado. A preparação independente pode avançar, mas a issue completa só passa a `ready-for-agent` quando suas condições de entrada estiverem demonstradas.
 
@@ -40,3 +40,4 @@ A revisão 09 pode propor subtarefas menores e reutilizar estas issues. Não dup
 ## Comments
 
 - 06/11/2026 — Backlog promovido de `.scratch/b3-historical-data/issues` após aceitação dos documentos. Dependências ainda abertas foram preservadas; criada a issue 09 para executar a avaliação antes das mudanças de código.
+- 06/11/2026 — Issue 09 concluída com sucesso (fases R0–R6 do plano 19). Suíte de testes endurecida para 35 testes determinísticos sem skips no PostgreSQL 16; contratos OpenAPI 3.1 e envelopes inventariados; matriz de aderência (`assessment.md`) e plano de migração (`migration.md`) consolidados sob `.scratch/prd-alignment/`. Próximos passos seguem a ordem de trabalho a partir das issues 01 e 02.

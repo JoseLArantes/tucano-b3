@@ -33,3 +33,4 @@ Concluir a revisão de aderência da issue 09 e obter os resultados aplicáveis 
 - 05/11/2026 — Requisitos em [PRD, seções 7–9, 12–13 e 19](../b3_prd.md). O [glossário](../domain/CONTEXT.md) acompanha o PRD vigente.
 
 - 06/11/2026 — Issue incorporada ao backlog em `docs/issues`; dependências e prontidão revistas, sem declarar pré-requisitos concluídos.
+- 06/11/2026 — Revisão de aderência da issue 09 concluída com sucesso. Baseline de contratos e rotas formalizado em `.scratch/prd-alignment/evidence/contracts_inventory.md` e `.scratch/prd-alignment/evidence/openapi_reference.json`. Resta a conclusão da issue 01 para homologação do corpus.
