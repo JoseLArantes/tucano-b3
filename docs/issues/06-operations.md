@@ -35,6 +35,8 @@ Aguardar a definição de escopos e estados da issue 02. Desenvolver em conjunto
 
 ## Comments
 
+- 06/11/2026 — Serviço interno de jobs duráveis implementado para W3: idempotência, lanes, lease/heartbeat, fencing, tentativas e cancelamento. Integração com API/CLI/worker, publicação, dois processos reais, calendário e recuperação completa continuam pendentes; ver [plano](../0.0.1-plan.md).
+
 - 05/11/2026 — Seções 10–11, 14 e 17–18 do [PRD](../b3_prd.md). Este marco começa antes da conclusão do núcleo histórico; recuperação não é fase opcional posterior.
 
 - 06/11/2026 — Issue incorporada ao backlog em `docs/issues`; dependências e prontidão revistas, sem declarar pré-requisitos concluídos.

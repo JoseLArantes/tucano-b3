@@ -30,6 +30,8 @@ Concluir a revisão de aderência da issue 09 e obter os resultados aplicáveis 
 
 ## Comments
 
+- 06/11/2026 — Execução 0.0.1 iniciada: fundação de elegibilidade/coordenação em migration aditiva. O mantenedor autorizou persistência nova e dispensou compatibilidade pré-lançamento. Modelo histórico e corpus continuam pendentes; ver [plano](../0.0.1-plan.md).
+
 - 05/11/2026 — Requisitos em [PRD, seções 7–9, 12–13 e 19](../b3_prd.md). O [glossário](../domain/CONTEXT.md) acompanha o PRD vigente.
 
 - 06/11/2026 — Issue incorporada ao backlog em `docs/issues`; dependências e prontidão revistas, sem declarar pré-requisitos concluídos.

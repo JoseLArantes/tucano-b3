@@ -34,6 +34,8 @@ Informações externas de elegibilidade e corpus ainda pendentes. Preparação d
 
 ## Comments
 
+- 06/11/2026 — [Registro de elegibilidade](../release_source_eligibility.md) iniciado com consulta aos termos oficiais. Finalidade externa gratuita permanece não comprovada; nenhum corpus oficial adquirido.
+
 - 05/11/2026 — Criada a partir da [pesquisa](../RESEARCH.md) e da seção 4 do [PRD](../b3_prd.md). Requer evidência externa; os demais trabalhos offline independentes podem avançar conforme o PRD vigente.
 
 - 06/11/2026 — Issue incorporada ao backlog em `docs/issues`; dependências e prontidão revistas, sem declarar pré-requisitos concluídos.

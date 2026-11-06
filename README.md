@@ -11,7 +11,9 @@
 
 Motor de normalização e exposição de dados públicos oficiais da **B3 (Brasil, Bolsa, Balcão)**, reconstruído inteiramente em **Rust**, com arquitetura assíncrona baseada em Tokio/Axum, persistência nativa em PostgreSQL 16 (sem dependência de Redis ou Celery) com evolução orientada pelo [PRD de produto](docs/b3_prd.md).
 
-Documentação de referência: [plano de revisão e migração](docs/19-plan.md), [pesquisa de fontes](docs/RESEARCH.md), [mapa de contextos](CONTEXT-MAP.md) e [backlog de desenvolvimento](docs/issues/README.md).
+Documentação de referência: [marcos de desenvolvimento](docs/prd_dev_milestones.md), [plano de revisão e migração](docs/19-plan.md), [pesquisa de fontes](docs/RESEARCH.md), [mapa de contextos](CONTEXT-MAP.md) e [backlog de desenvolvimento](docs/issues/README.md).
+
+O [primeiro lançamento 0.0.1](docs/0.0.1-plan.md) está em implementação. A fundação nova de jobs e elegibilidade ainda não está integrada aos transportes/executores; o runtime existente não comprova o aceite G0–G5. [Elegibilidade externa e corpus oficial](docs/release_source_eligibility.md) permanecem pendentes.
 
 ---
 

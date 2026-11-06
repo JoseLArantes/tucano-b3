@@ -824,6 +824,8 @@ O README descreve algumas propriedades como entregues que precisam de comprovaç
 
 Os marcos abaixo não são estimativas de prazo. A incerteza de acesso e corpus precisa ser reduzida antes de estimar esforço de migração. Os sete grupos de fontes atualmente exigidos continuam no escopo final, com priorização por marcos.
 
+O [plano de marcos de desenvolvimento](prd_dev_milestones.md) detalha a situação atual, as subentregas, as dependências e as evidências de conclusão, preservando este PRD como fonte única dos requisitos de produto.
+
 | Marco | Resultado | Saída obrigatória | Issue |
 | --- | --- | --- | --- |
 | G0 | Viabilidade e corpus homologável | Canal/finalidade sem custo confirmados, formatos e lacunas registrados | [01](issues/01-source-viability.md) |
