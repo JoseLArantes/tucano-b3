@@ -4,15 +4,15 @@ Status: planejamento de execução, sujeito aos critérios de saída de cada mar
 
 Execução 0.0.1 iniciada no [plano de lançamento](0.0.1-plan.md). Decisão posterior do mantenedor: base nova e primeiro contrato público, sem migração dos registros/IDs anteriores. Os requisitos de preservação passam a reger o novo conjunto após seu lançamento; a reconstrução do legado não integra o caminho crítico desta entrega.
 
-Data da avaliação: **06/11/2026**, America/Sao_Paulo. Base inspecionada: **`fdc804f`**. Referência de produto: [PRD vigente, versão 2.0](b3_prd.md).
+Data da revisão: **06/11/2026**, America/Sao_Paulo. Baseline histórica da transição: **`fdc804f`**. Implementação integrada em qualificação nesta revisão; validação executada contra a working tree atual. Referência de produto: [PRD vigente, versão 2.0](b3_prd.md).
 
 Este documento detalha os marcos G0–G7 da seção 20 do PRD a partir do código e da revisão existentes. Define sequência, dependências, entregas e evidências de conclusão; não é um PRD alternativo. O [plano 19](19-plan.md) orienta a avaliação e a migração do legado; as [issues 01–09](issues/README.md) continuam sendo o backlog rastreável. Requisitos de produto e compatibilidade prevalecem sobre propostas de implementação ainda não homologadas.
 
-## 1. Ponto de partida
+## 1. Baseline histórica da transição (`fdc804f`)
 
-O projeto está na **transição entre a revisão da implementação existente e a construção do núcleo histórico publicável**. Há código reutilizável, contratos inventariados e testes de regressão. Ainda não há evidência suficiente para considerar concluído o primeiro lançamento definido pelo PRD.
+Esta seção preserva a fotografia que motivou o plano no commit `fdc804f`. Ela não descreve o estado atual depois da implementação de `0.0.1-plan.md`. Naquela base, o projeto estava na **transição entre a revisão da implementação existente e a construção do núcleo histórico publicável**.
 
-| Área | Situação observada nesta base | Consequência para o desenvolvimento |
+| Área | Situação observada em `fdc804f` | Consequência para o desenvolvimento |
 | --- | --- | --- |
 | Stack e organização | Rust, serviços REST/CLI/worker/MCP, SQLx, PostgreSQL 16 e Compose existentes | Evoluir a implementação por capacidade; preservar módulos e contratos úteis |
 | Revisão de aderência | Issue 09 registrada como concluída; avaliação e desenho de migração em `.scratch/prd-alignment/` | Usar os resultados como entrada; conclusão da revisão não conclui os marcos de produto |
@@ -27,19 +27,36 @@ O projeto está na **transição entre a revisão da implementação existente e
 | MCP restrito | Inicialização dispensa migrations por inspeção; falta teste do processo com cliente e credencial somente leitura | Tratar a comprovação ponta a ponta como saída de G4 |
 | Elegibilidade e cobertura | Permissões por finalidade e profundidade histórica não estão encerradas | Trabalho offline pode avançar; habilitação de fonte e lançamento dependem de G0 |
 
-A informação sobre os 37 testes é **evidência registrada na avaliação anterior**, não uma execução realizada para elaborar este documento. A [matriz de aderência](../.scratch/prd-alignment/assessment.md) e o [desenho de migração](../.scratch/prd-alignment/migration.md) contêm seções produzidas em momentos diferentes. Descrições antigas de ZIP, contagens de contratos ou decisões ainda propostas precisam ser reconciliadas com o código antes de orientar uma implementação.
+A informação sobre os 37 testes é **evidência registrada na avaliação histórica**, não uma execução realizada para elaborar este documento. A [matriz de aderência](../.scratch/prd-alignment/assessment.md) e o [desenho de migração](../.scratch/prd-alignment/migration.md) descrevem aquela etapa e não substituem a validação da implementação corrente.
 
-### 1.1 Reutilização e limites
+## 2. Estado da implementação integrado em 06/11/2026
+
+A transição de implementação foi superada em boa parte: o núcleo histórico tem migrations, modelos tipados, aquisição limitada, parsers incrementais, staging, revisões, jobs PostgreSQL, API, MCP e descoberta. Isso comprova capacidade de engenharia com fixtures e bancos descartáveis; **não** comprova elegibilidade de uso externo, completude do corpus ou homologação com publicação B3 real. O primeiro lançamento permanece bloqueado por G0 e pela qualificação final.
+
+| Marco | Evidência de implementação | Pendência de aceite |
+| --- | --- | --- |
+| G0 — Viabilidade e corpus | Matriz por fonte/finalidade e validação fail-closed implementadas; [registro de elegibilidade](release_source_eligibility.md) documenta a análise | Confirmação externa para aquisição/retenção/distribuição a terceiros sem custo obrigatório; corpus e cutoff oficiais congelados |
+| G1 — Modelo e contratos | Migrations `0004`–`0011`, fatos imutáveis/versionados, revisões e ponteiro ativo, relações de identidade reconstruíveis; testes cobrem correção, conflito, rejeição, rollback e rebuild sem alterar valores | Validar chaves naturais e cobertura de exceções no corpus oficial; completar critérios do PRD por fonte |
+| G2 — Aquisição e replay | Hash incremental, raw endereçado por conteúdo, importação local confinada, inventário de ZIPs aninhados e limites de expansão/membros/metadados; HTTP determinístico testado | Homologar fontes, redirecionamentos e formatos reais; concluir medição de recursos no corpus de release |
+| G3 — Núcleo histórico | COTAHIST streaming, registro de segurança tipado, staging em lotes, proveniência e publicação explícita; testes reais de processos cobrem lease expirada, worker obsoleto e publicação | Ingerir e reconciliar a amostra permitida 2025–2026, validar sobreposições e calendário, concluir aceite em corpus real |
+| G4 — Produto de consulta | REST `/api/v1/b3/...` e MCP stdio usam query services compartilhados; auth separada, provenance, revision pinning, detail/identifiers/TSL e role MCP read-only cobertos | Smoke da imagem corrente e validação dos contratos com dataset publicado e evidências dos arquivos reais |
+| G5 — Operação confiável | Jobs duráveis, lanes, retries, fencing, cancelamento, descoberta desacoplada, calendário desconhecido preservado; imagens API/worker/migrate buildadas; smoke API/worker; benchmark sintético concorrente; backup/restore seguido de consulta REST | Repetir medições com corpus permitido e infraestrutura-alvo antes de fixar budgets; calendário real segue pendente |
+| G6 — Boletins de preços | Famílias existentes permanecem isoladas; não foram habilitadas no produto `0.0.1` | Fora do primeiro lançamento; elegibilidade, corpora e homologação próprios |
+| G7 — Índices e carteiras | Parsing legado não equivale à integração na plataforma versionada do primeiro lançamento | Fora do primeiro lançamento; elegibilidade, corpora e homologação próprios |
+
+Validação corrente: `docker compose run --rm cargo cargo fmt --all -- --check`, Clippy com `-D warnings`, e suíte completa em PostgreSQL 16.15 isolado passaram (**65 testes; sem falhas ou ignorados**). Imagens de release foram buildadas; health/auth, worker, publicação, carga de leitura concorrente e restore com 20.000 fatos sintéticos passaram. Os números e limites de sua aplicação constam no [plano do primeiro lançamento](0.0.1-plan.md) e no [guia operacional](release_operations.md). Homologação oficial e budget de produção continuam pendentes.
+
+### Reutilização e limites herdados
 
 Preservar, com regressões: precisão decimal, normalização, hashes determinísticos, auditoria granular, tratamento de chaves nulas, separação 086/186, aviso COTAHIST, rotas v1 e identidade temporal já suportada. Estender aquisição, parsers, resolução e persistência. Substituir gradualmente o loop de agendamento, reutilizando os serviços de domínio e a coordenação PostgreSQL.
 
 O modelo de dados atual não será congelado para acomodar suas limitações. Chaves, associações reconstruíveis e regras de seleção precisam ser homologadas antes de novas constraints. `0001` permanece imutável; cada alteração estrutural exige nova migration e validação de upgrade com dados.
 
-## 2. Quadro de marcos
+## Quadro histórico de marcos
 
-Os estados abaixo descrevem **prontidão de produto**, sem substituir os status de triagem das issues. Nenhum G0–G7 é declarado concluído nesta avaliação. “Parcial” indica código ou preparação aproveitável, com critérios de saída ainda pendentes.
+Os estados abaixo descrevem a **prontidão na baseline histórica `fdc804f`** e não substituem a tabela de estado corrente acima nem os status de triagem das issues. “Parcial” naquela avaliação indicava código ou preparação aproveitável, com critérios de saída pendentes.
 
-| Marco | Estado nesta base | Resultado de saída | Dependência efetiva | Issue |
+| Marco | Estado em `fdc804f` | Resultado de saída | Dependência efetiva | Issue |
 | --- | --- | --- | --- | --- |
 | G0 — Viabilidade e corpus | Pendente de evidência externa | Fonte, canal, finalidade e recorte elegíveis, sem custo de dados obrigatório | Independente; libera uso de corpus e disponibilização conforme a finalidade | [01](issues/01-source-viability.md) |
 | G1 — Modelo e contratos | Parcial; decisões e corpus pendentes | Identidade, granularidade, revisões e migração especificadas e testáveis | Baseline da revisão; corpus de G0 para homologação definitiva | [02](issues/02-domain-and-contracts.md) |
@@ -50,7 +67,7 @@ Os estados abaixo descrevem **prontidão de produto**, sem substituir os status 
 | G6 — Boletins de preços | Código inicial; homologação posterior ao núcleo | 086/186 por edição, separados, com comparação explícita | Plataforma G1–G5 e G0 específico de cada fonte | [07](issues/07-price-reports.md) |
 | G7 — Índices e carteiras | Código inicial; homologação posterior ao núcleo | 087 e composições com tipos, unidades, vigência e estágio | Plataforma G1–G5 e G0 específico de cada fonte | [08](issues/08-indices-and-portfolios.md) |
 
-### 2.1 Sequência e trabalho concomitante
+### Sequência e trabalho concomitante
 
 ```mermaid
 flowchart TD

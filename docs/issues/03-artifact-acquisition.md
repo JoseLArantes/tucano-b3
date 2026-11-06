@@ -31,10 +31,11 @@ Comandos Compose obrigatórios do PRD; build e smoke API/worker se houver mudan�
 
 ## Prontidão para execução
 
-Aguardar o contrato de artefatos/escopos da issue 02; acesso externo depende da issue 01. Mocks e desenho offline podem ser preparados sem habilitar coletores reais. O status deve mudar para `ready-for-agent` somente após registrar a evidência que libera a entrega completa.
+O pipeline técnico foi implementado com aquisição HTTPS/local, hashing incremental, raw imutável, inventário aninhado limitado e replay. O aceite completo permanece `needs-info` até obter elegibilidade da issue 01 e homologar os canais/fontes reais; nenhuma aquisição B3 foi executada nesta entrega.
 
 ## Comments
 
 - 05/11/2026 — Requisitos nas seções 10, 11 e 18 do [PRD](../b3_prd.md). Coordenar cancelamento e fencing com a issue 06 desde o início.
 
 - 06/11/2026 — Issue incorporada ao backlog em `docs/issues`; dependências e prontidão revistas, sem declarar pré-requisitos concluídos.
+- 06/11/2026 — Testes sintéticos cobrem limites de bytes/membros/metadados, ZIP aninhado, path traversal, raw alterado, URL não pública e resposta HTTP simulada. Homologação de arquivo/canal oficial e medições de corpus permanecem pendentes.

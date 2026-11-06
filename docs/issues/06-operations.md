@@ -31,12 +31,13 @@ PostgreSQL 16 real, comandos Compose obrigatórios, build e smoke de API/worker 
 
 ## Prontidão para execução
 
-Aguardar a definição de escopos e estados da issue 02. Desenvolver em conjunto com 03/04, sem criar dependência circular de conclusão entre esses trabalhos. O status deve mudar para `ready-for-agent` somente após registrar a evidência que libera a entrega completa.
+Jobs, descoberta e recuperação estão integrados. A issue permanece aberta para qualificação de capacidade (benchmark concorrente, budgets derivados de medição, smoke das imagens correntes e validação da aplicação após restore); o calendário real depende de evidência oficial versionada.
 
 ## Comments
 
-- 06/11/2026 — Serviço interno de jobs duráveis implementado para W3: idempotência, lanes, lease/heartbeat, fencing, tentativas e cancelamento. Integração com API/CLI/worker, publicação, dois processos reais, calendário e recuperação completa continuam pendentes; ver [plano](../0.0.1-plan.md).
+- 06/11/2026 — Primeiro estágio: serviço interno de jobs duráveis implementado para W3: idempotência, lanes, lease/heartbeat, fencing, tentativas e cancelamento. Os itens listados como pendentes foram implementados depois; consultar a atualização abaixo.
 
 - 05/11/2026 — Seções 10–11, 14 e 17–18 do [PRD](../b3_prd.md). Este marco começa antes da conclusão do núcleo histórico; recuperação não é fase opcional posterior.
 
 - 06/11/2026 — Issue incorporada ao backlog em `docs/issues`; dependências e prontidão revistas, sem declarar pré-requisitos concluídos.
+- 06/11/2026 — Jobs integrados a API/CLI/worker, ingestão e publicação passam por fencing; testes PostgreSQL cobrem retry, cancelamento, lease expirada e dois processos reais. Discovery registra pendências sem ingerir, usa evidência de calendário e preserva `unknown`. Build/smoke e benchmark/restauração com 20.000 fatos sintéticos passaram e estão registrados no guia operacional; budgets de produção aguardam corpus autorizado/hardware-alvo.

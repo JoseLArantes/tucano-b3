@@ -2,6 +2,8 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum AppError {
+    #[error("Resource not found: {0}")]
+    NotFound(String),
     #[error("Layout error: {0}")]
     Layout(String),
 

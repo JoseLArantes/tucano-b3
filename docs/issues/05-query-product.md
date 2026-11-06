@@ -27,10 +27,11 @@ Consumidores precisam distinguir ausência, falha, identidade incerta e base nom
 
 ## Prontidão para execução
 
-Aguardar baseline/contratos da issue 02 e núcleo publicável da issue 04; exposição externa depende da finalidade elegível da issue 01. O status deve mudar para `ready-for-agent` somente após registrar a evidência que libera a entrega completa.
+REST e MCP stdio com serviços compartilhados foram implementados para os recursos habilitados no 0.0.1. O aceite de release requer dataset publicado e homologado, smoke da imagem atual e confirmação de elegibilidade da issue 01 para entrega a terceiros.
 
 ## Comments
 
 - 05/11/2026 — Referência nas seções 13–16 e 22 do [PRD](../b3_prd.md). Exposição a terceiros depende de finalidade elegível, mesmo com Bearer.
 
 - 06/11/2026 — Issue incorporada ao backlog em `docs/issues`; dependências e prontidão revistas, sem declarar pré-requisitos concluídos.
+- 06/11/2026 — Testes cobrem auth read/admin, OpenAPI, paginação, revisão, precisão e proveniência; MCP roda como processo real com role read-only e rejeita mutações. Rotas de detalhe de instrumento, histórico de identifiers e TSL preservam lineage e não fazem fallback entre famílias.

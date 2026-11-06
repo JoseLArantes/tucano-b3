@@ -127,7 +127,7 @@ pub struct HealthResponse {
     pub app: String,
 
     /// Versão do pacote compilado da aplicação.
-    #[schema(example = "0.1.0")]
+    #[schema(example = "0.0.1")]
     pub version: String,
 
     /// Timestamp UTC do momento da checagem.

@@ -1,9 +1,8 @@
 use chrono::{Datelike, NaiveDate, Timelike, Weekday};
-use std::sync::Arc;
 use tucano_b3::config::B3Settings;
 use tucano_b3::db::create_pool;
 use tucano_b3::db::enums::SourceFileType;
-use tucano_b3::services::sync_service::B3SyncService;
+use tucano_b3::services::runtime::RuntimeSettings;
 use tucano_b3::worker::B3Worker;
 
 #[tokio::test]
@@ -27,12 +26,11 @@ async fn test_worker_weekend_skip_and_instantiation() {
         .await
         .expect("Integration test requires PostgreSQL; connect failed");
 
-    let settings = Arc::new(B3Settings {
+    let settings = B3Settings {
         b3_sync_enabled: false,
         ..Default::default()
-    });
-    let sync_service = Arc::new(B3SyncService::new(pool.clone(), (*settings).clone()));
-    let _worker = B3Worker::new(settings, sync_service);
+    };
+    let _worker = B3Worker::new(pool, RuntimeSettings::from_settings(&settings));
 
     // Verify worker scheduled order constant definition
     let order = [

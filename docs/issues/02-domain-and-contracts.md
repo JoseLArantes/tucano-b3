@@ -26,7 +26,7 @@ Ticker, instrumento, distribuição, fotografia de cadastro e revisão de arquiv
 
 ## Prontidão para execução
 
-Concluir a revisão de aderência da issue 09 e obter os resultados aplicáveis da issue 01 para homologar chaves e relações. Inventário offline e hipóteses de projeto podem avançar antes do corpus, sem serem apresentados como homologação. O status deve mudar para `ready-for-agent` somente após registrar a evidência que libera a entrega completa.
+O modelo e contratos foram implementados e testados com fixtures. A issue permanece `needs-info` até que corpus autorizado permita homologar chaves naturais, qualificadores, exceções e relações temporais; não apresentar fixture sintética como homologação.
 
 ## Comments
 
@@ -36,3 +36,4 @@ Concluir a revisão de aderência da issue 09 e obter os resultados aplicáveis 
 
 - 06/11/2026 — Issue incorporada ao backlog em `docs/issues`; dependências e prontidão revistas, sem declarar pré-requisitos concluídos.
 - 06/11/2026 — Revisão de aderência da issue 09 concluída com sucesso. Baseline de contratos e rotas formalizado em `.scratch/prd-alignment/evidence/contracts_inventory.md` e `.scratch/prd-alignment/evidence/openapi_reference.json`. Resta a conclusão da issue 01 para homologação do corpus.
+- 06/11/2026 — Implementadas migrations aditivas `0004`–`0011`, fatos tipados/versionados, membership de revisão, snapshots de cadastro e rebuild de identidade. PostgreSQL testa correção, rejeição, conflito, rollback e rebuild sem alterar versões de mercado. Homologação de natural keys/qualificadores com corpus B3 autorizado continua pendente; ver [plano 0.0.1](../0.0.1-plan.md).

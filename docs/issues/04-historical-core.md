@@ -31,10 +31,11 @@ PostgreSQL 16 real para NULLs, transações, concorrência e auditoria; repetir 
 
 ## Prontidão para execução
 
-Aguardar os contratos da issue 02, aquisição recuperável da issue 03 e corpus elegível da issue 01; coordenar recuperação com a issue 06. O status deve mudar para `ready-for-agent` somente após registrar a evidência que libera a entrega completa.
+O núcleo técnico foi implementado sobre as issues 02, 03 e 06, com publicação explícita e fixtures sintéticas no PostgreSQL. O aceite completo ainda depende do corpus elegível da issue 01, da reconciliação entre granulações e do benchmark com uma amostra permitida.
 
 ## Comments
 
 - 05/11/2026 — Detalhamento nas seções 7–12 e 18 do [PRD](../b3_prd.md). Não adicionar preços ajustados ou integração CVM.
 
 - 06/11/2026 — Issue incorporada ao backlog em `docs/issues`; dependências e prontidão revistas, sem declarar pré-requisitos concluídos.
+- 06/11/2026 — Testes streaming cobrem largura/encoding/precisão, isolamento de linhas inválidas, falhas estruturais, correção/conflito/rollback e rebuild cadastral. Dois workers de processo real validam claim/recovery/publicação explícita; uma fixture tipada valida TSL. Sem corpus oficial, isso não constitui homologação de produção.

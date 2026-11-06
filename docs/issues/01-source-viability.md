@@ -39,3 +39,4 @@ Informações externas de elegibilidade e corpus ainda pendentes. Preparação d
 - 05/11/2026 — Criada a partir da [pesquisa](../RESEARCH.md) e da seção 4 do [PRD](../b3_prd.md). Requer evidência externa; os demais trabalhos offline independentes podem avançar conforme o PRD vigente.
 
 - 06/11/2026 — Issue incorporada ao backlog em `docs/issues`; dependências e prontidão revistas, sem declarar pré-requisitos concluídos.
+- 06/11/2026 — O mantenedor confirmou que ainda não há evidência de uso gratuito/redistribuição e instruiu manter o lançamento externo bloqueado. Nenhuma fonte ou corpus foi habilitado por esta decisão.

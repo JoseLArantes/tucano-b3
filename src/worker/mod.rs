@@ -1,92 +1,137 @@
-use chrono::{Datelike, Local};
-use std::sync::Arc;
-use tokio::time::{sleep, Duration};
-use tracing::{error, info, warn};
-
-use crate::config::B3Settings;
-use crate::db::enums::SourceFileType;
-use crate::services::sync_service::B3SyncService;
+//! Durable executors reserve an independent lane for regular maintenance.
+use crate::{
+    error::Result,
+    services::{
+        jobs::{ExecutionLane, JobCompletion, JobService},
+        runtime::{discovery::DiscoveryService, executor::ReleaseExecutor, RuntimeSettings},
+    },
+};
+use sqlx::PgPool;
+use tokio::time::{interval, Duration};
+use tracing::{info, warn};
+use uuid::Uuid;
 
 pub struct B3Worker {
-    settings: Arc<B3Settings>,
-    sync_service: Arc<B3SyncService>,
+    pool: PgPool,
+    settings: RuntimeSettings,
 }
-
 impl B3Worker {
-    pub fn new(settings: Arc<B3Settings>, sync_service: Arc<B3SyncService>) -> Self {
-        Self {
-            settings,
-            sync_service,
-        }
+    pub fn new(pool: PgPool, settings: RuntimeSettings) -> Self {
+        Self { pool, settings }
     }
 
-    pub async fn run_loop(&self) {
-        info!("Starting Tucano B3 background worker daemon...");
-
-        if !self.settings.b3_sync_enabled {
-            info!("B3_SYNC_ENABLED is false; worker running in passive standby mode.");
-        }
-
-        loop {
-            if self.settings.b3_sync_enabled {
-                if let Err(e) = self.run_scheduled_tasks().await {
-                    error!("Error executing worker scheduled tasks: {:?}", e);
-                }
-            }
-
-            // Sleep 60 seconds between polling rounds
-            sleep(Duration::from_secs(60)).await;
-        }
-    }
-
-    pub async fn run_scheduled_tasks(&self) -> anyhow::Result<()> {
-        let today = Local::now().date_naive();
-        // Skip weekends
-        if today.weekday().number_from_monday() > 5 {
-            return Ok(());
-        }
-
-        // Daily ingestion pipeline in specified order
-        let order = [
-            SourceFileType::Bvbg028InstrumentsFile,
-            SourceFileType::TradableSecurityList,
-            SourceFileType::Bvbg087IndexReport,
-            SourceFileType::Bvbg086PriceReport,
-            SourceFileType::Bvbg186EquitiesSimplifiedPriceReport,
-            SourceFileType::CotahistDaily,
-        ];
-
-        for sft in order {
-            match self
-                .sync_service
-                .run_manual_sync(
-                    sft,
-                    today,
-                    today,
-                    None,
-                    None,
-                    false,
-                    false,
-                    Some("b3_worker_cron".to_string()),
+    pub async fn run_once(&self, lane: ExecutionLane, owner: Uuid) -> Result<bool> {
+        let lane_name = match lane {
+            ExecutionLane::Maintenance => "maintenance",
+            ExecutionLane::Heavy => "heavy",
+        };
+        sqlx::query("INSERT INTO b3_worker_heartbeats(worker_id,lane) VALUES($1,$2) ON CONFLICT(worker_id) DO UPDATE SET heartbeat_at=NOW(),lane=EXCLUDED.lane").bind(owner).bind(lane_name).execute(&self.pool).await?;
+        let jobs = JobService::new(self.pool.clone());
+        let Some(claim) = jobs.claim(owner, lane, self.settings.lease_seconds).await? else {
+            return Ok(false);
+        };
+        info!(job_id=%claim.id,run_id=%claim.owner_id,generation=claim.generation,lane=lane_name,"Execução administrativa iniciada");
+        let executor = ReleaseExecutor::new(self.pool.clone(), self.settings.clone());
+        let heartbeats = async {
+            let mut timer = interval(Duration::from_secs(
+                (self.settings.lease_seconds / 3).max(1) as u64,
+            ));
+            loop {
+                timer.tick().await;
+                jobs.heartbeat(&claim, self.settings.lease_seconds).await?;
+                sqlx::query(
+                    "UPDATE b3_worker_heartbeats SET heartbeat_at=NOW() WHERE worker_id=$1",
                 )
-                .await
-            {
-                Ok(outcome) => {
-                    info!(
-                        "Worker sync {} for {} completed: {} inserted, {} changed, {} unchanged",
-                        sft, today, outcome.inserted, outcome.changed, outcome.unchanged
-                    );
+                .bind(owner)
+                .execute(&self.pool)
+                .await?;
+            }
+            #[allow(unreachable_code)]
+            Ok::<(), crate::error::AppError>(())
+        };
+        let result =
+            tokio::select! {result=executor.execute(&claim)=>result,result=heartbeats=>result};
+        let terminal: bool = sqlx::query_scalar(
+            "SELECT status IN ('succeeded','succeeded_with_issues') FROM b3_jobs WHERE id=$1",
+        )
+        .bind(claim.id)
+        .fetch_one(&self.pool)
+        .await?;
+        if terminal {
+            return Ok(true);
+        }
+        match result {
+            Ok(()) => {
+                let status: String = sqlx::query_scalar("SELECT status FROM b3_jobs WHERE id=$1")
+                    .bind(claim.id)
+                    .fetch_one(&self.pool)
+                    .await?;
+                if status == "running" {
+                    let mut tx = jobs.begin_confirmation(&claim).await?;
+                    JobService::complete(&mut tx, &claim, JobCompletion::Succeeded).await?;
+                    tx.commit().await?;
                 }
-                Err(crate::error::AppError::LockConflict(_)) => {
-                    // Another instance or manual process is syncing this date
-                    warn!("Worker skipped {} (lock already held by another job)", sft);
-                }
-                Err(e) => {
-                    warn!("Worker sync {} failed: {:?}", sft, e);
-                }
+                info!(job_id=%claim.id,run_id=%claim.owner_id,generation=claim.generation,lane=lane_name,"Execução administrativa concluída");
+            }
+            Err(error) => {
+                warn!(job_id=%claim.id,run_id=%claim.owner_id,generation=claim.generation,lane=lane_name,"Execução interrompida; consulte estado e tentativa");
+                let (code, message) = match &error {
+                    crate::error::AppError::Layout(message) => {
+                        ("STRUCTURAL_INVALID", message.as_str())
+                    }
+                    crate::error::AppError::Validation(message) => {
+                        ("VALIDATION_FAILED", message.as_str())
+                    }
+                    crate::error::AppError::LockConflict(_) => (
+                        "OWNERSHIP_OR_SCOPE_CONFLICT",
+                        "Execução cancelada, expirada ou revisão substituída.",
+                    ),
+                    crate::error::AppError::Io(_) => (
+                        "ARTIFACT_IO_FAILED",
+                        "Artefato ausente ou não recuperável; verificar manifesto e armazenamento.",
+                    ),
+                    _ => (
+                        "EXECUTION_FAILED",
+                        "Falha de infraestrutura; verificar dependências e retomar a execução.",
+                    ),
+                };
+                let message = message.chars().take(240).collect::<String>();
+                let _ = jobs.fail_with_message(&claim, code, &message, 30).await;
             }
         }
+        Ok(true)
+    }
 
-        Ok(())
+    pub async fn run_loop(&self) -> Result<()> {
+        let regular = Uuid::new_v4();
+        let heavy = Uuid::new_v4();
+        let maintenance = async {
+            loop {
+                self.run_once(ExecutionLane::Maintenance, regular).await?;
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+            #[allow(unreachable_code)]
+            Ok::<(), crate::error::AppError>(())
+        };
+        let heavy_work = async {
+            loop {
+                self.run_once(ExecutionLane::Heavy, heavy).await?;
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+            #[allow(unreachable_code)]
+            Ok::<(), crate::error::AppError>(())
+        };
+        let discovery = async {
+            let scanner = DiscoveryService::new(self.pool.clone(), self.settings.clone());
+            loop {
+                if std::env::var("B3_DISCOVERY_ENABLED").as_deref() == Ok("true") {
+                    scanner.scan(regular, true, chrono::Utc::now()).await?;
+                }
+                tokio::time::sleep(Duration::from_secs(60)).await;
+            }
+            #[allow(unreachable_code)]
+            Ok::<(), crate::error::AppError>(())
+        };
+        tokio::select! {result=maintenance=>result,result=heavy_work=>result,result=discovery=>result,_=tokio::signal::ctrl_c()=>Ok(())}
     }
 }

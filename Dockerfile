@@ -37,6 +37,7 @@ RUN mkdir -p /data/raw /data/processed
 
 ENV B3_RAW_DATA_DIR=/data/raw
 ENV LOG_LEVEL=INFO
+ENV RUST_LOG=info
 
 EXPOSE 8000
 

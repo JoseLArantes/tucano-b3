@@ -1,65 +1,73 @@
+use super::release_error::ApiError;
+use crate::config::B3Settings;
 use axum::{
     extract::{Request, State},
-    http::StatusCode,
+    http::{Method, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
-    Json,
 };
-use serde_json::json;
 use std::sync::Arc;
 
-use crate::config::B3Settings;
-
-#[derive(Clone)]
-pub struct AuthState {
-    pub token: String,
+pub fn is_public(path: &str, method: &Method) -> bool {
+    *method == Method::GET
+        && matches!(
+            path,
+            "/healthz" | "/api/v1/health" | "/docs" | "/docs/" | "/openapi.json"
+        )
 }
 
 pub async fn require_bearer_token(
     State(settings): State<Arc<B3Settings>>,
-    req: Request,
+    request: Request,
     next: Next,
 ) -> Response {
-    let path = req.uri().path();
-
-    // Whitelist public endpoints
-    if path == "/healthz"
-        || path == "/metrics"
-        || path == "/api/v1/health"
-        || path == "/api/v1/b3/worker/health"
-        || path == "/docs"
-        || path == "/docs/"
-        || path == "/redoc"
-        || path == "/redoc/"
-        || path == "/openapi.json"
-        || path.starts_with("/swagger-ui")
-    {
-        return next.run(req).await;
+    if is_public(request.uri().path(), request.method()) {
+        return next.run(request).await;
     }
-
-    let auth_header = req.headers().get(axum::http::header::AUTHORIZATION);
-    let is_valid = match auth_header {
-        Some(val) => {
-            if let Ok(s) = val.to_str() {
-                if let Some(token) = s.strip_prefix("Bearer ") {
-                    token.trim() == settings.tucano_b3_token
-                } else {
-                    false
-                }
-            } else {
-                false
-            }
-        }
-        None => false,
-    };
-
-    if !is_valid {
-        let body = Json(json!({
-            "error": "Unauthorized",
-            "message": "Token de autenticação ausente ou inválido. Use 'Authorization: Bearer <token>'."
-        }));
-        return (StatusCode::UNAUTHORIZED, body).into_response();
+    if settings.validate_api_credentials().is_err() {
+        return ApiError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "AUTH_NOT_CONFIGURED",
+            "Autenticação não configurada.",
+        )
+        .into_response();
     }
-
-    next.run(req).await
+    let token = request
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok())
+        .and_then(|h| h.strip_prefix("Bearer "));
+    let admin = token == Some(settings.tucano_b3_admin_token.as_str());
+    let read = token == Some(settings.tucano_b3_read_token.as_str());
+    if !admin && !read {
+        return ApiError::new(
+            StatusCode::UNAUTHORIZED,
+            "UNAUTHORIZED",
+            "Credencial Bearer ausente ou inválida.",
+        )
+        .into_response();
+    }
+    let admin_only = request.method() != Method::GET
+        || request.uri().path().starts_with("/api/v1/b3/jobs")
+        || request.uri().path().starts_with("/api/v1/b3/sync-runs")
+        || request.uri().path().starts_with("/api/v1/b3/quarantine")
+        || request
+            .uri()
+            .path()
+            .starts_with("/api/v1/b3/pending-updates");
+    let admin_only = admin_only
+        || request
+            .uri()
+            .path()
+            .starts_with("/api/v1/b3/data-revisions")
+        || request.uri().path().starts_with("/api/v1/b3/source-files");
+    if admin_only && !admin {
+        return ApiError::new(
+            StatusCode::FORBIDDEN,
+            "ADMIN_REQUIRED",
+            "A operação exige credencial administrativa.",
+        )
+        .into_response();
+    }
+    next.run(request).await
 }

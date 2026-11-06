@@ -2,339 +2,163 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
-use serde_json::Value;
+use serde_json::{json, Value};
+use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
 use tower::ServiceExt;
+use tucano_b3::{
+    api::{create_router, AppState},
+    config::B3Settings,
+    services::sync_service::B3SyncService,
+};
 
-use tucano_b3::api::{create_router, AppState};
-use tucano_b3::config::B3Settings;
-use tucano_b3::db::{create_pool, run_migrations};
-use tucano_b3::mcp::tools::*;
-use tucano_b3::services::sync_service::B3SyncService;
-
-async fn setup_test_app() -> axum::Router {
-    let url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5433/tucano_b3".to_string());
-
-    let pool = create_pool(&url)
-        .await
-        .expect("Integration test requires PostgreSQL; connect failed");
-
-    run_migrations(&pool)
-        .await
-        .expect("Integration test requires database migrations to succeed");
-
-    let settings = Arc::new(B3Settings::default());
-    let sync_service = Arc::new(B3SyncService::new(pool.clone(), (*settings).clone()));
-    let state = Arc::new(AppState {
-        pool,
-        settings,
-        sync_service,
+fn app() -> axum::Router {
+    let pool = PgPoolOptions::new()
+        .connect_lazy("postgres://unused:unused@127.0.0.1:1/unreachable_test")
+        .unwrap();
+    let settings = Arc::new(B3Settings {
+        tucano_b3_read_token: "test-read".into(),
+        tucano_b3_admin_token: "test-admin".into(),
+        ..B3Settings::default()
     });
-
-    create_router(state)
+    create_router(Arc::new(AppState {
+        pool: pool.clone(),
+        settings: settings.clone(),
+        sync_service: Arc::new(B3SyncService::new(pool, (*settings).clone())),
+    }))
+}
+async fn body(response: axum::response::Response) -> Value {
+    serde_json::from_slice(
+        &axum::body::to_bytes(response.into_body(), 1_048_576)
+            .await
+            .unwrap(),
+    )
+    .unwrap()
 }
 
 #[tokio::test]
-async fn test_auth_whitelist_and_rejection() {
-    let app = setup_test_app().await;
-
-    // 1. Healthz is public
-    let res = app
-        .clone()
+async fn public_exceptions_and_read_admin_separation_are_explicit() {
+    for path in ["/healthz", "/openapi.json"] {
+        assert_eq!(
+            app()
+                .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::OK
+        );
+    }
+    assert_eq!(
+        app()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/b3/cotahist/quotes")
+                    .body(Body::empty())
+                    .unwrap()
+            )
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    for path in [
+        "/api/v1/b3/jobs",
+        "/api/v1/b3/source-files",
+        "/api/v1/b3/pending-updates",
+    ] {
+        let response = app()
+            .oneshot(
+                Request::builder()
+                    .uri(path)
+                    .header("Authorization", "Bearer test-read")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert_eq!(body(response).await["code"], "ADMIN_REQUIRED");
+    }
+    let response = app()
         .oneshot(
             Request::builder()
+                .method("POST")
                 .uri("/healthz")
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-
-    // 2. /api/v1/health and /api/v1/b3/worker/health are public
-    let res = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/v1/health")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-
-    let res = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/v1/b3/worker/health")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-
-    // 3. /docs and /openapi.json are public
-    let res = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/openapi.json")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-
-    let res = app
-        .clone()
-        .oneshot(Request::builder().uri("/docs").body(Body::empty()).unwrap())
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-
-    // 4. /metrics is public and exports prometheus text
-    let res = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/metrics")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let body_str = String::from_utf8(body_bytes.to_vec()).unwrap();
-    assert!(body_str.contains("tucano_b3_up 1"));
-    assert!(body_str.contains("tucano_b3_instruments_total"));
-
-    // 5. Protected route without auth header returns 401
-    let res = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/v1/b3/instruments")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
-
-    // 5. Protected route with invalid bearer token returns 401
-    let res = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/v1/b3/instruments")
-                .header("Authorization", "Bearer invalid-secret")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
-
-    // 6. Protected route with valid token returns 200
-    let res = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/v1/b3/instruments")
-                .header("Authorization", "Bearer dev-token")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
-async fn test_openapi_schema_contains_b3_specs_and_disclaimer() {
-    let app = setup_test_app().await;
-
-    let res = app
-        .oneshot(
-            Request::builder()
-                .uri("/openapi.json")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let openapi: Value = serde_json::from_slice(&body_bytes).unwrap();
-
-    let title = openapi["info"]["title"].as_str().unwrap();
-    assert!(title.contains("Tucano B3"));
-
-    // Check paths exist
-    let paths = &openapi["paths"];
-    assert!(paths.get("/api/v1/b3/instruments").is_some());
-    assert!(paths.get("/api/v1/b3/cotahist/quotes").is_some());
-    assert!(paths.get("/api/v1/b3/price-report/quotes").is_some());
-
-    // Check COTAHIST description warning
-    let desc = openapi["info"]["description"].as_str().unwrap();
-    assert!(desc.contains("COTAHIST"));
-    assert!(desc.contains("preços brutos"));
+async fn invalid_pagination_and_unknown_parameters_are_typed_before_queries() {
+    for suffix in [
+        "limit=0",
+        "limit=1001",
+        "offset=-1",
+        "trade_date_from=2026-02-01&trade_date_to=2026-01-01",
+        "raw_sql=DELETE",
+    ] {
+        let response = app()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/v1/b3/cotahist/quotes?{suffix}"))
+                    .header("Authorization", "Bearer test-read")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{suffix}");
+        let value = body(response).await;
+        assert_eq!(value["code"], "INVALID_FILTER");
+        assert!(value["request_id"].is_string());
+        assert!(!value.to_string().contains("postgres"));
+    }
 }
 
 #[tokio::test]
-async fn test_cotahist_envelope_includes_disclaimer() {
-    let app = setup_test_app().await;
-
-    let res = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/v1/b3/cotahist/quotes?limit=10")
-                .header("Authorization", "Bearer dev-token")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let json_resp: Value = serde_json::from_slice(&body_bytes).unwrap();
-
-    assert!(json_resp.get("items").is_some());
-    assert!(json_resp.get("total").is_some());
-    assert!(json_resp.get("limit").is_some());
-    assert_eq!(json_resp["limit"], 10);
-
-    let disclaimer = json_resp["disclaimer"].as_str().unwrap();
-    assert!(disclaimer.contains("AVISO: Preços brutos nominais"));
+async fn administrative_json_is_closed_and_never_executes_inline() {
+    let response=app().oneshot(Request::builder().method("POST").uri("/api/v1/b3/jobs").header("Authorization","Bearer test-admin").header("content-type","application/json").body(Body::from(json!({"idempotency_key":"example","command":{"operation":"publish_revision","revision_id":uuid::Uuid::new_v4(),"acknowledge_issues":false,"sql":"DELETE"},"priority":"maintenance"}).to_string())).unwrap()).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(body(response).await["code"], "INVALID_REQUEST");
 }
 
 #[tokio::test]
-async fn test_diagnostics_coverage_endpoint() {
-    let app = setup_test_app().await;
-
-    let res = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/v1/b3/diagnostics/coverage")
-                .header("Authorization", "Bearer dev-token")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let metrics: Vec<Value> = serde_json::from_slice(&body_bytes).unwrap();
-    assert!(!metrics.is_empty());
-    assert!(metrics.iter().any(|m| m["dataset"] == "b3_instruments"));
-    assert!(metrics.iter().any(|m| m["dataset"] == "b3_cotahist_quotes"));
-}
-
-#[tokio::test]
-async fn test_mcp_tools_execution() {
-    let url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5433/tucano_b3".to_string());
-
-    let pool = create_pool(&url)
-        .await
-        .expect("Integration test requires PostgreSQL; connect failed");
-
-    // 1. Healthcheck
-    let health = handle_healthcheck(&pool).await;
-    assert_eq!(health["status"], "ok");
-    assert_eq!(health["database_connected"], true);
-
-    // 2. Search instruments
-    let search_args = serde_json::json!({ "query": "PETR4", "limit": 5 });
-    let search_res = handle_search_instruments(&pool, &search_args).await;
-    assert!(search_res.get("instruments").is_some());
-
-    // 3. Dataset diagnostics
-    let diag = handle_get_dataset_diagnostics(&pool).await;
-    assert!(diag.get("diagnostics").is_some());
-
-    // 4. OHLCV Series (verifying unadjusted prices disclaimer in MCP output)
-    let ohlcv_args = serde_json::json!({ "ticker": "VALE3", "limit": 10 });
-    let ohlcv_res = handle_get_ohlcv_series(&pool, &ohlcv_args).await;
-    assert!(ohlcv_res.get("series").is_some());
-    assert!(ohlcv_res["disclaimer"]
+async fn openapi_describes_only_supported_release_contracts() {
+    let spec = body(
+        app()
+            .oneshot(
+                Request::builder()
+                    .uri("/openapi.json")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(spec["openapi"], "3.1.0");
+    assert!(spec["info"]["description"]
         .as_str()
         .unwrap()
-        .contains("Preços nominais brutos"));
-
-    // 5. Instrument coverage
-    let cov_args = serde_json::json!({ "ticker": "VALE3" });
-    let cov_res = handle_get_instrument_coverage(&pool, &cov_args).await;
-    assert_eq!(cov_res["ticker"], "VALE3");
-
-    // 6. Index portfolio composition
-    let idx_args = serde_json::json!({ "index_code": "IBOV" });
-    let idx_res = handle_get_index_portfolio(&pool, &idx_args).await;
-    assert_eq!(idx_res["index_code"], "IBOV");
-}
-
-#[tokio::test]
-async fn test_rebuild_identity_and_quarantine_endpoints() {
-    let app = setup_test_app().await;
-
-    // Rebuild identity
-    let res = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/v1/b3/sync-runs/rebuild-identity")
-                .header("Authorization", "Bearer dev-token")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let resp: Value = serde_json::from_slice(&body_bytes).unwrap();
-    assert!(resp["resolved_count"].is_number());
-    assert!(resp["message"]
-        .as_str()
-        .unwrap()
-        .contains("Rebuilt identity"));
-
-    // Replay quarantine
-    let res = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/v1/b3/quarantine/replay")
-                .header("Authorization", "Bearer dev-token")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let resp: Value = serde_json::from_slice(&body_bytes).unwrap();
-    assert!(resp["reprocessed_count"].is_number());
+        .contains("não ajustados"));
+    for path in [
+        "/api/v1/b3/cotahist/quotes",
+        "/api/v1/b3/cotahist/series",
+        "/api/v1/b3/instruments/{id}",
+        "/api/v1/b3/instruments/{id}/identifiers",
+        "/api/v1/b3/tradable-securities",
+        "/api/v1/b3/jobs",
+    ] {
+        assert!(spec["paths"].get(path).is_some());
+    }
+    assert!(spec["paths"]
+        .get("/api/v1/b3/index-composition/portfolios")
+        .is_none());
+    assert!(spec["paths"]["/api/v1/b3/jobs"]["post"]["responses"]
+        .get("202")
+        .is_some());
 }

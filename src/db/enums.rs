@@ -1,14 +1,19 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum SourceFileType {
+    #[serde(rename = "BVBG_028_INSTRUMENTS_FILE")]
     Bvbg028InstrumentsFile,
     TradableSecurityList,
+    #[serde(rename = "BVBG_086_PRICE_REPORT")]
     Bvbg086PriceReport,
+    #[serde(rename = "BVBG_186_EQUITIES_SIMPLIFIED_PRICE_REPORT")]
     Bvbg186EquitiesSimplifiedPriceReport,
+    #[serde(rename = "BVBG_087_INDEX_REPORT")]
     Bvbg087IndexReport,
     B3IndexPortfolioComposition,
     CotahistYearly,

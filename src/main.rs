@@ -1,111 +1,155 @@
-use clap::{Parser, Subcommand};
-use std::str::FromStr;
-use std::sync::Arc;
+use clap::{Parser, Subcommand, ValueEnum};
+use std::{str::FromStr, sync::Arc};
 use tokio::net::TcpListener;
-use tracing::info;
-
-use tucano_b3::api::{create_router, AppState};
-use tucano_b3::config::B3Settings;
-use tucano_b3::db::enums::SourceFileType;
-use tucano_b3::db::{create_pool, run_migrations};
-use tucano_b3::mcp::McpServer;
-use tucano_b3::services::sync_service::B3SyncService;
-use tucano_b3::worker::B3Worker;
+use tucano_b3::{
+    api::{create_router, AppState},
+    config::B3Settings,
+    db::{create_pool, enums::SourceFileType, run_migrations},
+    mcp::McpServer,
+    services::{
+        jobs::{ExecutionLane, JobCommand, JobPriority, JobService},
+        runtime::{discovery::DiscoveryService, RuntimeSettings},
+        sync_service::B3SyncService,
+    },
+    worker::B3Worker,
+};
+use uuid::Uuid;
 
 #[derive(Parser)]
 #[command(
     name = "tucano-b3",
     version,
-    about = "Tucano B3 Exchange Data Engine (Rust Edition)"
+    about = "Histórico oficial B3 com execução administrativa rastreada"
 )]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
 }
 
+#[derive(Clone, Copy, ValueEnum)]
+enum Lane {
+    Maintenance,
+    Heavy,
+}
+
 #[derive(Subcommand)]
 enum Commands {
-    /// Start the Axum HTTP REST API Server (default)
     Serve {
-        #[arg(short, long, default_value = "0.0.0.0:8000")]
+        #[arg(long, default_value = "0.0.0.0:8000")]
         bind: String,
     },
-    /// Start the background synchronization worker daemon
-    Worker,
-    /// Run a manual synchronization for a source file type and date
+    Migrate,
+    Worker {
+        #[arg(long)]
+        once: bool,
+        #[arg(long, value_enum, default_value = "maintenance")]
+        lane: Lane,
+    },
     Sync {
         #[arg(short, long)]
         source_type: String,
         #[arg(short, long)]
         date: String,
+        #[arg(long)]
+        idempotency_key: Option<String>,
     },
-    /// Start the read-only Model Context Protocol (MCP) server over stdio
+    Enqueue {
+        #[arg(long)]
+        command_file: std::path::PathBuf,
+        #[arg(long)]
+        idempotency_key: String,
+    },
+    Discover,
     Mcp,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt::init();
+    let log_filter = std::env::var("RUST_LOG")
+        .or_else(|_| std::env::var("LOG_LEVEL"))
+        .unwrap_or_else(|_| "info".to_owned());
+    let log_filter = tracing_subscriber::EnvFilter::try_new(log_filter)
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+    tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .with_env_filter(log_filter)
+        .init();
     let cli = Cli::parse();
     let settings = Arc::new(B3Settings::default());
-
     let pool = create_pool(&settings.database_url).await?;
-    let is_mcp = matches!(cli.command, Some(Commands::Mcp));
-    if !is_mcp {
-        info!("Running database migrations...");
-        run_migrations(&pool).await?;
-        info!("Migrations verified.");
-    } else {
-        info!("Starting in analytical MCP mode (read-only; skipping migrations).");
+    let runtime = RuntimeSettings::from_settings(&settings);
+    runtime.validate()?;
+    if !matches!(cli.command, Some(Commands::Migrate)) {
+        tucano_b3::db::verify_schema(&pool).await?;
     }
-
-    let sync_service = Arc::new(B3SyncService::new(pool.clone(), (*settings).clone()));
-
     match cli.command.unwrap_or(Commands::Serve {
-        bind: "0.0.0.0:8000".to_string(),
+        bind: "0.0.0.0:8000".into(),
     }) {
+        Commands::Migrate => {
+            run_migrations(&pool).await?;
+        }
         Commands::Serve { bind } => {
-            info!("Starting Tucano B3 HTTP REST API Server on {}...", bind);
-            let app_state = Arc::new(AppState {
-                pool,
-                settings,
-                sync_service,
+            settings.validate_api_credentials()?;
+            let state = Arc::new(AppState {
+                pool: pool.clone(),
+                settings: settings.clone(),
+                sync_service: Arc::new(B3SyncService::new(pool, (*settings).clone())),
             });
-
-            let router = create_router(app_state);
-            let listener = TcpListener::bind(&bind).await?;
-            info!("Server listening on http://{}", bind);
-            axum::serve(listener, router).await?;
+            axum::serve(TcpListener::bind(bind).await?, create_router(state)).await?;
         }
-        Commands::Worker => {
-            info!("Starting Tucano B3 Worker daemon...");
-            let worker = B3Worker::new(settings, sync_service);
-            worker.run_loop().await;
+        Commands::Worker { once, lane } => {
+            let worker = B3Worker::new(pool, runtime);
+            if once {
+                worker
+                    .run_once(
+                        match lane {
+                            Lane::Maintenance => ExecutionLane::Maintenance,
+                            Lane::Heavy => ExecutionLane::Heavy,
+                        },
+                        Uuid::new_v4(),
+                    )
+                    .await?;
+            } else {
+                worker.run_loop().await?;
+            }
         }
-        Commands::Mcp => {
-            info!("Starting Tucano B3 MCP Server (stdio)...");
-            let mcp = McpServer::new(pool);
-            mcp.run_stdio().await?;
-        }
-        Commands::Sync { source_type, date } => {
-            let sft = SourceFileType::from_str(&source_type).map_err(|e| anyhow::anyhow!(e))?;
-            let ref_date = chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d")?;
-            info!("Executing manual sync for {} on {}", sft, ref_date);
-            let outcome = sync_service
-                .run_manual_sync(
-                    sft,
-                    ref_date,
-                    ref_date,
-                    None,
-                    None,
-                    false,
-                    false,
-                    Some("cli_user".to_string()),
+        Commands::Mcp => McpServer::new(pool).run_stdio().await?,
+        Commands::Sync {
+            source_type,
+            date,
+            idempotency_key,
+        } => {
+            let date = chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d")?;
+            let command = JobCommand::Ingest {
+                source: SourceFileType::from_str(&source_type).map_err(anyhow::Error::msg)?,
+                from: date,
+                to: date,
+            };
+            let id = JobService::new(pool)
+                .submit(
+                    &idempotency_key.unwrap_or_else(|| Uuid::new_v4().to_string()),
+                    command,
+                    JobPriority::Maintenance,
+                    3,
                 )
                 .await?;
-            println!("Sync result: {:?}", outcome);
+            println!("{}", serde_json::json!({"job_id":id,"status":"queued"}));
+        }
+        Commands::Enqueue {
+            command_file,
+            idempotency_key,
+        } => {
+            let command: JobCommand = serde_json::from_reader(std::fs::File::open(command_file)?)?;
+            let id = JobService::new(pool)
+                .submit(&idempotency_key, command, JobPriority::Maintenance, 3)
+                .await?;
+            println!("{}", serde_json::json!({"job_id":id,"status":"queued"}));
+        }
+        Commands::Discover => {
+            DiscoveryService::new(pool, runtime)
+                .scan(Uuid::new_v4(), false, chrono::Utc::now())
+                .await?
         }
     }
-
     Ok(())
 }

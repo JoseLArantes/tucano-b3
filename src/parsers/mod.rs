@@ -4,7 +4,10 @@ pub mod bvbg_087;
 pub mod bvbg_186;
 pub mod canonical;
 pub mod cotahist;
+pub mod cotahist_stream;
 pub mod index_composition;
+pub mod registry_stream;
+pub mod security_definition;
 pub mod tradable_list;
 pub mod xml_utils;
 

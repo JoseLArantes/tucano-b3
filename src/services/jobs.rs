@@ -1,15 +1,17 @@
 //! Durable commands shared by transports and executors. No command executes on submission.
+mod runs;
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Postgres, Row, Transaction};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::db::enums::SourceFileType;
 use crate::error::{AppError, Result};
 
 /// Closed administrative commands; acquisition locates publications through the source catalog.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum JobCommand {
     Ingest {
@@ -64,7 +66,7 @@ fn validate_dates(from: NaiveDate, to: NaiveDate) -> Result<()> {
     Ok(())
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum JobPriority {
     Maintenance,
@@ -85,6 +87,38 @@ impl JobPriority {
 pub enum ExecutionLane {
     Maintenance,
     Heavy,
+}
+
+/// Fase operacional, separada do estado terminal e da visibilidade da revisão.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum JobPhase {
+    Queued,
+    Acquisition,
+    Inventory,
+    Parsing,
+    Staging,
+    Sealing,
+    Ready,
+    Publication,
+    Identity,
+    Completed,
+}
+impl JobPhase {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Queued => "queued",
+            Self::Acquisition => "acquisition",
+            Self::Inventory => "inventory",
+            Self::Parsing => "parsing",
+            Self::Staging => "staging",
+            Self::Sealing => "sealing",
+            Self::Ready => "ready",
+            Self::Publication => "publication",
+            Self::Identity => "identity",
+            Self::Completed => "completed",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -121,6 +155,18 @@ impl JobService {
         priority: JobPriority,
         max_attempts: i32,
     ) -> Result<Uuid> {
+        self.submit_linked(key, command, priority, max_attempts, None)
+            .await
+    }
+
+    async fn submit_linked(
+        &self,
+        key: &str,
+        command: JobCommand,
+        priority: JobPriority,
+        max_attempts: i32,
+        retry_of: Option<Uuid>,
+    ) -> Result<Uuid> {
         if key.trim().is_empty() || key.len() > 255 || !(1..=100).contains(&max_attempts) {
             return Err(AppError::Validation(
                 "Chave ou limite de tentativas inválido.".into(),
@@ -132,19 +178,25 @@ impl JobService {
             command.clone(),
             priority,
             max_attempts,
+            retry_of,
         ))?));
         let id = Uuid::new_v4();
-        let inserted: Option<Uuid> = sqlx::query_scalar("INSERT INTO b3_jobs(id,idempotency_key,scope_key,command,command_hash,priority,max_attempts) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING RETURNING id")
-            .bind(id).bind(key).bind(scope).bind(command).bind(&hash).bind(priority.as_str()).bind(max_attempts).fetch_optional(&self.pool).await?;
+        let mut tx = self.pool.begin().await?;
+        let inserted: Option<Uuid> = sqlx::query_scalar("INSERT INTO b3_jobs(id,idempotency_key,scope_key,command,command_hash,priority,max_attempts,retry_of) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING RETURNING id")
+            .bind(id).bind(key).bind(scope).bind(&command).bind(&hash).bind(priority.as_str()).bind(max_attempts).bind(retry_of).fetch_optional(&mut *tx).await?;
         if let Some(id) = inserted {
+            sqlx::query("INSERT INTO b3_sync_runs(id,job_type,status,source_file_type,reference_date_from,reference_date_to) VALUES($1,$2,'queued',$3,$4,$5)").bind(id.to_string()).bind(command.get("operation").and_then(|v|v.as_str()).unwrap_or("unknown")).bind(command.get("source").and_then(|v|v.as_str())).bind(command.get("from").and_then(|v|v.as_str()).and_then(|s|s.parse::<NaiveDate>().ok())).bind(command.get("to").and_then(|v|v.as_str()).and_then(|s|s.parse::<NaiveDate>().ok())).execute(&mut *tx).await?;
+            runs::mirror(&mut tx, Some(id)).await?;
+            tx.commit().await?;
             return Ok(id);
         }
         let existing = sqlx::query("SELECT id,command_hash FROM b3_jobs WHERE idempotency_key=$1")
             .bind(key)
-            .fetch_optional(&self.pool)
+            .fetch_optional(&mut *tx)
             .await?;
         if let Some(row) = existing {
             if row.get::<String, _>("command_hash") == hash {
+                tx.commit().await?;
                 return Ok(row.get("id"));
             }
         }
@@ -164,8 +216,9 @@ impl JobService {
         }
         let mut tx = self.pool.begin().await?;
         // Exhausted or cancelled abandoned jobs release their durable scope reservations.
-        sqlx::query("WITH expired AS (SELECT id FROM b3_jobs WHERE status='running' AND lease_expires_at<=NOW() AND (cancel_requested_at IS NOT NULL OR attempt>=max_attempts) ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 100), closed AS (UPDATE b3_jobs j SET status=CASE WHEN cancel_requested_at IS NOT NULL THEN 'cancelled' ELSE 'failed' END,owner_id=NULL,lease_expires_at=NULL,finished_at=NOW() FROM expired e WHERE j.id=e.id RETURNING j.id,j.generation) UPDATE b3_job_attempts a SET outcome='expired',finished_at=NOW() FROM closed c WHERE a.job_id=c.id AND a.generation=c.generation AND a.finished_at IS NULL")
+        sqlx::query("WITH expired AS (SELECT id FROM b3_jobs WHERE status='running' AND lease_expires_at<=NOW() AND (cancel_requested_at IS NOT NULL OR attempt>=max_attempts) ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 100), closed AS (UPDATE b3_jobs j SET status=CASE WHEN cancel_requested_at IS NOT NULL THEN 'cancelled' ELSE 'failed' END,owner_id=NULL,lease_expires_at=NULL,finished_at=NOW(),error_code=COALESCE(error_code,'LEASE_EXPIRED'),error_message=COALESCE(error_message,'Lease expirada antes da confirmação.') FROM expired e WHERE j.id=e.id RETURNING j.id,j.generation) UPDATE b3_job_attempts a SET outcome='expired',error_code='LEASE_EXPIRED',error_message='Lease expirada antes da confirmação.',finished_at=NOW() FROM closed c WHERE a.job_id=c.id AND a.generation=c.generation AND a.finished_at IS NULL")
             .execute(&mut *tx).await?;
+        runs::mirror(&mut tx, None).await?;
         let row = sqlx::query("SELECT id,command FROM b3_jobs WHERE ((status='queued' AND next_attempt_at<=NOW()) OR (status='running' AND lease_expires_at<=NOW())) AND cancel_requested_at IS NULL AND attempt<max_attempts AND ((priority='maintenance')=$1) ORDER BY next_attempt_at,created_at,id FOR UPDATE SKIP LOCKED LIMIT 1")
             .bind(matches!(lane, ExecutionLane::Maintenance)).fetch_optional(&mut *tx).await?;
         let Some(row) = row else {
@@ -174,8 +227,8 @@ impl JobService {
         };
         let id: Uuid = row.get("id");
         let command = serde_json::from_value(row.get("command"))?;
-        sqlx::query("UPDATE b3_job_attempts SET outcome='expired',finished_at=NOW() WHERE job_id=$1 AND finished_at IS NULL").bind(id).execute(&mut *tx).await?;
-        let row = sqlx::query("UPDATE b3_jobs SET status='running',attempt=attempt+1,generation=generation+1,owner_id=$2,heartbeat_at=NOW(),lease_expires_at=NOW()+make_interval(secs=>$3::int),error_code=NULL WHERE id=$1 RETURNING generation,lease_expires_at")
+        sqlx::query("UPDATE b3_job_attempts SET outcome='expired',error_code='LEASE_EXPIRED',error_message='Lease expirada antes da confirmação.',finished_at=NOW() WHERE job_id=$1 AND finished_at IS NULL").bind(id).execute(&mut *tx).await?;
+        let row = sqlx::query("UPDATE b3_jobs SET status='running',attempt=attempt+1,generation=generation+1,owner_id=$2,heartbeat_at=NOW(),lease_expires_at=NOW()+make_interval(secs=>$3::int),error_code=NULL,error_message=NULL WHERE id=$1 RETURNING generation,lease_expires_at")
             .bind(id).bind(owner).bind(lease_seconds).fetch_one(&mut *tx).await?;
         let generation = row.get("generation");
         sqlx::query("INSERT INTO b3_job_attempts(job_id,generation,owner_id) VALUES($1,$2,$3)")
@@ -191,6 +244,7 @@ impl JobService {
             command,
             lease_expires_at: row.get("lease_expires_at"),
         };
+        runs::mirror(&mut tx, Some(id)).await?;
         tx.commit().await?;
         Ok(Some(claim))
     }
@@ -230,8 +284,12 @@ impl JobService {
     }
 
     pub async fn request_cancel(&self, id: Uuid) -> Result<bool> {
-        Ok(sqlx::query("UPDATE b3_jobs SET cancel_requested_at=COALESCE(cancel_requested_at,NOW()),status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,finished_at=CASE WHEN status='queued' THEN NOW() ELSE finished_at END WHERE id=$1 AND status IN ('queued','running')")
-            .bind(id).execute(&self.pool).await?.rows_affected()>0)
+        let mut tx = self.pool.begin().await?;
+        let changed=sqlx::query("UPDATE b3_jobs SET cancel_requested_at=COALESCE(cancel_requested_at,NOW()),status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,finished_at=CASE WHEN status='queued' THEN NOW() ELSE finished_at END WHERE id=$1 AND status IN ('queued','running')")
+            .bind(id).execute(&mut *tx).await?.rows_affected()>0;
+        runs::mirror(&mut tx, Some(id)).await?;
+        tx.commit().await?;
+        Ok(changed)
     }
 
     /// Commit completion in the same transaction as the final protected writes.
@@ -248,6 +306,16 @@ impl JobService {
         };
         sqlx::query("UPDATE b3_jobs SET status=$2,owner_id=NULL,lease_expires_at=NULL,finished_at=NOW() WHERE id=$1").bind(claim.id).bind(status).execute(&mut **tx).await?;
         sqlx::query("UPDATE b3_job_attempts SET outcome=$3,finished_at=NOW() WHERE job_id=$1 AND generation=$2").bind(claim.id).bind(claim.generation).bind(status).execute(&mut **tx).await?;
+        if matches!(
+            completion,
+            JobCompletion::Succeeded | JobCompletion::SucceededWithIssues
+        ) {
+            sqlx::query("UPDATE b3_jobs SET phase='completed' WHERE id=$1")
+                .bind(claim.id)
+                .execute(&mut **tx)
+                .await?;
+        }
+        runs::mirror(tx, Some(claim.id)).await?;
         Ok(())
     }
 
@@ -256,6 +324,32 @@ impl JobService {
         &self,
         claim: &JobClaim,
         error_code: &str,
+        backoff_seconds: i32,
+    ) -> Result<()> {
+        self.fail_inner(claim, error_code, None, backoff_seconds)
+            .await
+    }
+
+    /// A controlled, non-sensitive operator explanation supplied by the executor.
+    pub async fn fail_with_message(
+        &self,
+        claim: &JobClaim,
+        error_code: &str,
+        message: &str,
+        backoff_seconds: i32,
+    ) -> Result<()> {
+        if message.len() > 1024 || message.contains('\0') {
+            return Err(AppError::Validation("Mensagem de falha inválida.".into()));
+        }
+        self.fail_inner(claim, error_code, Some(message), backoff_seconds)
+            .await
+    }
+
+    async fn fail_inner(
+        &self,
+        claim: &JobClaim,
+        error_code: &str,
+        message: Option<&str>,
         backoff_seconds: i32,
     ) -> Result<()> {
         if error_code.is_empty()
@@ -271,10 +365,57 @@ impl JobService {
         }
         let mut tx = self.pool.begin().await?;
         Self::check_owner(&mut tx, claim, true).await?;
-        let status: String = sqlx::query_scalar("UPDATE b3_jobs SET status=CASE WHEN cancel_requested_at IS NOT NULL THEN 'cancelled' WHEN attempt<max_attempts THEN 'queued' ELSE 'failed' END,owner_id=NULL,lease_expires_at=NULL,error_code=$2,next_attempt_at=NOW()+make_interval(secs=>$3::int),finished_at=CASE WHEN cancel_requested_at IS NOT NULL OR attempt>=max_attempts THEN NOW() ELSE NULL END WHERE id=$1 RETURNING status")
-            .bind(claim.id).bind(error_code).bind(backoff_seconds).fetch_one(&mut *tx).await?;
+        let status: String = sqlx::query_scalar("UPDATE b3_jobs SET status=CASE WHEN cancel_requested_at IS NOT NULL THEN 'cancelled' WHEN attempt<max_attempts THEN 'queued' ELSE 'failed' END,owner_id=NULL,lease_expires_at=NULL,error_code=$2,error_message=$4,next_attempt_at=NOW()+make_interval(secs=>$3::int),finished_at=CASE WHEN cancel_requested_at IS NOT NULL OR attempt>=max_attempts THEN NOW() ELSE NULL END WHERE id=$1 RETURNING status")
+            .bind(claim.id).bind(error_code).bind(backoff_seconds).bind(message).fetch_one(&mut *tx).await?;
+        sqlx::query("UPDATE b3_source_files SET status='failed',error_message=$2 WHERE job_id=$1 AND status NOT IN ('ingested','failed')").bind(claim.id).bind(message.unwrap_or(error_code)).execute(&mut *tx).await?;
         let outcome = if status == "queued" { "retry" } else { &status };
-        sqlx::query("UPDATE b3_job_attempts SET outcome=$3,finished_at=NOW() WHERE job_id=$1 AND generation=$2").bind(claim.id).bind(claim.generation).bind(outcome).execute(&mut *tx).await?;
+        sqlx::query("UPDATE b3_job_attempts SET outcome=$3,error_code=$4,error_message=$5,finished_at=NOW() WHERE job_id=$1 AND generation=$2").bind(claim.id).bind(claim.generation).bind(outcome).bind(error_code).bind(message).execute(&mut *tx).await?;
+        runs::mirror(&mut tx, Some(claim.id)).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// A terminal attempt is preserved; retry creates a new tracked command with lineage.
+    pub async fn retry(&self, original: Uuid, key: &str) -> Result<Uuid> {
+        let row =
+            sqlx::query("SELECT command,priority,max_attempts,status FROM b3_jobs WHERE id=$1")
+                .bind(original)
+                .fetch_optional(&self.pool)
+                .await?
+                .ok_or_else(|| AppError::Validation("Execução original não encontrada.".into()))?;
+        if !matches!(
+            row.get::<String, _>("status").as_str(),
+            "failed" | "cancelled"
+        ) {
+            return Err(AppError::LockConflict(
+                "Somente execução falha ou cancelada pode ser repetida.".into(),
+            ));
+        }
+        let command = serde_json::from_value(row.get("command"))?;
+        let priority = match row.get::<String, _>("priority").as_str() {
+            "maintenance" => JobPriority::Maintenance,
+            "backfill" => JobPriority::Backfill,
+            "rebuild" => JobPriority::Rebuild,
+            _ => return Err(AppError::Validation("Prioridade inválida.".into())),
+        };
+        self.submit_linked(
+            key,
+            command,
+            priority,
+            row.get("max_attempts"),
+            Some(original),
+        )
+        .await
+    }
+
+    pub async fn set_phase(&self, claim: &JobClaim, phase: JobPhase) -> Result<()> {
+        let mut tx = self.begin_confirmation(claim).await?;
+        sqlx::query("UPDATE b3_jobs SET phase=$2 WHERE id=$1")
+            .bind(claim.id)
+            .bind(phase.as_str())
+            .execute(&mut *tx)
+            .await?;
+        runs::mirror(&mut tx, Some(claim.id)).await?;
         tx.commit().await?;
         Ok(())
     }
