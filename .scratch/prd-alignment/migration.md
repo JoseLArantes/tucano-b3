@@ -79,33 +79,115 @@ Scope: Architecture, Data Safeguards, Implementation Sequence, and Release Gates
           ON b3_source_files (source_file_type, reference_date)
           WHERE is_active = true;
       ```
-  - **Data Migration for Existing States (Executed in 0002 before active filtering)**:
-    - Normalize existing operational statuses from legacy values:
+  - **Revision-Scoped Uniqueness & Public ID Preservation Schema**:
+    - Add `public_id VARCHAR(36)` to all 6 fact tables, backfilled from existing `id` so public URLs and bookmarks are preserved across revisions:
       ```sql
-      UPDATE b3_source_files SET status = 'completed' WHERE status = 'ingested';
-      UPDATE b3_sync_runs SET status = 'completed' WHERE status = 'success';
+      ALTER TABLE b3_cotahist_quotes ADD COLUMN IF NOT EXISTS public_id VARCHAR(36);
+      UPDATE b3_cotahist_quotes SET public_id = id WHERE public_id IS NULL;
+      ALTER TABLE b3_cotahist_quotes ALTER COLUMN public_id SET NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_cotahist_public_id ON b3_cotahist_quotes(public_id);
       ```
-    - Initialize the active revision pointer (`is_active = true`) for the latest completed file of each scope:
+      (Repeated for `b3_price_report_quotes`, `b3_equities_simplified_price_quotes`, `b3_index_report_values`, `b3_index_portfolio_compositions`, and `b3_tradable_securities`).
+    - Migrate natural key uniqueness constraints from single-scope to **revision-scoped** (`source_file_id` included):
       ```sql
-      WITH latest_completed_files AS (
-          SELECT DISTINCT ON (source_file_type, reference_date) id
-          FROM b3_source_files
-          WHERE status = 'completed' AND reference_date IS NOT NULL
-          ORDER BY source_file_type, reference_date, created_at DESC
-      )
-      UPDATE b3_source_files sf
-      SET is_active = true
-      FROM latest_completed_files lf
-      WHERE sf.id = lf.id;
+      -- COTAHIST
+      ALTER TABLE b3_cotahist_quotes DROP CONSTRAINT IF EXISTS uq_cotahist_nk;
+      ALTER TABLE b3_cotahist_quotes ADD CONSTRAINT uq_cotahist_revision_nk
+          UNIQUE NULLS NOT DISTINCT (source_file_id, trade_date, ticker_symbol, market_type, bdi_code, distribution_number);
+
+      -- PriceReport (BVBG.086)
+      ALTER TABLE b3_price_report_quotes DROP CONSTRAINT IF EXISTS uq_price_report_nk;
+      ALTER TABLE b3_price_report_quotes ADD CONSTRAINT uq_price_report_revision_nk
+          UNIQUE NULLS NOT DISTINCT (source_file_id, trade_date, security_id, ticker_symbol, market_identifier_code, days_to_settlement);
+
+      -- Equities Simplified (BVBG.186)
+      ALTER TABLE b3_equities_simplified_price_quotes DROP CONSTRAINT IF EXISTS uq_equities_simplified_nk;
+      ALTER TABLE b3_equities_simplified_price_quotes ADD CONSTRAINT uq_equities_simplified_revision_nk
+          UNIQUE NULLS NOT DISTINCT (source_file_id, trade_date, security_id, ticker_symbol, market_identifier_code);
+
+      -- IndexReport Values (BVBG.087)
+      ALTER TABLE b3_index_report_values DROP CONSTRAINT IF EXISTS uq_index_report_nk;
+      ALTER TABLE b3_index_report_values ADD CONSTRAINT uq_index_report_revision_nk
+          UNIQUE NULLS NOT DISTINCT (source_file_id, trade_date, index_code, value_type);
+
+      -- Index Portfolio Composition
+      ALTER TABLE b3_index_portfolio_compositions DROP CONSTRAINT IF EXISTS uq_index_composition_nk;
+      ALTER TABLE b3_index_portfolio_compositions ADD CONSTRAINT uq_index_composition_revision_nk
+          UNIQUE NULLS NOT DISTINCT (source_file_id, composition_date, index_code, ticker_symbol, instrument_id);
+
+      -- Tradable Securities
+      ALTER TABLE b3_tradable_securities DROP CONSTRAINT IF EXISTS uq_tradable_nk;
+      ALTER TABLE b3_tradable_securities ADD CONSTRAINT uq_tradable_revision_nk
+          UNIQUE NULLS NOT DISTINCT (source_file_id, reference_date, security_id, ticker_symbol, market_code);
       ```
+  - **Reconstruction & Validation of Complete Revision Membership (Pre-Filter Data Migration)**:
+    - **Defect in Naive `created_at DESC`**: Current ingestion uses `ON CONFLICT DO NOTHING`. A reprocessed file can be marked completed while all persisted facts remain attached to the older file. Sorting by `created_at DESC` activates an empty file and deactivates the file actually holding the facts, causing 100% data loss from reader queries.
+    - **Reconstructive Membership Procedure**:
+      1. Normalize operational statuses:
+         ```sql
+         UPDATE b3_source_files SET status = 'completed' WHERE status = 'ingested';
+         UPDATE b3_sync_runs SET status = 'completed' WHERE status = 'success';
+         ```
+      2. Identify the true fact-holding file by auditing persisted facts in domain tables:
+         ```sql
+         WITH fact_counts AS (
+             SELECT source_file_id, COUNT(*) AS cnt FROM b3_cotahist_quotes GROUP BY source_file_id
+             UNION ALL
+             SELECT source_file_id, COUNT(*) AS cnt FROM b3_price_report_quotes GROUP BY source_file_id
+             UNION ALL
+             SELECT source_file_id, COUNT(*) AS cnt FROM b3_equities_simplified_price_quotes GROUP BY source_file_id
+             UNION ALL
+             SELECT source_file_id, COUNT(*) AS cnt FROM b3_index_report_values GROUP BY source_file_id
+             UNION ALL
+             SELECT source_file_id, COUNT(*) AS cnt FROM b3_index_portfolio_compositions GROUP BY source_file_id
+             UNION ALL
+             SELECT source_file_id, COUNT(*) AS cnt FROM b3_tradable_securities GROUP BY source_file_id
+         ),
+         file_fact_totals AS (
+             SELECT sf.id, sf.source_file_type, sf.reference_date, COALESCE(SUM(fc.cnt), 0) AS total_facts
+             FROM b3_source_files sf
+             LEFT JOIN fact_counts fc ON fc.source_file_id = sf.id
+             WHERE sf.status = 'completed' AND sf.reference_date IS NOT NULL
+             GROUP BY sf.id, sf.source_file_type, sf.reference_date
+         ),
+         fact_bearing_files AS (
+             -- Select the file that actually holds the populated facts (> 0)
+             SELECT DISTINCT ON (source_file_type, reference_date) id
+             FROM file_fact_totals
+             WHERE total_facts > 0
+             ORDER BY source_file_type, reference_date, total_facts DESC, id
+         )
+         UPDATE b3_source_files sf
+         SET is_active = true
+         FROM fact_bearing_files fbf
+         WHERE sf.id = fbf.id;
+         ```
+      3. **Pre-Filter Validation Gate**:
+         - Execute an explicit assertion ensuring that every scope with persisted facts has an active source file and zero orphaned facts:
+           ```sql
+           DO $$
+           DECLARE
+               orphan_count INT;
+           BEGIN
+               SELECT COUNT(*) INTO orphan_count
+               FROM b3_cotahist_quotes q
+               JOIN b3_source_files sf ON sf.id = q.source_file_id
+               WHERE sf.is_active = false
+                 AND EXISTS (
+                     SELECT 1 FROM b3_source_files active_sf
+                     WHERE active_sf.source_file_type = sf.source_file_type
+                       AND active_sf.reference_date = sf.reference_date
+                       AND active_sf.is_active = true
+                 );
+               IF orphan_count > 0 THEN
+                   RAISE EXCEPTION 'Pre-filter validation failed: % orphaned facts found under inactive files.', orphan_count;
+               END IF;
+           END $$;
+           ```
   - **Safe Rollback Strategy (`down.sql`)**:
-    - Drops `b3_worker_leases` and active revision constraints/columns:
-      ```sql
-      DROP INDEX IF EXISTS uq_source_files_active_revision;
-      ALTER TABLE b3_source_files DROP COLUMN IF EXISTS revision_number;
-      ALTER TABLE b3_source_files DROP COLUMN IF EXISTS is_active;
-      DROP TABLE IF EXISTS b3_worker_leases;
-      ```
+    - Drops revision-scoped natural keys and restores original natural key constraints.
+    - Drops `idx_*_public_id` and `public_id` columns from fact tables.
+    - Drops `uq_source_files_active_revision`, `revision_number`, `is_active`, and `b3_worker_leases`.
     - Removes only the added columns from `b3_trading_calendar`, preserving the base table and its rows:
       ```sql
       ALTER TABLE b3_trading_calendar DROP COLUMN IF EXISTS settlement_day;
@@ -130,9 +212,14 @@ Scope: Architecture, Data Safeguards, Implementation Sequence, and Release Gates
   1. **Concurrency Exclusion**:
      - Acquire a session-level advisory lock (`pg_try_advisory_lock`) on a dedicated checkout connection from `PgPool` across the task duration.
      - Guarantees mutual exclusion between workers contending on the same file/date. Provides exclusion only, not transactional rollback.
-  2. **Preservation of Versioned Facts (Non-Destructive Ingestion & Rollback Guarantee)**:
+  2. **Preservation of Versioned Facts & Revision-Scoped Uniqueness**:
      - All fact records (`b3_cotahist_quotes`, `b3_price_report_quotes`, `b3_equities_simplified_price_quotes`, `b3_index_report_values`, `b3_index_portfolio_compositions`, `b3_tradable_securities`) retain their immutable link to `source_file_id`.
-     - Ingestion of a candidate revision does NOT overwrite or mutate facts belonging to the existing active revision in place (`ON CONFLICT DO UPDATE` cannot overwrite prior revision facts).
+     - Natural key uniqueness constraints are scoped to `(source_file_id, natural_key)` via `uq_*_revision_nk`.
+     - Ingesting a candidate revision stages new facts linked to `candidate_source_file_id` without triggering unique constraint violations against existing active revisions.
+     - **Preservation of Public IDs**:
+       - Each fact row has a surrogate version PK `id` and a stable public identifier `public_id`.
+       - For candidate revisions, `public_id` is retained from the previous version of that business fact (or generated deterministically via UUIDv5 from the business natural key).
+       - REST endpoints (e.g. `/quotes/{quote_id}`) filter by `(q.public_id = $1 OR q.id = $1) AND sf.is_active = true`, ensuring existing client URLs and bookmarks remain 100% valid.
      - Prior revision facts remain intact and queryable under the existing active revision pointer until the candidate revision is fully validated and published.
      - **Rollback Guarantee**: If an active revision is superseded or needs revocation, previous facts are never destroyed: restoring the previous revision is an instantaneous, atomic pointer reactivation (`is_active = true` on prior `source_file_id`, `is_active = false` on superseded) without re-downloading or re-parsing raw archives.
   3. **Explicit Active Revision Pointer per Scope**:
@@ -144,7 +231,7 @@ Scope: Architecture, Data Safeguards, Implementation Sequence, and Release Gates
        ```
      - Readers observe exactly one unambiguous, fully validated revision per scope.
   4. **Data Migration Precondition**:
-     - Before introducing the `sf.is_active = true` filter into `src/services/query/`, migration `0002` normalizes legacy `ingested`/`success` states to `completed` and initializes `is_active = true` for the latest completed revision of each existing scope.
+     - Before introducing the `sf.is_active = true` filter into `src/services/query/`, migration `0002` normalizes legacy `ingested`/`success` states to `completed` and reconstructs/validates complete revision membership based on actual persisted fact counts rather than `created_at`.
   5. **Atomic Publication Pointer Flip**:
      - Inside the complete-file transaction (holding the session advisory lock):
        1. Insert candidate fact rows linked to `candidate_source_file_id`.
