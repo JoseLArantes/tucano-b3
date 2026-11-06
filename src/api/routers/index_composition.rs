@@ -13,29 +13,79 @@ use utoipa::{IntoParams, ToSchema};
 use crate::api::schemas::{InternalMetadata, PaginatedResponse, PaginationParams, Provenance};
 use crate::api::AppState;
 
+/// Componente de carteira teórica de índice da B3 (quantidade teórica e peso percentual).
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct IndexCompositionItem {
+    /// Identificador único interno (UUID) do registro.
+    #[schema(example = "55a1b2c3-d4e5-6789-a0b1-c2d3e4f5a6b7")]
     pub id: String,
+
+    /// UUID do índice pai na tabela `b3_indices`.
+    #[schema(example = "33a4b5c6-d7e8-9012-f3a4-b5c6d7e8f901")]
     pub index_id: Option<String>,
+
+    /// UUID do instrumento associado em `b3_instruments` (quando resolvido com sucesso).
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub instrument_id: Option<String>,
+
+    /// Data de apuração e vigência da carteira teórica (YYYY-MM-DD).
+    #[schema(example = "2026-03-01")]
     pub composition_date: NaiveDate,
+
+    /// Código do índice da B3 (ex: IBOV, IBrX-100, SMLL).
+    #[schema(example = "IBOV")]
     pub index_code: String,
+
+    /// Símbolo de negociação do ativo na carteira (ticker).
+    #[schema(example = "PETR4")]
     pub ticker_symbol: Option<String>,
+
+    /// Código ISIN internacional do ativo componente.
+    #[schema(example = "BRPETRACNPR6")]
     pub isin: Option<String>,
+
+    /// Nome descritivo da ação ou emissor.
+    #[schema(example = "PETROBRAS PN")]
     pub asset_name: Option<String>,
+
+    /// Quantidade teórica de ações atribuída ao ativo na carteira do índice.
+    #[schema(example = "4567890123")]
     pub theoretical_quantity: Option<Decimal>,
+
+    /// Peso ponderado do ativo na carteira teórica.
+    #[schema(example = "0.0785")]
     pub portfolio_weight: Option<Decimal>,
+
+    /// Participação percentual exata do ativo na composição do índice (ex: 7.85%).
+    #[schema(example = "7.850")]
     pub participation_percentage: Option<Decimal>,
+
+    /// Status da amarração cadastral com o instrumento (`resolved`, `unresolved`, `ambiguous`).
+    #[schema(example = "resolved")]
     pub resolution_status: String,
+
+    /// Metadados de proveniência do arquivo oficial B3.
     pub provenance: Provenance,
+
+    /// Metadados operacionais internos exibidos quando `include_internal=true`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub internal_metadata: Option<InternalMetadata>,
 }
 
+/// Parâmetros de filtro para composição teórica de índices.
 #[derive(Debug, Clone, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct IndexCompositionFilterParams {
+    /// Data da composição da carteira teórica (YYYY-MM-DD).
+    #[param(example = "2026-03-01")]
     pub composition_date: Option<NaiveDate>,
+
+    /// Código do índice (case-insensitive, ex: `IBOV`).
+    #[param(example = "IBOV")]
     pub index_code: Option<String>,
+
+    /// Símbolo de negociação da ação componente (ex: `PETR4`).
+    #[param(example = "PETR4")]
     pub ticker: Option<String>,
 }
 
@@ -43,9 +93,12 @@ pub struct IndexCompositionFilterParams {
     get,
     path = "/api/v1/b3/index-composition/portfolios",
     tag = "B3 Index Portfolio Composition",
+    summary = "Listagem de Carteiras Teóricas de Índices",
+    description = "Retorna os componentes individuais (ativos, quantidades teóricas e pesos percentuais de participação) das carteiras teóricas oficiais publicadas pela B3. \n\n### Regras:\n- Permite filtrar por data de vigência (`composition_date`), código do índice (`index_code`) e ticker.\n- Decimais são representados com precisão exata sem conversão por floats.",
     params(PaginationParams, IndexCompositionFilterParams),
     responses(
-        (status = 200, description = "List index portfolio components", body = PaginatedResponse<IndexCompositionItem>)
+        (status = 200, description = "Composição de carteiras retornada com sucesso.", body = PaginatedResponse<IndexCompositionItem>),
+        (status = 401, description = "Não autorizado: Token Bearer ausente ou inválido.")
     )
 )]
 pub async fn list_index_compositions(
@@ -91,7 +144,7 @@ pub async fn list_index_compositions(
         WHERE ($1::date IS NULL OR c.composition_date = $1)
           AND ($2::varchar IS NULL OR c.index_code = $2)
           AND ($3::varchar IS NULL OR c.ticker_symbol = $3)
-        ORDER BY c.composition_date DESC, c.index_code ASC, c.portfolio_weight DESC NULLS LAST
+        ORDER BY c.composition_date DESC, c.index_code ASC, c.participation_percentage DESC NULLS LAST
         LIMIT $4 OFFSET $5
     "#;
 
@@ -158,6 +211,21 @@ pub async fn list_index_compositions(
     }))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/b3/index-composition/portfolios/{index_code}",
+    tag = "B3 Index Portfolio Composition",
+    summary = "Composição de Carteira por Código do Índice",
+    description = "Retorna os componentes e pesos da carteira teórica mais recente para o índice informado (ex.: `IBOV`).",
+    params(
+        ("index_code" = String, Path, description = "Código identificador do índice na B3 (ex: IBOV)", example = "IBOV"),
+        PaginationParams
+    ),
+    responses(
+        (status = 200, description = "Componentes do índice retornados com sucesso.", body = PaginatedResponse<IndexCompositionItem>),
+        (status = 401, description = "Não autorizado: Token Bearer ausente ou inválido.")
+    )
+)]
 pub async fn get_index_composition_by_index(
     State(state): State<Arc<AppState>>,
     Path(index_code): Path<String>,
@@ -171,6 +239,22 @@ pub async fn get_index_composition_by_index(
     list_index_compositions(State(state), Query(pagination), Query(filters)).await
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/b3/index-composition/portfolios/{index_code}/by-date/{composition_date}",
+    tag = "B3 Index Portfolio Composition",
+    summary = "Composição de Carteira por Índice e Data",
+    description = "Retorna a composição da carteira teórica do índice em uma data específica de apuração.",
+    params(
+        ("index_code" = String, Path, description = "Código identificador do índice na B3 (ex: IBOV)", example = "IBOV"),
+        ("composition_date" = NaiveDate, Path, description = "Data da composição da carteira (YYYY-MM-DD)", example = "2026-03-01"),
+        PaginationParams
+    ),
+    responses(
+        (status = 200, description = "Composição na data retornada com sucesso.", body = PaginatedResponse<IndexCompositionItem>),
+        (status = 401, description = "Não autorizado: Token Bearer ausente ou inválido.")
+    )
+)]
 pub async fn get_index_composition_by_index_and_date(
     State(state): State<Arc<AppState>>,
     Path((index_code, date)): Path<(String, NaiveDate)>,
@@ -184,6 +268,21 @@ pub async fn get_index_composition_by_index_and_date(
     list_index_compositions(State(state), Query(pagination), Query(filters)).await
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/b3/index-composition/components/by-ticker/{ticker_symbol}",
+    tag = "B3 Index Portfolio Composition",
+    summary = "Participação de um Ticker em Índices B3",
+    description = "Localiza todos os índices da B3 nos quais uma ação específica (ticker) participa como componente, com seus respectivos percentuais e quantidades teóricas.",
+    params(
+        ("ticker_symbol" = String, Path, description = "Símbolo de negociação do ativo (ex: PETR4)", example = "PETR4"),
+        PaginationParams
+    ),
+    responses(
+        (status = 200, description = "Participações do ticker retornadas com sucesso.", body = PaginatedResponse<IndexCompositionItem>),
+        (status = 401, description = "Não autorizado: Token Bearer ausente ou inválido.")
+    )
+)]
 pub async fn get_index_composition_by_ticker(
     State(state): State<Arc<AppState>>,
     Path(ticker): Path<String>,

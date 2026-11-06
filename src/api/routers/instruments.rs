@@ -12,48 +12,143 @@ use utoipa::{IntoParams, ToSchema};
 use crate::api::schemas::{InternalMetadata, PaginatedResponse, PaginationParams, Provenance};
 use crate::api::AppState;
 
+/// Representação cadastral canônica de um instrumento financeiro registrado na B3.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct InstrumentItem {
+    /// Identificador único interno (UUID) do instrumento.
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub id: String,
+
+    /// Identificador oficial do instrumento na estrutura de negociação da B3 (ex: PETR4, VALE3, DI1F27).
+    #[schema(example = "PETR4")]
     pub security_id: String,
+
+    /// Fonte da definição de segurança conforme catálogo ISO 20022 da B3 (ex: 8 = B3).
+    #[schema(example = "8")]
     pub security_source: Option<String>,
+
+    /// Código de identificação do mercado (MIC - Market Identifier Code, ex: BVMF).
+    #[schema(example = "BVMF")]
     pub market_identifier_code: Option<String>,
+
+    /// Código base do ativo objeto (ex: PETR, VALE, BOVA).
+    #[schema(example = "PETR")]
     pub asset: Option<String>,
+
+    /// Descrição oficial em português da classe do ativo emitida pela B3.
+    #[schema(example = "PETROLEO BRASILEIRO S.A. PETROBRAS")]
     pub asset_description: Option<String>,
+
+    /// Código do tipo de mercado de negociação (ex: EQ = Ações, OP = Opções, FU = Futuros).
+    #[schema(example = "EQ")]
     pub market_code: Option<String>,
+
+    /// Nome descritivo do mercado de negociação na B3.
+    #[schema(example = "VISTA")]
     pub market_name: Option<String>,
+
+    /// Código do segmento operacional do mercado (ex: CASH = Mercado à Vista).
+    #[schema(example = "CASH")]
     pub segment_code: Option<String>,
+
+    /// Nome descritivo do segmento de negociação.
+    #[schema(example = "MERCADO A VISTA")]
     pub segment_name: Option<String>,
+
+    /// Tipo cadastral do instrumento (ex: SHARES, OPTIONS, FUTURES).
+    #[schema(example = "SHARES")]
     pub instrument_type: Option<String>,
+
+    /// Categoria de segurança (ex: PREFERRED_SHARES, COMMON_SHARES).
+    #[schema(example = "PREFERRED_SHARES")]
     pub security_category: Option<String>,
+
+    /// Código CFI (Classification of Financial Instruments - ISO 10962, ex: EPNTFR).
+    #[schema(example = "EPNTFR")]
     pub cfi_code: Option<String>,
+
+    /// Status operacional do instrumento (ex: Active, Expired).
+    #[schema(example = "Active")]
     pub instrument_status: Option<String>,
+
+    /// Data de vencimento do contrato (aplicável a derivativos, opções, futuros e renda fixa).
+    #[schema(example = "2027-01-02")]
     pub maturity_date: Option<NaiveDate>,
+
+    /// Símbolo de negociação (ticker) vigente para o ativo (ex: PETR4).
+    #[schema(example = "PETR4")]
     pub ticker_symbol: Option<String>,
+
+    /// Código ISIN internacional associado (ex: BRPETRACNPR6).
+    #[schema(example = "BRPETRACNPR6")]
     pub isin: Option<String>,
+
+    /// Proveniência e rastreabilidade do arquivo oficial B3 que originou os dados.
     pub provenance: Provenance,
+
+    /// Metadados operacionais internos exibidos condicionalmente via `include_internal=true`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub internal_metadata: Option<InternalMetadata>,
 }
 
+/// Identificador de instrumento com janela de validade temporal (Ticker, ISIN, etc.).
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct IdentifierItem {
+    /// Identificador único interno (UUID) do registro.
+    #[schema(example = "c12d8a54-7123-4876-90ab-123456789abc")]
     pub id: String,
+
+    /// ID do instrumento pai ao qual este identificador pertence.
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub instrument_id: String,
+
+    /// Tipo de identificador (ex: `ticker`, `isin`, `security_id`).
+    #[schema(example = "ticker")]
     pub identifier_type: String,
+
+    /// Valor do código identificador (ex: `PETR4`, `BRPETRACNPR6`).
+    #[schema(example = "PETR4")]
     pub identifier_value: String,
+
+    /// Mercado associado ao identificador quando aplicável.
+    #[schema(example = "EQ")]
     pub market_code: Option<String>,
+
+    /// Data de início da vigência do identificador para este instrumento.
+    #[schema(example = "2010-01-01")]
     pub valid_from: Option<NaiveDate>,
+
+    /// Data final da vigência (nula se ainda for o identificador vigente atual).
+    #[schema(example = "2026-12-31")]
     pub valid_to: Option<NaiveDate>,
+
+    /// Timestamp UTC de criação do registro no banco.
+    #[schema(example = "2026-03-01T22:00:00Z")]
     pub created_at: DateTime<Utc>,
 }
 
+/// Parâmetros de filtro para listagem de instrumentos.
 #[derive(Debug, Clone, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct InstrumentFilterParams {
+    /// Filtro por símbolo de negociação (ticker, case-insensitive, ex: `PETR4`).
+    #[param(example = "PETR4")]
     pub ticker: Option<String>,
+
+    /// Filtro por código ISIN de 12 caracteres (ex: `BRPETRACNPR6`).
+    #[param(example = "BRPETRACNPR6")]
     pub isin: Option<String>,
+
+    /// Filtro por Security ID oficial da B3 (ex: `PETR4`).
+    #[param(example = "PETR4")]
     pub security_id: Option<String>,
+
+    /// Filtro por código de mercado (ex: `EQ`, `OP`, `FU`).
+    #[param(example = "EQ")]
     pub market_code: Option<String>,
+
+    /// Filtro por segmento de negociação (ex: `CASH`, `DERIVATIVES`).
+    #[param(example = "CASH")]
     pub segment_code: Option<String>,
 }
 
@@ -61,9 +156,13 @@ pub struct InstrumentFilterParams {
     get,
     path = "/api/v1/b3/instruments",
     tag = "B3 Instruments File (BVBG.028.02)",
+    summary = "Listagem de Instrumentos Financeiros (BVBG.028.02)",
+    description = "Retorna lista paginada de instrumentos financeiros cadastrados oficialmente na B3 através do arquivo BVBG.028.02 (InstrumentsConsolidated). \n\n### Regras de Negócio e Proveniência:\n- A raiz de instrumentos B3 é a âncora cadastral primária (`security_id`).\n- Suporta filtros por ticker, ISIN, código de mercado e segmento.\n- Ordenação determinística por `security_id` ascendente com tie-breaker único.\n- Metadados de proveniência (`provenance`) acompanham cada registro, incluindo SHA-256 e arquivo de origem.\n- O parâmetro `include_internal=true` expõe timestamps granulares de alteração por campo (`field_changed_at`).",
     params(PaginationParams, InstrumentFilterParams),
     responses(
-        (status = 200, description = "List canonical instruments", body = PaginatedResponse<InstrumentItem>)
+        (status = 200, description = "Lista paginada de instrumentos recuperada com sucesso.", body = PaginatedResponse<InstrumentItem>),
+        (status = 401, description = "Não autorizado: Token Bearer ausente ou inválido no cabeçalho Authorization."),
+        (status = 500, description = "Erro interno ao processar a consulta no banco de dados PostgreSQL.")
     )
 )]
 pub async fn list_instruments(
@@ -207,9 +306,15 @@ pub async fn list_instruments(
     get,
     path = "/api/v1/b3/instruments/{id}",
     tag = "B3 Instruments File (BVBG.028.02)",
+    summary = "Obter Instrumento por UUID ou Security ID",
+    description = "Recupera o cadastro completo de um instrumento financeiro específico através do seu identificador único interno (UUID) ou pelo `security_id` oficial da B3.",
+    params(
+        ("id" = String, Path, description = "UUID interno ou security_id do instrumento (ex.: `PETR4` ou `550e8400-e29b-41d4-a716-446655440000`)", example = "PETR4")
+    ),
     responses(
-        (status = 200, description = "Get instrument by primary ID or security ID", body = InstrumentItem),
-        (status = 404, description = "Instrument not found")
+        (status = 200, description = "Instrumento localizado com sucesso.", body = InstrumentItem),
+        (status = 401, description = "Não autorizado: Token Bearer ausente ou inválido."),
+        (status = 404, description = "Instrumento não encontrado para o ID especificado.")
     )
 )]
 pub async fn get_instrument(
@@ -273,6 +378,21 @@ pub async fn get_instrument(
     }))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/b3/instruments/by-ticker/{ticker_symbol}",
+    tag = "B3 Instruments File (BVBG.028.02)",
+    summary = "Obter Instrumento por Ticker",
+    description = "Busca o instrumento atualmente ativo associado ao símbolo de negociação (ticker). Respeita janelas de validade temporal (`valid_from` e `valid_to`), retornando o registro de maior vigência recente.",
+    params(
+        ("ticker_symbol" = String, Path, description = "Símbolo de negociação da B3 (ex.: `PETR4`, `VALE3`)", example = "PETR4")
+    ),
+    responses(
+        (status = 200, description = "Instrumento localizado com sucesso.", body = InstrumentItem),
+        (status = 401, description = "Não autorizado: Token Bearer ausente ou inválido."),
+        (status = 404, description = "Instrumento não encontrado para o ticker informado.")
+    )
+)]
 pub async fn get_instrument_by_ticker(
     State(state): State<Arc<AppState>>,
     Path(ticker): Path<String>,
@@ -340,6 +460,21 @@ pub async fn get_instrument_by_ticker(
     }))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/b3/instruments/by-isin/{isin}",
+    tag = "B3 Instruments File (BVBG.028.02)",
+    summary = "Obter Instrumento por Código ISIN",
+    description = "Busca o instrumento oficial correspondente ao código ISIN internacional (ISO 6166 de 12 caracteres).",
+    params(
+        ("isin" = String, Path, description = "Código ISIN de 12 caracteres (ex.: `BRPETRACNPR6`)", example = "BRPETRACNPR6")
+    ),
+    responses(
+        (status = 200, description = "Instrumento localizado com sucesso.", body = InstrumentItem),
+        (status = 401, description = "Não autorizado: Token Bearer ausente ou inválido."),
+        (status = 404, description = "Instrumento não encontrado para o ISIN informado.")
+    )
+)]
 pub async fn get_instrument_by_isin(
     State(state): State<Arc<AppState>>,
     Path(isin): Path<String>,
@@ -407,6 +542,20 @@ pub async fn get_instrument_by_isin(
     }))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/b3/instruments/{id}/identifiers",
+    tag = "B3 Instruments File (BVBG.028.02)",
+    summary = "Histórico de Identificadores e Janelas Temporais",
+    description = "Retorna todos os identificadores conhecidos (tickers, ISINs, códigos anteriores) vinculados ao instrumento, com suas respectivas janelas de validade temporal (`valid_from` até `valid_to`).",
+    params(
+        ("id" = String, Path, description = "UUID interno ou security_id do instrumento", example = "PETR4")
+    ),
+    responses(
+        (status = 200, description = "Lista de identificadores retornada com sucesso.", body = Vec<IdentifierItem>),
+        (status = 401, description = "Não autorizado: Token Bearer ausente ou inválido.")
+    )
+)]
 pub async fn list_instrument_identifiers(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,

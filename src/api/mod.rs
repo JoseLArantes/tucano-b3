@@ -54,24 +54,90 @@ impl Modify for SecurityAddon {
         ("bearer_auth" = [])
     ),
     info(
-        title = "Tucano B3 Data Platform API",
+        title = "API Tucano B3 - Plataforma de Dados de Mercado",
         version = "0.1.0",
-        description = "High-performance, cost-effective Rust API for B3 (Brasil, Bolsa, Balcão) exchange market data, historical series, and governance.\n\n### Authentication\nProtected endpoints require an `Authorization: Bearer <token>` header configured via `TUCANO_B3_TOKEN`.\n\n### Preços Históricos (COTAHIST)\nAVISO: As cotações da série histórica COTAHIST representam preços brutos nominais de negociação diária, sem ajustes retroativos por dividendos, JCP, desdobramentos ou bonificações corporativas."
+        description = "
+API de alta performance para ingestão, normalização, auditoria temporal e exposição pública de dados oficiais da **B3 (Brasil, Bolsa, Balcão)**.
+
+### Princípios Arquiteturais e Pilares de Engenharia:
+
+1. **Escopo Estrito B3-Only:**
+   - Todo dado é rastreado a uma fonte oficial primária da B3 (`BVBG.028.02`, `BVBG.086.01`, `BVBG.186.01`, `BVBG.087.01`, `Tradable Security List`, Carteiras de Índices e `COTAHIST`).
+   - Nenhuma fonte externa (CVM, Yahoo Finance, portais ou corretoras) é utilizada. Identificadores como CNPJ de emissor ou código CVM não são âncoras cadastrais neste serviço.
+
+2. **Idempotência Absoluta e Auditoria Granular:**
+   - O reprocessamento do mesmo arquivo com o mesmo conteúdo não gera duplicatas, erros de unicidade ou escritas redundantes.
+   - Detecção de mudanças em nível de atributo (`IS DISTINCT FROM`): apenas campos de negócio efetivamente modificados são atualizados, gerando histórico temporal imutável em `b3_field_changes` e timestamps isolados em `field_changed_at`.
+   - Chaves compostas com campos nulos utilizam `UNIQUE NULLS NOT DISTINCT` nativo do PostgreSQL 16.
+
+3. **Coordenação Distribuída sem Redis/Celery (Zero Redis):**
+   - O controle de concorrência global e por data de referência é garantido exclusivamente por travas consultivas ACID do PostgreSQL 16 (`pg_try_advisory_lock` e `pg_try_advisory_xact_lock`).
+   - Tentativas de ingestão simultânea para o mesmo arquivo/data retornam imediatamente HTTP `409 Conflict`.
+
+4. **Resolução Temporal de Identidades (Relationship Resolver):**
+   - A raiz cadastral primária é o `security_id` da estrutura de negociação da B3 (`BVBG.028.02`).
+   - Identificadores voláteis (tickers, ISINs) são gerenciados em janelas temporais de validade (`valid_from` até `valid_to`), permitindo reuso histórico de tickers sem colisões.
+   - Colisões ambíguas não são atribuídas arbitrariamente: registros permanecem como `ambiguous` com `instrument_id = NULL` até resolução unívoca.
+
+5. **Isolamento Estrito entre Famílias de Arquivos:**
+   - `BVBG.086.01` (PriceReport abrangente) e `BVBG.186.01` (Simplified Equities) são armazenados em tabelas e endpoints distintos, sem mesclagem silenciosa.
+   - O endpoint `/api/v1/b3/price-report-comparison/{trade_date}` permite auditoria cruzada de consistência entre ambos.
+
+### AVISO REGULATÓRIO OBRIGATÓRIO: DADOS DE PREÇO COTAHIST
+
+> **AVISO IMPORTANTE:** As cotações da série histórica COTAHIST representam **preços brutos nominais (unadjusted)** praticados na data do pregão.
+> Eles **NÃO sofrem ajuste retroativo** por eventos corporativos em dinheiro (dividendos, JCP) ou em ações (desdobramentos/splits, grupamentos e bonificações).
+> Séries ajustadas requerem cruzamento ex-dividendo externo com a base de eventos corporativos (ex: CVM).
+
+### Formatação Numérica e Precisão:
+- Todos os valores financeiros, quantidades e pontuações utilizam aritmética exata de ponto fixo (`rust_decimal::Decimal`), sem conversão por float.
+- Na API REST, decimais são serializados como strings canônicas sem separador de milhar (ex.: `\"36.00\"`).
+
+### Autenticação:
+- Todos os endpoints (exceto `/healthz`, `/metrics`, `/api/v1/health`, `/openapi.json`, `/docs` e `/redoc`) exigem cabeçalho HTTP:
+  `Authorization: Bearer <TUCANO_B3_TOKEN>`.
+"
     ),
     paths(
         routers::health::health_check,
+        routers::health::worker_health,
         routers::health::metrics,
         routers::instruments::list_instruments,
         routers::instruments::get_instrument,
+        routers::instruments::get_instrument_by_ticker,
+        routers::instruments::get_instrument_by_isin,
+        routers::instruments::list_instrument_identifiers,
         routers::tradable::list_tradable_securities,
+        routers::tradable::get_tradable_by_date,
+        routers::tradable::get_tradable_by_ticker,
         routers::price_report::list_price_report_quotes,
+        routers::price_report::get_price_report_by_ticker,
+        routers::price_report::get_price_report_by_date,
+        routers::price_report::get_price_report_by_id,
         routers::equities_simplified::list_equities_simplified_quotes,
+        routers::equities_simplified::get_equities_simplified_by_ticker,
+        routers::equities_simplified::get_equities_simplified_by_date,
+        routers::equities_simplified::get_equities_simplified_by_id,
+        routers::equities_simplified::compare_price_reports,
         routers::index_report::list_indices,
         routers::index_report::list_index_values,
+        routers::index_report::get_index_values_by_code,
+        routers::index_report::get_index_values_by_date,
         routers::index_composition::list_index_compositions,
+        routers::index_composition::get_index_composition_by_index,
+        routers::index_composition::get_index_composition_by_index_and_date,
+        routers::index_composition::get_index_composition_by_ticker,
         routers::cotahist::list_cotahist_quotes,
+        routers::cotahist::get_cotahist_by_ticker,
+        routers::cotahist::get_cotahist_by_isin,
+        routers::cotahist::get_cotahist_by_date,
+        routers::cotahist::get_cotahist_by_id,
+        routers::company_data::list_company_data,
         routers::sync::list_source_files,
+        routers::sync::get_source_file_by_id,
+        routers::sync::list_source_file_members,
         routers::sync::list_sync_runs,
+        routers::sync::get_sync_run_by_id,
         routers::sync::trigger_sync_run,
         routers::sync::rebuild_identity,
         routers::governance::list_quarantine_records,
@@ -79,7 +145,6 @@ impl Modify for SecurityAddon {
         routers::governance::list_field_changes,
         routers::governance::list_pending_updates,
         routers::governance::get_coverage_diagnostics,
-        routers::company_data::list_company_data,
     ),
     components(
         schemas(
@@ -111,18 +176,18 @@ impl Modify for SecurityAddon {
         )
     ),
     tags(
-        (name = "Infrastructure & Health", description = "Health check and system diagnostics"),
-        (name = "B3 Instruments File (BVBG.028.02)", description = "Official B3 security definitions and instruments"),
-        (name = "B3 Tradable Security List", description = "Daily listing of securities eligible for trading"),
-        (name = "B3 PriceReport (BVBG.086.01)", description = "Complete B3 end-of-day market price reports"),
-        (name = "B3 Simplified Price Report - Equities (BVBG.186.01)", description = "Simplified equity trading prices"),
-        (name = "B3 IndexReport (BVBG.087.01)", description = "B3 market indices (IBOV, etc.) and IOPV values"),
-        (name = "B3 Index Portfolio Composition", description = "Constituent weights and theoretical quantities for B3 indices"),
-        (name = "B3 COTAHIST Historical Quotes", description = "Nominal historical quotes (unadjusted raw prices)"),
-        (name = "B3 Company Data", description = "Consolidated company profiles and identifiers"),
-        (name = "B3 Source Files", description = "Provenance audit for downloaded B3 data files"),
-        (name = "B3 Sync Jobs", description = "Manual and automated data ingestion jobs"),
-        (name = "B3 Data Quality & Governance", description = "Quarantine, field change audits, and coverage diagnostics"),
+        (name = "Infrastructure & Health", description = "Verificação de disponibilidade da API, worker daemon e exportação de métricas Prometheus."),
+        (name = "B3 Instruments File (BVBG.028.02)", description = "Catálogo oficial de instrumentos financeiros e histórico de identificadores temporais."),
+        (name = "B3 Tradable Security List", description = "Relação diária de títulos autorizados para negociação em sessão de mercado."),
+        (name = "B3 PriceReport (BVBG.086.01)", description = "Boletim diário completo de preços de mercado, negociações e volumes."),
+        (name = "B3 Simplified Price Report - Equities (BVBG.186.01)", description = "Boletim simplificado de ações à vista e comparativo cruzado contra o PriceReport."),
+        (name = "B3 IndexReport (BVBG.087.01)", description = "Valores de fechamento, médias e pontuações dos índices oficiais calculados pela B3."),
+        (name = "B3 Index Portfolio Composition", description = "Carteiras teóricas oficiais, quantidades de ações e participações percentuais dos ativos em índices."),
+        (name = "B3 COTAHIST Historical Quotes", description = "Séries históricas nominais brutas (unadjusted) com aviso regulatório obrigatório."),
+        (name = "B3 Company Data", description = "Visão consolidada de companhias e emissores derivada estritamente da base de instrumentos B3."),
+        (name = "B3 Source Files", description = "Auditoria de arquivos físicos baixados da B3, checksums SHA-256 e membros de containers ZIP."),
+        (name = "B3 Sync Jobs", description = "Disparo sob demanda de ingestão com travas consultivas e reconstrução de identidades."),
+        (name = "B3 Data Quality & Governance", description = "Governança de dados: quarentena, replay, histórico de campos alterados e métricas de cobertura."),
     )
 )]
 pub struct ApiDoc;

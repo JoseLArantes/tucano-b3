@@ -89,6 +89,7 @@ Every persisted structural change requires a new SQLx migration in `migrations/`
 ## REST and MCP contracts
 
 - Use `/api/v1/b3/...` for the B3 domain and group endpoints, schemas, and OpenAPI tags by file family according to the PRD.
+- All endpoints must be thoroughly documented in OpenAPI: every endpoint must include an extensive `summary`, a detailed multi-line `description` (explaining official B3 data origin, file family, business logic, filters, and idempotency guarantees), typed parameter descriptions with examples and default values, exhaustive HTTP response codes (200, 400, 401, 404, 409, 500), and comprehensive doc comments (`///`) on all schema fields and DTOs.
 - Public contracts must be closed and typed. Do not expose internal structures or arbitrary payloads as substitutes for domain DTOs.
 - Apply Bearer authentication to protected routes and keep public exceptions explicit and tested. Do not extend a health or documentation exception to ingestion operations.
 - List endpoints require documented filters, `limit` defaulting to 100 with a maximum of 1000, `offset`, and deterministic ordering with a unique tie-breaker.

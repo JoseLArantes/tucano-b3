@@ -11,18 +11,40 @@ use utoipa::{IntoParams, ToSchema};
 use crate::api::schemas::{PaginatedResponse, PaginationParams};
 use crate::api::AppState;
 
+/// Dados cadastrais consolidados de companhias listadas na B3 (derivados da base de instrumentos).
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CompanyDataItem {
+    /// Código base do ativo / emissor na B3 (ex: `PETR`, `VALE`).
+    #[schema(example = "PETR")]
     pub asset: String,
+
+    /// Descrição ou razão social consolidada do emissor na B3.
+    #[schema(example = "PETROLEO BRASILEIRO S.A. PETROBRAS")]
     pub asset_description: Option<String>,
+
+    /// Mercado de negociação predominante (ex: `VISTA`).
+    #[schema(example = "VISTA")]
     pub market_name: Option<String>,
+
+    /// Segmento de listagem da B3 (ex: `MERCADO A VISTA`).
+    #[schema(example = "MERCADO A VISTA")]
     pub segment_name: Option<String>,
+
+    /// Lista de todos os símbolos de negociação (tickers) emitidos pela companhia (ex: `["PETR3", "PETR4"]`).
+    #[schema(example = json!(["PETR3", "PETR4"]))]
     pub tickers: Vec<String>,
+
+    /// Lista de todos os códigos ISIN emitidos pela companhia.
+    #[schema(example = json!(["BRPETRACNOR9", "BRPETRACNPR6"]))]
     pub isins: Vec<String>,
 }
 
+/// Parâmetros de filtro para busca de dados consolidados de companhias.
 #[derive(Debug, Clone, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct CompanyDataFilterParams {
+    /// Termo de busca textual por código base do ativo (`asset`) ou descrição (`asset_description`).
+    #[param(example = "PETROBRAS")]
     pub search: Option<String>,
 }
 
@@ -30,9 +52,12 @@ pub struct CompanyDataFilterParams {
     get,
     path = "/api/v1/b3/company-data",
     tag = "B3 Company Data",
+    summary = "Listagem Consolidada de Companhias e Emissores",
+    description = "Retorna visão consolidada de empresas e emissores listados na B3, agregando todos os tickers e ISINs associados ao código base do ativo (`asset`). \n\n### Escopo Estrito B3-Only:\n- Esta visão é construída exclusivamente a partir do cadastro oficial de instrumentos (`BVBG.028.02`).\n- Não utiliza fontes externas ou identificadores fora do ecossistema da bolsa (ex: CVM, Yahoo Finance).",
     params(PaginationParams, CompanyDataFilterParams),
     responses(
-        (status = 200, description = "List company profile data derived from instruments", body = PaginatedResponse<CompanyDataItem>)
+        (status = 200, description = "Lista consolidada de companhias retornada com sucesso.", body = PaginatedResponse<CompanyDataItem>),
+        (status = 401, description = "Não autorizado: Token Bearer ausente ou inválido.")
     )
 )]
 pub async fn list_company_data(

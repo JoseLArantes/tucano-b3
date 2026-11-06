@@ -9,8 +9,11 @@ use crate::api::AppState;
     get,
     path = "/api/v1/health",
     tag = "Infrastructure & Health",
+    summary = "Saúde e Conectividade da API",
+    description = "Retorna o status operacional da aplicação REST, versão do pacote compilado e diagnóstico de conectividade com o banco de dados PostgreSQL 16.",
     responses(
-        (status = 200, description = "Application and database health status", body = HealthResponse)
+        (status = 200, description = "Status de saúde operacional da API retornado.", body = HealthResponse),
+        (status = 500, description = "Erro de conexão com o banco de dados.")
     )
 )]
 pub async fn health_check(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
@@ -32,6 +35,16 @@ pub async fn healthz() -> &'static str {
     "OK"
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/b3/worker/health",
+    tag = "Infrastructure & Health",
+    summary = "Saúde do Worker Daemon de Sincronização",
+    description = "Retorna o status operacional do processo em segundo plano (background worker daemon) e sua conectividade com o PostgreSQL 16.",
+    responses(
+        (status = 200, description = "Status de saúde operacional do worker retornado.", body = HealthResponse)
+    )
+)]
 pub async fn worker_health(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
     let db_status = match sqlx::query("SELECT 1").execute(&state.pool).await {
         Ok(_) => "connected".to_string(),
@@ -51,8 +64,10 @@ pub async fn worker_health(State(state): State<Arc<AppState>>) -> Json<HealthRes
     get,
     path = "/metrics",
     tag = "Infrastructure & Health",
+    summary = "Exportação de Métricas Prometheus",
+    description = "Exporta métricas de observabilidade no formato texto padrão do Prometheus: contadores de instrumentos, arquivos processados, execuções de sincronização, alterações de campo e registros em quarentena.",
     responses(
-        (status = 200, description = "Prometheus text format metrics export")
+        (status = 200, description = "Métricas Prometheus retornadas em formato texto.", content_type = "text/plain")
     )
 )]
 pub async fn metrics(State(state): State<Arc<AppState>>) -> String {

@@ -18,65 +18,203 @@ use crate::api::AppState;
 use crate::db::enums::SourceFileType;
 use crate::db::resolver::RelationshipResolver;
 
+/// Registro de auditoria e proveniência de arquivo físico oficial da B3 importado.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SourceFileItem {
+    /// Identificador único (UUID) do arquivo fonte em `b3_source_files`.
+    #[schema(example = "d87f7b2a-1c34-4b89-a2de-5c94e019310a")]
     pub id: String,
+
+    /// Tipo de arquivo oficial da B3 (ex: `BVBG_028_INSTRUMENTS_FILE`).
+    #[schema(example = "BVBG_028_INSTRUMENTS_FILE")]
     pub source_file_type: String,
+
+    /// Nome canônico da família do arquivo.
+    #[schema(example = "InstrumentsConsolidated")]
     pub source_name: Option<String>,
+
+    /// Data de referência de mercado do arquivo (YYYY-MM-DD).
+    #[schema(example = "2026-03-01")]
     pub reference_date: Option<NaiveDate>,
+
+    /// URL externa oficial a partir da qual o download foi executado.
+    #[schema(example = "https://www.b3.com.br/pesquisapregao/download?file=IN260301.zip")]
     pub source_url: Option<String>,
+
+    /// Nome original do arquivo físico ou container ZIP baixado.
+    #[schema(example = "IN260301.zip")]
     pub original_file_name: Option<String>,
+
+    /// Checksum SHA-256 do arquivo baixado para garantia de integridade.
+    #[schema(example = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")]
     pub sha256: Option<String>,
+
+    /// Tamanho exato em bytes do arquivo baixado.
+    #[schema(example = 14502394)]
     pub byte_size: Option<i64>,
+
+    /// Timestamp UTC do término do download físico.
+    #[schema(example = "2026-03-01T22:00:15Z")]
     pub downloaded_at: Option<DateTime<Utc>>,
+
+    /// Timestamp UTC do término do parsing estrutural.
+    #[schema(example = "2026-03-01T22:01:30Z")]
     pub parsed_at: Option<DateTime<Utc>>,
+
+    /// Timestamp UTC de conclusão da ingestão e persistência relacional.
+    #[schema(example = "2026-03-01T22:02:10Z")]
     pub ingested_at: Option<DateTime<Utc>>,
+
+    /// Versão do parser streaming que processou o arquivo (ex: `v1`).
+    #[schema(example = "v1")]
     pub parser_version: Option<String>,
+
+    /// Status do processamento (`downloaded`, `parsed`, `ingested`, `skipped_duplicate`, `failed`).
+    #[schema(example = "ingested")]
     pub status: String,
+
+    /// Quantidade de arquivos membros internos identificados no arquivo (para ZIPs).
+    #[schema(example = 1)]
     pub member_count: Option<i32>,
+
+    /// Quantidade de linhas ou nós brutos lidos do arquivo.
+    #[schema(example = 120562)]
     pub row_count_raw: Option<i32>,
+
+    /// Quantidade de registros novos inseridos no banco.
+    #[schema(example = 120562)]
     pub row_count_inserted: Option<i32>,
+
+    /// Quantidade de registros existentes que sofreram modificação de campos de negócio.
+    #[schema(example = 0)]
     pub row_count_changed: Option<i32>,
+
+    /// Quantidade de registros existentes que eram canonicamente idênticos.
+    #[schema(example = 0)]
     pub row_count_unchanged: Option<i32>,
+
+    /// Quantidade de registros isolados na quarentena por anomalias ou erros de validação.
+    #[schema(example = 0)]
     pub row_count_quarantined: Option<i32>,
+
+    /// Mensagem descritiva de erro quando o status for `failed`.
+    #[schema(nullable)]
     pub error_message: Option<String>,
+
+    /// Timestamp UTC de criação do registro de rastreabilidade.
+    #[schema(example = "2026-03-01T22:00:00Z")]
     pub created_at: DateTime<Utc>,
 }
 
+/// Membro interno descompactado de um container de arquivo ZIP da B3.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SourceFileMemberItem {
+    /// Identificador único (UUID) do membro.
+    #[schema(example = "77b8c9d0-e1f2-3456-b7c8-d9e0f1a2b3c4")]
     pub id: String,
+
+    /// UUID do arquivo ZIP pai em `b3_source_files`.
+    #[schema(example = "d87f7b2a-1c34-4b89-a2de-5c94e019310a")]
     pub source_file_id: String,
+
+    /// Nome interno do membro descompactado (ex: `IN260301.xml`).
+    #[schema(example = "IN260301.xml")]
     pub member_name: String,
+
+    /// Índice sequencial do membro dentro do arquivo ZIP.
+    #[schema(example = 0)]
     pub member_index: i32,
+
+    /// Checksum SHA-256 específico do conteúdo descompactado deste membro.
+    #[schema(example = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")]
     pub sha256: String,
+
+    /// Tamanho descompactado em bytes do membro.
+    #[schema(example = 45120300)]
     pub byte_size: Option<i64>,
+
+    /// Status do processamento do membro (`pending`, `processed`, `failed`).
+    #[schema(example = "processed")]
     pub status: String,
+
+    /// Quantidade de linhas inseridas por este membro.
+    #[schema(example = 120562)]
     pub row_count_inserted: Option<i32>,
+
+    /// Quantidade de linhas modificadas por este membro.
+    #[schema(example = 0)]
     pub row_count_changed: Option<i32>,
+
+    /// Quantidade de linhas idênticas sem alteração por este membro.
+    #[schema(example = 0)]
     pub row_count_unchanged: Option<i32>,
+
+    /// Timestamp UTC de quando o processamento deste membro foi concluído.
+    #[schema(example = "2026-03-01T22:02:00Z")]
     pub processed_at: DateTime<Utc>,
 }
 
+/// Registro de execução de job de sincronização (agendado ou manual).
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SyncRunItem {
+    /// Identificador único (UUID) da execução em `b3_sync_runs`.
+    #[schema(example = "f54b6c31-9a72-4d56-8e12-32a76fbc9081")]
     pub id: String,
+
+    /// Tipo de trabalho executado (ex: `scheduled_daily`, `manual_sync`, `cotahist_backfill`, `rebuild_identity`).
+    #[schema(example = "manual_sync")]
     pub job_type: String,
+
+    /// Identificação do solicitante (ex: `worker_daemon`, `api_user`).
+    #[schema(example = "api_user")]
     pub requested_by: Option<String>,
+
+    /// Timestamp UTC de início da execução.
+    #[schema(example = "2026-03-01T22:00:00Z")]
     pub started_at: Option<DateTime<Utc>>,
+
+    /// Timestamp UTC de término da execução.
+    #[schema(example = "2026-03-01T22:02:15Z")]
     pub finished_at: Option<DateTime<Utc>>,
+
+    /// Status final do job (`running`, `completed`, `failed`).
+    #[schema(example = "completed")]
     pub status: String,
+
+    /// Família oficial da fonte de dados processada.
+    #[schema(example = "BVBG_028_INSTRUMENTS_FILE")]
     pub source_file_type: Option<String>,
+
+    /// Data inicial do intervalo de referência.
+    #[schema(example = "2026-03-01")]
     pub reference_date_from: Option<NaiveDate>,
+
+    /// Data final do intervalo de referência.
+    #[schema(example = "2026-03-01")]
     pub reference_date_to: Option<NaiveDate>,
+
+    /// Estatísticas detalhadas consolidadas da execução em formato JSON.
     pub stats_json: serde_json::Value,
+
+    /// Timestamp UTC de criação do registro de execução.
+    #[schema(example = "2026-03-01T22:00:00Z")]
     pub created_at: DateTime<Utc>,
 }
 
+/// Filtros para listagem de arquivos fonte cadastrados.
 #[derive(Debug, Clone, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct SourceFileFilterParams {
+    /// Filtro por família de arquivo (ex: `BVBG_028_INSTRUMENTS_FILE`).
+    #[param(example = "BVBG_028_INSTRUMENTS_FILE")]
     pub source_file_type: Option<String>,
+
+    /// Filtro por data de referência de mercado (YYYY-MM-DD).
+    #[param(example = "2026-03-01")]
     pub reference_date: Option<NaiveDate>,
+
+    /// Filtro por status de ingestão (`ingested`, `skipped_duplicate`, `failed`).
+    #[param(example = "ingested")]
     pub status: Option<String>,
 }
 
@@ -84,9 +222,12 @@ pub struct SourceFileFilterParams {
     get,
     path = "/api/v1/b3/source-files",
     tag = "B3 Source Files",
+    summary = "Listagem de Arquivos Fonte Cadastrados",
+    description = "Retorna histórico de arquivos oficiais da B3 baixados e processados pelo sistema, incluindo checksums SHA-256, tamanhos em bytes e contadores de linhas inseridas/modificadas.",
     params(PaginationParams, SourceFileFilterParams),
     responses(
-        (status = 200, description = "List registered source files", body = PaginatedResponse<SourceFileItem>)
+        (status = 200, description = "Lista de arquivos fonte retornada com sucesso.", body = PaginatedResponse<SourceFileItem>),
+        (status = 401, description = "Não autorizado: Token Bearer ausente ou inválido.")
     )
 )]
 pub async fn list_source_files(
@@ -124,7 +265,7 @@ pub async fn list_source_files(
         WHERE ($1::varchar IS NULL OR source_file_type = $1)
           AND ($2::date IS NULL OR reference_date = $2)
           AND ($3::varchar IS NULL OR status = $3)
-        ORDER BY created_at DESC
+        ORDER BY reference_date DESC NULLS LAST, created_at DESC
         LIMIT $4 OFFSET $5
     "#;
 
@@ -174,6 +315,21 @@ pub async fn list_source_files(
     }))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/b3/source-files/{id}",
+    tag = "B3 Source Files",
+    summary = "Obter Arquivo Fonte por UUID",
+    description = "Recupera metadados detalhados de integridade, contadores de ingestão e proveniência de um arquivo B3 específico.",
+    params(
+        ("id" = String, Path, description = "UUID do arquivo fonte em `b3_source_files`", example = "d87f7b2a-1c34-4b89-a2de-5c94e019310a")
+    ),
+    responses(
+        (status = 200, description = "Arquivo fonte localizado com sucesso.", body = SourceFileItem),
+        (status = 401, description = "Não autorizado: Token Bearer ausente ou inválido."),
+        (status = 404, description = "Arquivo fonte não encontrado.")
+    )
+)]
 pub async fn get_source_file_by_id(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -222,6 +378,20 @@ pub async fn get_source_file_by_id(
     }))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/b3/source-files/{id}/members",
+    tag = "B3 Source Files",
+    summary = "Listar Membros de um Arquivo Container",
+    description = "Retorna todos os arquivos membros internos (arquivos XML, CSV ou TXT descompactados de um arquivo ZIP container oficial da B3).",
+    params(
+        ("id" = String, Path, description = "UUID do arquivo container em `b3_source_files`", example = "d87f7b2a-1c34-4b89-a2de-5c94e019310a")
+    ),
+    responses(
+        (status = 200, description = "Membros do arquivo retornados com sucesso.", body = Vec<SourceFileMemberItem>),
+        (status = 401, description = "Não autorizado: Token Bearer ausente ou inválido.")
+    )
+)]
 pub async fn list_source_file_members(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -263,9 +433,12 @@ pub async fn list_source_file_members(
     get,
     path = "/api/v1/b3/sync-runs",
     tag = "B3 Sync Jobs",
+    summary = "Listagem de Execuções de Sincronização",
+    description = "Retorna histórico paginado de execuções de sincronização (jobs diários automáticos do worker, acionamentos manuais e backfills).",
     params(PaginationParams),
     responses(
-        (status = 200, description = "List sync runs", body = PaginatedResponse<SyncRunItem>)
+        (status = 200, description = "Lista de execuções retornada com sucesso.", body = PaginatedResponse<SyncRunItem>),
+        (status = 401, description = "Não autorizado: Token Bearer ausente ou inválido.")
     )
 )]
 pub async fn list_sync_runs(
@@ -275,24 +448,25 @@ pub async fn list_sync_runs(
     let limit = pagination.limit();
     let offset = pagination.offset();
 
-    let total: i64 = sqlx::query_scalar("SELECT count(*) FROM b3_sync_runs")
+    let count_query = "SELECT count(*) FROM b3_sync_runs";
+    let total: i64 = sqlx::query_scalar(count_query)
         .fetch_one(&state.pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let rows = sqlx::query(
-        r#"
+    let select_query = r#"
         SELECT id, job_type, requested_by, started_at, finished_at, status, source_file_type, reference_date_from, reference_date_to, stats_json, created_at
         FROM b3_sync_runs
         ORDER BY created_at DESC
         LIMIT $1 OFFSET $2
-        "#,
-    )
-    .bind(limit)
-    .bind(offset)
-    .fetch_all(&state.pool)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    "#;
+
+    let rows = sqlx::query(select_query)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&state.pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let items = rows
         .into_iter()
@@ -320,6 +494,21 @@ pub async fn list_sync_runs(
     }))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/b3/sync-runs/{id}",
+    tag = "B3 Sync Jobs",
+    summary = "Obter Execução de Sincronização por UUID",
+    description = "Recupera os detalhes completos, timestamps e estatísticas consolidadas de uma execução de job específica.",
+    params(
+        ("id" = String, Path, description = "UUID da execução em `b3_sync_runs`", example = "f54b6c31-9a72-4d56-8e12-32a76fbc9081")
+    ),
+    responses(
+        (status = 200, description = "Execução localizada com sucesso.", body = SyncRunItem),
+        (status = 401, description = "Não autorizado: Token Bearer ausente ou inválido."),
+        (status = 404, description = "Execução não encontrada.")
+    )
+)]
 pub async fn get_sync_run_by_id(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -357,11 +546,15 @@ pub async fn get_sync_run_by_id(
     post,
     path = "/api/v1/b3/sync-runs",
     tag = "B3 Sync Jobs",
+    summary = "Disparar Sincronização Manual de Arquivos B3",
+    description = "Dispara a execução sob demanda da ingestão de uma família oficial da B3 para um intervalo de datas. \n\n### Coordenação por Travas Consultivas (Zero Redis):\n- O sistema adquire uma trava consultiva PostgreSQL a nível de sessão (`pg_try_advisory_lock`).\n- Tentativas simultâneas para o mesmo arquivo/data retornam imediatamente HTTP `409 Conflict`.\n- O parâmetro `force_reparse=true` descarta dados anteriores da data de forma transacional e re-executa a ingestão.",
     request_body = ManualSyncRequest,
     responses(
-        (status = 200, description = "Manual sync executed", body = ManualSyncResponse),
-        (status = 400, description = "Invalid request arguments"),
-        (status = 409, description = "Sync run lock conflict (concurrent sync already running)")
+        (status = 200, description = "Sincronização concluída com sucesso.", body = ManualSyncResponse),
+        (status = 400, description = "Requisição inválida (tipo de arquivo desconhecido ou parâmetros inconsistentes)."),
+        (status = 401, description = "Não autorizado: Token Bearer ausente ou inválido."),
+        (status = 409, description = "Conflito: Processo de sincronização já em execução para este arquivo/data por outro worker ou usuário."),
+        (status = 500, description = "Erro interno durante o processamento do pipeline.")
     )
 )]
 pub async fn trigger_sync_run(
@@ -412,8 +605,12 @@ pub async fn trigger_sync_run(
     post,
     path = "/api/v1/b3/sync-runs/rebuild-identity",
     tag = "B3 Sync Jobs",
+    summary = "Reconstrução Retroativa de Identidades (Rebuild Identity)",
+    description = "Reavalia todos os registros com status `unresolved` em todas as tabelas dependentes (COTAHIST, PriceReport, Composição de Índices) contra o catálogo atual de instrumentos. \n\n### Propósito:\n- Resolve registros que foram ingeridos antes da definição cadastral correspondente ser conhecida.\n- Promove registros elegíveis sem alterar preços históricos ou proveniência original.",
     responses(
-        (status = 200, description = "Identity resolution rebuild completed", body = RebuildIdentityResponse)
+        (status = 200, description = "Reconstrução concluída com sucesso.", body = RebuildIdentityResponse),
+        (status = 401, description = "Não autorizado: Token Bearer ausente ou inválido."),
+        (status = 500, description = "Erro interno ao reconstruir relacionamentos.")
     )
 )]
 pub async fn rebuild_identity(
