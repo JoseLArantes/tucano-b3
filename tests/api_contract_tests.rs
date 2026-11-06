@@ -258,6 +258,25 @@ async fn test_mcp_tools_execution() {
     // 3. Dataset diagnostics
     let diag = handle_get_dataset_diagnostics(&pool).await;
     assert!(diag.get("diagnostics").is_some());
+
+    // 4. OHLCV Series (verifying unadjusted prices disclaimer in MCP output)
+    let ohlcv_args = serde_json::json!({ "ticker": "VALE3", "limit": 10 });
+    let ohlcv_res = handle_get_ohlcv_series(&pool, &ohlcv_args).await;
+    assert!(ohlcv_res.get("series").is_some());
+    assert!(ohlcv_res["disclaimer"]
+        .as_str()
+        .unwrap()
+        .contains("Preços nominais brutos"));
+
+    // 5. Instrument coverage
+    let cov_args = serde_json::json!({ "ticker": "VALE3" });
+    let cov_res = handle_get_instrument_coverage(&pool, &cov_args).await;
+    assert_eq!(cov_res["ticker"], "VALE3");
+
+    // 6. Index portfolio composition
+    let idx_args = serde_json::json!({ "index_code": "IBOV" });
+    let idx_res = handle_get_index_portfolio(&pool, &idx_args).await;
+    assert_eq!(idx_res["index_code"], "IBOV");
 }
 
 #[tokio::test]

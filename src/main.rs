@@ -50,9 +50,14 @@ async fn main() -> anyhow::Result<()> {
     let settings = Arc::new(B3Settings::default());
 
     let pool = create_pool(&settings.database_url).await?;
-    info!("Running database migrations...");
-    run_migrations(&pool).await?;
-    info!("Migrations verified.");
+    let is_mcp = matches!(cli.command, Some(Commands::Mcp));
+    if !is_mcp {
+        info!("Running database migrations...");
+        run_migrations(&pool).await?;
+        info!("Migrations verified.");
+    } else {
+        info!("Starting in analytical MCP mode (read-only; skipping migrations).");
+    }
 
     let sync_service = Arc::new(B3SyncService::new(pool.clone(), (*settings).clone()));
 
