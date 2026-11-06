@@ -120,12 +120,23 @@ sequenceDiagram
 
 ---
 
-## 4. Release-Gate Verification Checklist
+## 4. Review Plan Milestones vs. PRD Release Gates
 
-- [x] **R0 Baseline**: Complete test suite runs against PostgreSQL 16 without skipped tests (35/35 passing).
+### Review Plan Execution Status (docs/19-plan.md)
+- [x] **R0 Baseline**: Hardened integration tests and isolated PostgreSQL 16 development environment.
 - [x] **R1 Inventory**: Live OpenAPI 3.1 contract reference extracted and response scenarios documented.
 - [x] **R2 Parsers**: ISO 20022 schemas and depth limit tests added and verified.
 - [x] **R3 Persistence**: `UNIQUE NULLS NOT DISTINCT` invariant verified on natural keys.
 - [x] **R4 Coordination**: Transactional fencing and session lock helpers implemented and verified.
 - [x] **R5 Transports**: MCP read-only startup verified without migration rights.
 - [x] **R6 Consolidation**: Subsystem dispositions recorded; migration roadmap and issue tracking finalized.
+
+### PRD Release Gates Status (PRD §19 / §20)
+- [ ] **Gate G0 (Source Viability)**: `needs-info` — External collection disabled awaiting legal eligibility confirmation ([Issue 01](docs/issues/01-source-viability.md)).
+- [ ] **Gate G1 (Domain & Contracts)**: `pending-spec` — Contract baseline established; formal qualifier and temporal window specification pending ([Issue 02](docs/issues/02-domain-and-contracts.md)).
+- [ ] **Gate G2 (Acquisition & Artifacts)**: `blocked` — Blocked by P1 in-memory download buffering and silent ZIP depth truncation ([Issue 03](docs/issues/03-artifact-acquisition.md)).
+- [ ] **Gate G3 (Historical Core)**: `blocked` — Blocked by P1 persistence gap (lack of atomic transaction boundary across facts, audits, and status) and permissive COTAHIST trailer check ([Issue 04](docs/issues/04-historical-core.md)).
+- [ ] **Gate G4 (Query Product)**: `blocked` — Blocked by P2 architecture gap (lack of shared query services between REST and MCP) ([Issue 05](docs/issues/05-query-product.md)).
+- [ ] **Gate G5 (Operations)**: `blocked` — Blocked by P1 coordination gap (lack of `b3_trading_calendar`, worker timezone drift, and lack of retained connection locks in sync service) ([Issue 06](docs/issues/06-operations.md)).
+- [ ] **Gate G6 (Price Reports)**: `blocked` — Blocked on platform prerequisites G1–G5 ([Issue 07](docs/issues/07-price-reports.md)).
+- [ ] **Gate G7 (Indices & Portfolios)**: `blocked` — Blocked on platform prerequisites G1–G5 ([Issue 08](docs/issues/08-indices-and-portfolios.md)).
