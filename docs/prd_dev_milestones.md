@@ -4,7 +4,7 @@ Status: planejamento de execução, sujeito aos critérios de saída de cada mar
 
 Execução 0.0.1 iniciada no [plano de lançamento](0.0.1-plan.md). Decisão posterior do mantenedor: base nova e primeiro contrato público, sem migração dos registros/IDs anteriores. Os requisitos de preservação passam a reger o novo conjunto após seu lançamento; a reconstrução do legado não integra o caminho crítico desta entrega.
 
-Data da revisão: **06/11/2026**, America/Sao_Paulo. Baseline histórica da transição: **`fdc804f`**. Implementação integrada em qualificação nesta revisão; validação executada contra a working tree atual. Referência de produto: [PRD vigente, versão 2.0](b3_prd.md).
+Data da revisão: **06/11/2026**, America/Sao_Paulo. Baseline histórica da transição: **`fdc804f`**. Implementação integrada em qualificação no commit **`7e93b0d`**; validação executada contra a árvore desse commit. Referência de produto: [PRD vigente, versão 2.0](b3_prd.md).
 
 Este documento detalha os marcos G0–G7 da seção 20 do PRD a partir do código e da revisão existentes. Define sequência, dependências, entregas e evidências de conclusão; não é um PRD alternativo. O [plano 19](19-plan.md) orienta a avaliação e a migração do legado; as [issues 01–09](issues/README.md) continuam sendo o backlog rastreável. Requisitos de produto e compatibilidade prevalecem sobre propostas de implementação ainda não homologadas.
 
@@ -48,7 +48,7 @@ Validação corrente: `docker compose run --rm cargo cargo fmt --all -- --check`
 
 ### Reutilização e limites herdados
 
-Preservar, com regressões: precisão decimal, normalização, hashes determinísticos, auditoria granular, tratamento de chaves nulas, separação 086/186, aviso COTAHIST, rotas v1 e identidade temporal já suportada. Estender aquisição, parsers, resolução e persistência. Substituir gradualmente o loop de agendamento, reutilizando os serviços de domínio e a coordenação PostgreSQL.
+Reutilizar somente capacidades que atendam ao PRD: precisão decimal, normalização, hashes determinísticos, auditoria granular, tratamento de chaves nulas, separação 086/186, aviso COTAHIST e identidade temporal. O namespace REST `/api/v1/b3` permanece conforme o PRD, mas os contratos, dados, IDs e estado de execução anteriores não são importados nem exigem compatibilidade com `0.0.1`. A partir do lançamento, as garantias de identidade e histórico passam a ser estáveis. O novo runtime usa serviços de domínio e coordenação PostgreSQL compartilhados.
 
 O modelo de dados atual não será congelado para acomodar suas limitações. Chaves, associações reconstruíveis e regras de seleção precisam ser homologadas antes de novas constraints. `0001` permanece imutável; cada alteração estrutural exige nova migration e validação de upgrade com dados.
 
@@ -94,17 +94,17 @@ As setas indicam dependências de aceite, não impedem preparação independente
 
 Não criar uma dependência circular entre “G3 completo” e “G5 completo”: G5.1 fornece coordenação e recuperação mínimas para G3; os ensaios integrados de manutenção, concorrência e restauração encerram G5.3 sobre o núcleo já publicável.
 
-## 3. Preparação imediata: consolidar a revisão
+## 3. Próximos passos para concluir 0.0.1
 
-Esta preparação é a saída operacional da issue 09, **não um novo marco de produto** nem uma repetição integral do plano 19.
+A revisão da implementação e a integração do núcleo estão concluídas para qualificação no commit `7e93b0d`. O trabalho remanescente é fechar as evidências e os critérios de lançamento do [plano 0.0.1](0.0.1-plan.md), sem reabrir a migração do estado legado.
 
-1. Fixar a referência de código, OpenAPI, migrations e cenários de resposta usados pela próxima entrega. Inventariar consumidores conhecidos e registrar os desconhecidos como risco.
-2. Reconciliar avaliação, plano de migração e código: preservar as correções já presentes; classificar cada conclusão como teste executado, inspeção ou hipótese pendente.
-3. Transformar propostas de migração em decisões verificáveis de G1. O desenho em `.scratch` não autoriza escolher o último arquivo por `created_at`, renomear enums v1 ou copiar DDL sem comprovar a granularidade.
-4. Escolher o recorte piloto com um manifesto de fontes, períodos, mercados, formatos e finalidade. Preferir um ano encerrado de COTAHIST anual quando disponível; acrescentar sobreposição diária/mensal no horizonte em que houver arquivos e fotografias cadastrais obtidas de forma permitida. O recorte definitivo depende de G0.
-5. Decompor as issues 02, 03, 04 e 06 em entregas pequenas com interfaces comuns. Registrar o que pode avançar offline e qual evidência libera a parte dependente de corpus.
+1. Resolver a elegibilidade gratuita por fonte, canal e finalidade. Enquanto permanecer `needs-info`, não adquirir nem expor dados reais por esse canal; manter o bloqueio externo.
+2. Quando permitido, adquirir as publicações oficiais disponíveis, validar o calendário e congelar o manifesto com hashes, formatos, períodos, members e cutoff provado pelas próprias publicações.
+3. Ingerir primeiro as fotografias de cadastro elegíveis e depois o corpus COTAHIST 2025 e 2026 até o cutoff demonstrado. Reconciliar natural keys, sobreposições e conflitos sem descartar fatos válidos não resolvidos.
+4. Repetir a qualificação, os smoke tests, backup/restore e benchmark com o corpus permitido e o hardware-alvo; só então fixar budgets operacionais e aceitar W8/W9.
+5. Atualizar issues 01–06 e o manifesto de release com evidências verificáveis. Habilitar acesso externo somente após aprovação de G0 e aceite de G1–G5.
 
-**Condição de saída:** baseline recuperável e lista de decisões pendentes sem alegações contraditórias de capacidade entregue. A revisão registrada como concluída não substitui migrations, testes de falha ou homologação de produção.
+**Condição de saída:** fonte e finalidade aprovadas, corpus/cutoff congelados, revisão validada e restaurável, contratos/documentação correspondentes ao que foi realmente qualificado. Sem evidência de G0, a implementação permanece pronta para homologação, mas a publicação externa continua bloqueada.
 
 ## 4. G0 — Comprovar viabilidade e formar corpus
 
@@ -129,31 +129,31 @@ Referência: PRD §§4–6 e 18; [issue 01](issues/01-source-viability.md).
 
 **Evidência de conclusão:** catálogo datado, manifesto de corpus e declaração explícita do recorte/finalidade liberados. A evidência externa não pode ser substituída por configuração do operador ou sucesso de uma requisição HTTP.
 
-## 5. G1 — Fechar identidade, revisões e migração de contratos
+## 5. G1 — Fechar identidade, revisões e contrato inicial
 
 Referência: PRD §§7–9, 12–13 e 19; [issue 02](issues/02-domain-and-contracts.md).
 
-**Resultado:** um modelo implementável que preserve fatos, identidade temporal, histórico de versões e contratos existentes.
+**Resultado:** um modelo implementável para preservar fatos, identidade temporal, histórico de versões e os contratos definidos pelo PRD para o primeiro lançamento.
 
 **Entrada:** baseline consolidada. Especificação e cenários sintéticos podem avançar imediatamente; homologação definitiva de chaves e campos depende do corpus de G0.
 
 ### Entregas
 
-- **G1.1 — Contratos e granularidade:** reconciliar rotas, DTOs, enums, filtros, ordenação, IDs, proveniência e OpenAPI. Perfilar colisões das chaves candidatas, preservando `DISMES`, prazo de termo, sessão, mercado e componentes nulos conforme a fonte. Relação reconstruível com instrumento não compõe a identidade de um fato.
+- **G1.1 — Contratos e granularidade:** definir rotas, DTOs, enums, filtros, ordenação, IDs, proveniência e OpenAPI de `0.0.1` conforme o PRD. Não há obrigação de compatibilidade com respostas ou IDs anteriores ao primeiro lançamento. Perfilar colisões das chaves candidatas, preservando `DISMES`, prazo de termo, sessão, mercado e componentes nulos conforme a fonte. Relação reconstruível com instrumento não compõe a identidade de um fato.
 - **G1.2 — Identidade temporal:** especificar `security_id` qualificado, ISIN, ticker, mercado e distribuição; precedência, contradições, janelas, chegada fora de ordem, reutilização de ticker e resolução tardia. Não fabricar `security_id` usando ticker nem inventar vigência antiga a partir do cadastro atual.
 - **G1.3 — Publicação e histórico:** separar artefato, publicação, ocorrência/observação, versão de fato e `data_revision`. Definir escopo completo de revisão, manifesto de participação, seleção de versões, conflitos, remoções e retorno à revisão anterior. O ponteiro de leitura não pode depender apenas da hora de download.
-- **G1.4 — Plano de migração:** definir preservação de IDs públicos, unicidade compatível com versões e transição de queries/worker. Registrar decisões aceitas nos documentos de domínio/ADRs quando justificadas. Nomes como `public_id`, `is_active` e `revision_number` são opções do desenho atual, não requisitos de DDL já homologados.
+- **G1.4 — Inicialização limpa e evolução:** inicializar o schema `0.0.1` em base nova, sem importar registros, IDs, auditoria ou estado de ingestão anteriores. Validar migrations sequenciais desde banco vazio; não reescrever migrations aplicadas. Registrar decisões de domínio aceitas nos contextos/ADRs. A compatibilidade passa a ser garantida para dados/IDs publicados a partir de `0.0.1`.
 
 ### Critérios de saída
 
 - Há resultados esperados para ticker reutilizado, identificador forte contraditório, cadastro tardio, vínculo ambíguo e ausência de cadastro histórico.
 - Mesma chave e mesmo conteúdo compartilham fato/evidência conforme a política; conteúdo divergente preserva versões e conflito quando não há precedência oficial.
 - A política cobre sobreposição anual/mensal/diária sem “último download vence”; ordem de member não se transforma em autoridade editorial.
-- A migração não presume que o arquivo mais recente ou aquele com mais fatos contém uma revisão completa. Quando os fatos legados estão distribuídos entre arquivos, reconstruir participação a partir de raw/evidência; sem evidência suficiente, identificar uma baseline legada com limitações explícitas.
-- A preservação de IDs inclui detalhe por ID e vínculos publicados. Novo identificador físico de versão não altera silenciosamente a identidade pública do fato.
-- Estados operacionais e campos públicos possuem tipos e transição documentada. Renomear `success`/`ingested` para um novo vocabulário exige tratar DTOs, consumidores e dados persistidos.
+- O manifesto da revisão declara os arquivos necessários e a precedência admitida; ordem de download ou quantidade de registros não prova completude nem autoridade.
+- Identificadores públicos definidos em `0.0.1` permanecem resolvíveis durante as revisões subsequentes. Identidades físicas de versões não alteram silenciosamente o identificador público.
+- Estados operacionais e campos públicos têm tipos e transições documentados no contrato inicial. Antes do lançamento, o contrato pode ser alinhado diretamente ao PRD sem obrigação de manter envelopes legados.
 
-**Evidência de conclusão:** especificação de chaves/colisões, cenários de aceitação, desenho de migração e matriz de compatibilidade. Migrations e garantias de execução serão comprovadas nas entregas seguintes; concluir G1 não significa que o novo schema já existe.
+**Evidência de conclusão:** especificação de chaves/colisões e identidade temporal, cenários de aceitação, contrato inicial e migrations que inicializam o schema vazio. A homologação definitiva das chaves dependentes de conteúdo continua sujeita ao corpus permitido de G0.
 
 ## 6. G2 — Entregar aquisição, inventário e replay seguros
 
@@ -189,16 +189,16 @@ Referência: PRD §§5–10, 12 e 19; [issue 04](issues/04-historical-core.md).
 
 ### Entregas
 
-- **G3.1 — Schema e upgrade:** acrescentar as migrations de domínio do recorte inicial sobre a infraestrutura comum iniciada em G2/G5.1. Preservar todos os dados, IDs e auditoria legados, inclusive famílias cuja evolução ficará para G6/G7. Validar banco vazio e upgrade de `0001` com dados representativos.
+- **G3.1 — Schema e inicialização:** aplicar as migrations sequenciais em uma base nova e validar o estado vazio antes da ingestão. Não importar dados, IDs, auditoria ou progresso de ingestão do runtime anterior. Depois do lançamento, alterações estruturais seguem por migrations novas, sem reescrever migrations já aplicadas.
 - **G3.2 — Interpretação e normalização:** streaming COTAHIST com largura de 245 bytes, encoding, header/trailer, decimais implícitos, sentinelas, moeda, `FATCOT` e `DISMES`. Homologar os adaptadores de cadastro utilizados, mantendo BVBG.028, Tradable Security List e InstrumentsConsolidated distintos.
 - **G3.3 — Persistência, identidade e auditoria:** staging tipado e operações em lote; resolução temporal; fatos, alterações de campo, proveniência e contadores confirmados atomicamente no escopo do lote. Separar alteração de valor, observação equivalente e rebuild de identidade.
 - **G3.4 — Revisão completa:** validar participação de todos os members obrigatórios e promover uma revisão por troca atômica de visibilidade. Manter a anterior servível; suportar revisão degradada apenas pela política explícita de rejeições locais. XML truncado ou controles estruturais inválidos não viram publicação completa.
-- **G3.5 — Piloto e recuperação:** executar ingestão e replay do recorte, comparação controlada com a baseline, falhas injetadas e retorno à revisão anterior. Medir recursos antes de ampliar o backfill.
+- **G3.5 — Piloto e recuperação:** executar ingestão e replay do recorte, reconciliação contra o manifesto e resultados esperados, falhas injetadas e retorno à revisão anterior. Medir recursos antes de ampliar o backfill.
 
 ### Critérios de saída
 
 - Repetição, retry e `force_reparse` não duplicam fatos, apagam auditoria ou geram alterações falsas. Mudança de um campo altera somente o conteúdo e os timestamps correspondentes, com evento old/new na mesma transação.
-- Duas versões legítimas da mesma chave coexistem sem sobrescrita destrutiva; conteúdo inalterado reaproveita evidência conforme o contrato. IDs públicos continuam resolvíveis.
+- Duas versões legítimas da mesma chave coexistem sem sobrescrita destrutiva; conteúdo inalterado reaproveita evidência conforme o contrato. IDs públicos introduzidos em `0.0.1` continuam resolvíveis.
 - Reparse inalterado que cria uma nova observação de arquivo não oculta os fatos ligados ao arquivo anterior. Antes de ativar o novo filtro de leitura, reconciliar participação, contagens e hashes dos fatos selecionados.
 - Falha no segundo member, após lotes válidos do primeiro, deixa a revisão anterior pública. Retry recupera o trabalho sem dupla auditoria; retorno à revisão anterior reproduz o conjunto esperado.
 - Sobreposição diário/mensal/anual preserva todas as ocorrências de suporte, evita duplicação na consulta e torna divergências explícitas. Remoção de registro exige escopo completo e regra comprovada; ausência no acumulado corrente não elimina datas futuras.
@@ -206,7 +206,7 @@ Referência: PRD §§5–10, 12 e 19; [issue 04](issues/04-historical-core.md).
 - Contadores confirmados fecham `detail_records_read = inserted + changed + unchanged + duplicate_in_scope + rejected`; ambiguidade e ausência de vínculo são dimensões adicionais.
 - Todas as linhas válidas dos arquivos aceitos são preservadas, inclusive mercados e instrumentos fora do caso inicial de ações à vista. Não há classificação por sufixo de ticker, conversão histórica indiscriminada para BRL, preenchimento de lacunas ou ajuste retroativo.
 
-**Evidência de conclusão:** upgrade reproduzível, manifesto da revisão, reconciliação de fatos/IDs/auditoria, cenários de falha e replay no PostgreSQL 16 e benchmark do piloto. Paridade com o legado admite correções intencionais justificadas; não exige reproduzir bugs conhecidos.
+**Evidência de conclusão:** inicialização reproduzível em banco vazio, manifesto da revisão, reconciliação de fatos/IDs/auditoria contra o corpus e o resultado esperado, cenários de falha e replay no PostgreSQL 16 e benchmark do piloto. Não se exige paridade com dados ou respostas legados.
 
 ## 8. G4 — Entregar consultas REST e MCP confiáveis
 
@@ -219,7 +219,7 @@ Referência: PRD §§13–16; [issue 05](issues/05-query-product.md).
 ### Entregas
 
 - **G4.1 — Serviços de consulta:** mover regras e SQL de leitura para serviços compartilhados. REST e MCP são adaptadores; consultas não ingerem, reprocessam ou resolvem relações pesadas em tempo de requisição.
-- **G4.2 — Contratos e compatibilidade:** aplicar filtros de família, datas, mercado e identidade; `limit=100`, máximo 1000, `offset` e ordenação com desempate único. Preservar contratos v1 ou oferecer migração explícita para mudanças incompatíveis.
+- **G4.2 — Contratos e compatibilidade:** aplicar filtros de família, datas, mercado e identidade; `limit=100`, máximo 1000, `offset` e ordenação com desempate único. O contrato inicial é definido pelo PRD em `0.0.1`; não há compatibilidade obrigatória com respostas anteriores ao lançamento. Mudanças posteriores seguem a política de compatibilidade publicada.
 - **G4.3 — Revisão, proveniência e cobertura:** indicar `data_revision`, proveniência por item e limitações essenciais de identidade/qualidade. Diferenciar ausência de negociação, arquivo não obtido, falha, quarentena e cobertura desconhecida. Paginação consistente fixa uma revisão por mecanismo compatível/aditivo.
 - **G4.4 — Segurança e documentação:** separar leitura e administração antes de liberar a operação a consumidores; manter exceções públicas explícitas. Documentar origem, unidades, filtros, defaults, exemplos e erros em OpenAPI e DTOs, com README, documentação de consumidor e changelog coerentes.
 - **G4.5 — MCP ponta a ponta:** testar inicialização e cliente reais com credencial PostgreSQL somente leitura, sem DDL, sync, replay, rebuild ou SQL arbitrário.
@@ -230,7 +230,7 @@ Referência: PRD §§13–16; [issue 05](issues/05-query-product.md).
 - Decimais são strings, datas ISO e timestamps UTC. Metadados adicionais obedecem `include_internal`; incerteza essencial não fica escondida nessa flag.
 - Séries exigem desambiguação quando restam mercados/distribuições/prazos incompatíveis. O aviso de preços nominais COTAHIST sem ajustes aparece no payload, OpenAPI, MCP e documentação aplicáveis.
 - Testes cobrem autenticação, autorização administrativa, 400/401/404/409/500 aplicáveis, paginação, filtros inválidos, limites e proveniência; o OpenAPI gerado corresponde às rotas reais.
-- Detalhe por ID preserva os IDs legados; rotas já publicadas, inclusive projeções como `/company-data`, não são removidas ou ressignificadas sem migração.
+- O namespace `/api/v1/b3` corresponde às rotas definidas pelo PRD. IDs e payloads anteriores não são migrados; após `0.0.1`, IDs expostos e sua semântica permanecem estáveis conforme a política publicada.
 - Consulta durante promoção não mistura revisões; exportação/paginação mantém o conjunto prometido pelo contrato. `as_of` só é anunciado no horizonte de versões realmente capturado e testado.
 
 **Evidência de conclusão:** comparação contratual com a baseline, testes REST/OpenAPI e MCP, exemplos de cobertura e documentação da finalidade autorizada. Endpoints de famílias ainda não habilitadas não sugerem dados disponíveis.
@@ -342,10 +342,10 @@ A matriz resume as evidências por marco; os cenários obrigatórios da seção 
 | Marco | Evidência que bloqueia seu encerramento se ausente |
 | --- | --- |
 | G0 | Elegibilidade por finalidade, condições sem custo e corpus com origem verificável |
-| G1 | Chaves/colisões, identidade temporal, política de revisão e plano de compatibilidade inequívocos |
+| G1 | Chaves/colisões, identidade temporal, política de revisão, contrato 0.0.1 e migrations para banco vazio |
 | G2 | Raw/inventário íntegros, limites medidos, HTTP simulado e replay após interrupção |
-| G3 | Banco vazio/upgrade; versões e IDs preservados; rollback de publicação; contadores/auditoria; retry/reparse/quarentena |
-| G4 | REST/OpenAPI compatíveis; paginação por revisão; serviços compartilhados; MCP real com credencial restrita |
+| G3 | Banco vazio inicializado; corpus/revisão reconciliados; IDs do novo contrato; rollback; contadores/auditoria; retry/reparse/quarentena |
+| G4 | REST/OpenAPI do contrato 0.0.1; paginação por revisão; serviços compartilhados; MCP real com credencial restrita |
 | G5 | Dois processos, sobreposição de escopos, crash/lease/fencing, cancelamento, calendário, prioridade, smoke e restore |
 | G6 | Corpus 086/186, edições/chaves e comparação sem merge ou fallback |
 | G7 | Blocos/unidades 087 e composições com vigência, estágio e cobertura comprovados |
@@ -362,7 +362,7 @@ docker compose run --rm cargo cargo test --all-targets --all-features
 
 Os testes de persistência, migração, locks e concorrência usam **PostgreSQL 16 real**, com `DATABASE_URL` apontando para base de teste isolada. Ausência de banco deve falhar, não pular integração. Validar upgrades sem tocar uma base operacional. A CI deve manter os mesmos checks e garantias, conforme PRD §23.
 
-Mudanças de runtime, configuração ou inicialização acrescentam build e smoke dos serviços reais `b3_api` e `b3_worker`, com aquisição externa desabilitada ou controlada antes de iniciá-los. O Compose atual habilita sync por padrão. Não usar um worker contra fontes externas como teste determinístico nem remover volumes persistentes para obter uma base vazia.
+Mudanças de runtime, configuração ou inicialização acrescentam build e smoke dos serviços reais `b3_api` e `b3_worker`, com aquisição externa desabilitada ou controlada antes de iniciá-los. O Compose não habilita descoberta nem canais por padrão; jobs de aquisição exigem comando administrativo e elegibilidade explícita. Não usar um worker contra fontes externas como teste determinístico nem remover volumes persistentes para obter uma base vazia.
 
 Entregas de contrato incluem testes REST/OpenAPI, autenticação, filtros, precisão, proveniência, metadados internos e aviso COTAHIST. Alterações MCP incluem teste do transporte/processo quando a garantia depende dele. Atualizar OpenAPI, README, documentação de consumidor/operação e `frontend_api_changelog.md` no mesmo conjunto de mudanças aplicável.
 
@@ -375,7 +375,7 @@ Para concluir um marco ou subentrega, registrar na issue correspondente:
 1. Escopo exato entregue e itens ainda pendentes, com referência ao PRD.
 2. Commit de implementação, migrations, versões de parser/regras e corpus identificados por manifesto/hash.
 3. Comandos executados, ambiente, resultados, falhas e checks não executados com motivo. Evidência de recurso inclui hardware e configuração.
-4. Compatibilidade e integridade da migração: contagens, IDs, hashes, auditoria e revisão ativa esperados/obtidos, além do caminho de recuperação.
+4. Integridade do novo conjunto: corpus/hash, contagens, IDs publicados, auditoria e revisão ativa esperados/obtidos, além do caminho de recuperação. Migração de dados/IDs do runtime anterior não faz parte do escopo `0.0.1`.
 5. Links para testes, documentação atualizada e relatórios, sem segredos ou cópias indevidas de dados brutos.
 
 Relatórios intermediários podem ficar em `.scratch/<feature-slug>/`; decisões e evidências necessárias à manutenção devem ter referências duráveis na issue/documentação aceita. Não sobrescrever a baseline anterior para substituir uma falha por um resultado novo.
@@ -386,15 +386,16 @@ Uma subentrega concluída não encerra automaticamente o marco. A issue pode con
 
 | Ordem | Entrega concreta | Trabalho rastreado | O que libera |
 | --- | --- | --- | --- |
-| 1 | Consolidar evidências atuais e fechar especificação de participação de revisão, chaves, IDs públicos, estados e migração | Preparação da seção 3 e G1 / issue 02 | Migrations e implementação sem consolidar premissas incorretas |
-| Paralelo | Confirmar fonte/finalidade e formar corpus do piloto; manter fixtures offline claramente identificadas | G0 / issue 01 | Homologação definitiva e habilitação do recorte permitido |
-| 2 | Implementar migrations comuns, aquisição/inventário limitados e coordenação mínima com interfaces comuns | G2 / issue 03 + G5.1 / issue 06 | Primeira ingestão nova com recuperação e exclusão verificáveis |
-| 3 | Implementar migrations de domínio e núcleo COTAHIST/cadastro, reconstruir baseline legada e publicar o piloto sem ocultar fatos | G3 / issue 04 | Revisão histórica consistente para consumo |
-| 4 | Integrar serviços REST/MCP e finalizar scanner, calendário, recursos e restauração | G4 / issue 05 + G5.2/G5.3 / issue 06 | Primeiro lançamento G0–G5 no recorte declarado |
-| 5 | Ampliar backfill medido e homologar boletins, índices e carteiras por fonte | G6/G7 / issues 07–08 | Maior cobertura e abrangência final do PRD |
+| 1 | Resolver evidência de elegibilidade por fonte, canal e finalidade; manter todos os canais sem evidência desabilitados | G0 / issue 01 | Aquisição e consumo externo autorizados para finalidades comprovadas |
+| 2 | Adquirir e congelar o corpus oficial autorizado de 2025–2026, com corte, calendário, hashes e manifesto | G0/G3 / issues 01 e 04 | Homologação do recorte declarado e validação das natural keys |
+| 3 | Reconciliar sobreposições, cadastros, conflitos e cobertura; repetir recuperação e publicação no corpus permitido | G1/G3 / issues 02 e 04 | Revisão histórica qualificável e restaurável |
+| 4 | Medir no corpus permitido e no hardware-alvo; fixar budgets e fechar smoke, backup/restore e documentação operacional | G5 / issue 06 | Aceite operacional de W8 |
+| 5 | Executar aceite integral, congelar manifesto de release e liberar consumidores somente com G0–G5 aprovados | W9 / plano 0.0.1 | Primeiro lançamento externo 0.0.1 |
+| Depois | Planejar elegibilidade/corpora próprios e ativar 086/186, 087 e composições | G6/G7 / issues 07–08 | Expansão posterior ao primeiro lançamento |
 
-Não há datas ou duração estimadas neste documento. Estimar após fechar o recorte/corpus de G0 e o desenho de G1, usando o piloto para dimensionar migração e operação. A próxima prioridade é tornar o núcleo publicável com integridade; expandir a quantidade de fontes depende dessa base comprovada.
+Não há duração estimada enquanto G0 e o acesso ao corpus permanecerem pendentes. O benchmark sintético não substitui dimensionamento em corpus autorizado e hardware-alvo. G6/G7 são expansão posterior; não fazem parte do critério de conclusão de `0.0.1`.
 
 ## Comments
 
 - 06/11/2026 — Marcos detalhados a partir do PRD v2, da base `fdc804f`, do backlog e das evidências da revisão. Nenhum marco foi declarado concluído e nenhuma capacidade proposta foi tratada como implementada. Alteração documental; testes Rust e homologações externas não foram executados nesta elaboração.
+- 06/11/2026 — Implementação integrada registrada no commit `7e93b0d`; 65 testes passaram em PostgreSQL 16.15 isolado, além de build/smoke e benchmark sintético. As seções de execução foram atualizadas para a decisão posterior de base nova/contrato inicial, sem migração de registros ou IDs legados. G0 e W9 seguem bloqueados por evidência de elegibilidade, corpus oficial, cutoff e homologação de escala.

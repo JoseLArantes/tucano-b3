@@ -27,7 +27,7 @@ O histórico precisa continuar útil sem cadastro antigo completo, preservando m
 
 ## Validação
 
-PostgreSQL 16 real para NULLs, transações, concorrência e auditoria; repetir comandos Compose exigidos. Cobrir upgrade e banco vazio.
+PostgreSQL 16 real para NULLs, transações, concorrência e auditoria; repetir comandos Compose exigidos. Aplicar migrations sequenciais em banco vazio; não importar nem comparar contra estado persistido da implementação anterior.
 
 ## Prontidão para execução
 

@@ -1,4 +1,4 @@
-# 02 — Fixar granularidade, identidade temporal e migração de contratos
+# 02 — Fixar granularidade, identidade temporal e contrato 0.0.1
 
 Status: needs-info
 
@@ -6,11 +6,11 @@ Data: 05/11/2026. Marco: G1. Dependências: resultados de corpus de 01 para deci
 
 ## Problema
 
-Ticker, instrumento, distribuição, fotografia de cadastro e revisão de arquivo não podem compartilhar identidade implícita. Chaves e respostas atuais precisam de inventário antes da evolução.
+Ticker, instrumento, distribuição, fotografia de cadastro e revisão de arquivo não podem compartilhar identidade implícita. A implementação anterior serve como referência de código; `0.0.1` define o primeiro contrato suportado pelo PRD, sem migrar registros/IDs ou herdar obrigações de compatibilidade de respostas anteriores.
 
 ## Escopo
 
-- Inventariar rotas efetivas, DTOs, enums, OpenAPI, chaves e consumidores conhecidos.
+- Definir rotas, DTOs, enums, OpenAPI, chaves e filtros do primeiro contrato; usar o inventário anterior para identificar capacidades reutilizáveis e riscos, não como garantia de compatibilidade.
 - Homologar qualificadores de security_id e relação entre BVBG.028, Tradable Security List e InstrumentsConsolidated.
 - Especificar janelas, lacunas, chegada fora de ordem, ambiguidade e resolução tardia.
 - Separar ocorrência, fato, revisão e política de seleção; especificar colisões e remoções.
@@ -20,9 +20,9 @@ Ticker, instrumento, distribuição, fotografia de cadastro e revisão de arquiv
 
 - Cenários de reuso de ticker, distribuições e prazo de termo têm resultados inequívocos ou incerteza explícita.
 - Nenhuma chave de fato depende do vínculo reconstruível de instrumento.
-- Cada alteração incompatível possui plano de versão/transição, incluindo novos estados e campos de cobertura.
+- A interface inicial corresponde ao PRD; alterações depois de `0.0.1` seguem a política de compatibilidade publicada e incluem transição quando incompatíveis.
 - Históricos anteriores não recebem validade, publicação ou proveniência inventadas.
-- Migration inicial permanece intacta; upgrade e inicialização vazia são previstos.
+- Migrations existentes não são reescritas; a sequência instala o schema em banco vazio sem importar registros, IDs, auditoria ou estado operacional da implementação anterior.
 
 ## Prontidão para execução
 
