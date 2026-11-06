@@ -69,8 +69,8 @@ graph TD
 | **ARC-002** (PRD §10.3) | Extracted members must have immutable SHA-256 | `src/parsers/mod.rs:99` | Code inspection and `test_sync_bvbg_028_idempotency_and_audit` verify SHA-256 computation. | `aligned` | `runtime-verified` | P2 | `retain` | None |
 | **PAR-001** (PRD §6.7) | COTAHIST 245-byte fixed width, scales, sentinel dates | `src/parsers/cotahist.rs:56` | `test_parse_cotahist_fixed_width` & `test_parse_cotahist_invalid_record_size` passed in `parser_tests.rs`. | `aligned` | `runtime-verified` | P0 | `retain` | [Issue 04](docs/issues/04-historical-core.md) |
 | **PAR-002** (PRD §6.7) | COTAHIST trailer count validation | `src/parsers/cotahist.rs:118` | Code inspection: line 118 tolerates `trailer_count != quotes_len && trailer_count != quotes_len + 2` permissively without recording failure reason. PRD requires structural validation. | `partial` | `code-inspection` | P1 | `extend` | [Issue 04](docs/issues/04-historical-core.md) |
-| **PAR-003** (PRD §6.1) | BVBG.028 ISO 20022 XML parsing and namespaces | `src/parsers/bvbg_028.rs` | `test_parse_bvbg_028_synthetic_simplified_xml` and `test_parse_bvbg_028_representative_nested_iso_20022` passed (testing `FinInstrmId/OthrId/Id`, `TradDt/Dt`, `PlrtyTckrSymb`, `ISIN`). Full real corpus homologation pending under Issue 01. | `partial` | `runtime-verified` (structures) + `needs-info` (corpus) | P1 | `retain & extend` | [Issue 01](docs/issues/01-source-viability.md), [Issue 03](docs/issues/03-artifact-acquisition.md) |
-| **PAR-004** (PRD §6.3, 6.4) | BVBG.086 vs BVBG.186 strict separation | `src/parsers/bvbg_086.rs`, `bvbg_186.rs` | `test_parse_bvbg_086_and_186`, `test_parse_bvbg_086_synthetic_simplified_xml`, and `test_parse_bvbg_086_representative_nested_iso_20022` passed in `parser_tests.rs`. | `aligned` | `runtime-verified` | P1 | `retain` | [Issue 07](docs/issues/07-price-reports.md) |
+| **PAR-003** (PRD §6.1) | BVBG.028 ISO 20022 XML parsing and namespaces | `src/parsers/bvbg_028.rs` | `test_parse_bvbg_028_synthetic_simplified_xml` and `test_parse_bvbg_028_synthetic_nested_xml` passed. Fixtures are explicitly synthetic unit tests; official production XML compatibility remains unproven pending corpus acquisition. | `gap` | `runtime-verified` (synthetic) + `needs-info` (corpus) | P1 | `retain & extend` | [Issue 01](docs/issues/01-source-viability.md), [Issue 03](docs/issues/03-artifact-acquisition.md) |
+| **PAR-004** (PRD §6.3, 6.4) | BVBG.086 vs BVBG.186 strict separation | `src/parsers/bvbg_086.rs`, `bvbg_186.rs` | `test_parse_bvbg_086_and_186`, `test_parse_bvbg_086_synthetic_simplified_xml`, and `test_parse_bvbg_086_catalog_nested_iso_20022` passed. Fixture adheres to B3 Catálogo Preços e Índices v1.2.1 (`urn:bvmf.217.01.xsd`, `FinInstrmId/OthrId/Id`, `SctyId/TckrSymb`). Production file compatibility pending corpus homologation. | `partial` | `runtime-verified` (catalog spec) + `needs-info` (live corpus) | P1 | `retain` | [Issue 01](docs/issues/01-source-viability.md), [Issue 07](docs/issues/07-price-reports.md) |
 | **PER-001** (PRD §8) | Natural keys with NULLS NOT DISTINCT | `migrations/0001_initial_b3_schema.sql` | `test_nulls_not_distinct_uniqueness_invariant` passed in `upsert_and_audit_tests.rs`. | `aligned` | `runtime-verified` | P0 | `retain` | None |
 | **PER-002** (PRD §8) | Idempotent upserts and field changes audit | `src/db/upsert.rs:11` | `test_granular_field_audit_and_idempotency` passed in `upsert_and_audit_tests.rs`. | `aligned` | `runtime-verified` | P0 | `retain` | [Issue 04](docs/issues/04-historical-core.md) |
 | **PER-003** (PRD §19.2) | Atomic transaction boundary for data, audit, and status | `src/services/sync_service.rs:122` | Code inspection: lock tx is acquired, but child queries run on pool. No atomic rollback across facts, audit, and status. | `gap` | `code-inspection` | P1 | `extend` | [Issue 04](docs/issues/04-historical-core.md) |
@@ -149,14 +149,14 @@ test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 running 10 tests
 test test_parse_bvbg_028_instrument ... ok
 test test_parse_bvbg_028_synthetic_simplified_xml ... ok
+test test_parse_bvbg_028_synthetic_nested_xml ... ok
 test test_parse_bvbg_086_and_186 ... ok
-test test_parse_bvbg_086_representative_nested_iso_20022 ... ok
+test test_parse_bvbg_086_catalog_nested_iso_20022 ... ok
 test test_parse_bvbg_086_synthetic_simplified_xml ... ok
 test test_parse_bvbg_087 ... ok
 test test_parse_cotahist_fixed_width ... ok
 test test_parse_cotahist_invalid_record_size ... ok
 test test_parse_tradable_and_index_composition_csv ... ok
-test test_parse_bvbg_028_representative_nested_iso_20022 ... ok
 
 test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 

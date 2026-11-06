@@ -231,12 +231,15 @@ fn test_parse_bvbg_028_synthetic_simplified_xml() {
     );
 }
 
-/// Representative ISO 20022 nested structure test with official B3 element hierarchy:
-/// - Provenance: Official B3 Entry Point / BVBG.028.02 InstrumentsConsolidated XML specification.
-/// - Exercises nested paths: `InstrmInf/Instrm/FinInstrmId/OthrId/Id`, `FinInstrmGnlAttrbts/PlrtyTckrSymb`,
-///   `FinInstrmGnlAttrbts/ISIN`, and `TradDt/Dt`.
+/// Synthetic nested XML test for BVBG.028.
+///
+/// NOTE: This fixture is explicitly SYNTHETIC to test nested tag recursion.
+/// It does NOT represent a verified B3 BVBG.028 production schema or versioned XSD,
+/// as no raw production XML has been captured in the repository.
+/// Official-file compatibility for BVBG.028 remains UNPROVEN pending acquisition
+/// and homologation of verified source artifacts under Issue 01 and Issue 03.
 #[test]
-fn test_parse_bvbg_028_representative_nested_iso_20022() {
+fn test_parse_bvbg_028_synthetic_nested_xml() {
     let xml = r#"<?xml version="1.0" encoding="utf-8"?>
     <bvbg:Document xmlns:bvbg="urn:bvmf.052.01.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
       <bvbg:BizData>
@@ -316,24 +319,41 @@ fn test_parse_bvbg_086_synthetic_simplified_xml() {
     assert_eq!(parsed.rows[0].first_price, Some(Decimal::new(3550, 2)));
 }
 
-/// Representative ISO 20022 nested structure test with official B3 element hierarchy:
-/// - Provenance: Official B3 BVBG.086.01 PriceReport XML specification.
-/// - Exercises nested paths: `PricRpt/TradDt/Dt`, `PricRpt/SctyId/OthrId/Id`, and `PricRpt/MktIdrCd`.
+/// Source-backed nested ISO 20022 structure test for BVBG.086 (PriceReport):
+/// - Provenance: B3 Catálogo Preços e Índices v1.2.1 (07/10/2021), message family `bvmf.217.01` (R13 in docs/RESEARCH.md).
+/// - Element hierarchy:
+///   - Message family: `urn:bvmf.217.01.xsd`
+///   - Trade Date: `PricRpt/TradDt/Dt`
+///   - Numeric SecurityID: `PricRpt/FinInstrmId/OthrId/Id`
+///   - Market Identifier Code: `PricRpt/FinInstrmId/PlcOfListg/MktIdrCd`
+///   - Ticker Symbol: `PricRpt/SctyId/TckrSymb`
+///   - Prices: `FrstPric`, `MinPric`, `MaxPric`, `TradAvrgPric`, `LastPric`, `NtlRglrVol`
+///
+/// NOTE: While this fixture reflects the documented 2021 catalog specification, full
+/// compatibility with current production archives remains unproven until live samples
+/// are verified under Issue 01 and Issue 07.
 #[test]
-fn test_parse_bvbg_086_representative_nested_iso_20022() {
+fn test_parse_bvbg_086_catalog_nested_iso_20022() {
     let xml = r#"<?xml version="1.0" encoding="utf-8"?>
-    <Document xmlns="urn:bvmf.086.01.xsd">
+    <Document xmlns="urn:bvmf.217.01.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
       <PricRpt>
         <TradDt>
           <Dt>2026-03-01</Dt>
         </TradDt>
-        <SctyId>
+        <FinInstrmId>
           <OthrId>
             <Id>10000001</Id>
+            <Tp>
+              <Prtry>SctyId</Prtry>
+            </Tp>
           </OthrId>
+          <PlcOfListg>
+            <MktIdrCd>BVMF</MktIdrCd>
+          </PlcOfListg>
+        </FinInstrmId>
+        <SctyId>
+          <TckrSymb>PETR4</TckrSymb>
         </SctyId>
-        <TckrSymb>PETR4</TckrSymb>
-        <MktIdrCd>BVMF</MktIdrCd>
         <FrstPric>35.50</FrstPric>
         <MinPric>35.10</MinPric>
         <MaxPric>36.20</MaxPric>
