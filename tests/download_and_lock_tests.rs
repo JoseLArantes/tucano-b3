@@ -68,3 +68,38 @@ fn test_lock_conflict() {
     let guard3 = registry.acquire(key);
     assert!(guard3.is_ok());
 }
+
+#[test]
+fn test_zip_extraction_depth_limit() {
+    use std::io::Write;
+    use tucano_b3::db::enums::SourceFileType;
+    use tucano_b3::parsers::extract_archive_members;
+    use zip::write::{FileOptions, ZipWriter};
+
+    // Create a 6-level deep nested zip (exceeding depth > 4)
+    let mut current_bytes = Vec::new();
+    {
+        let mut zw = ZipWriter::new(std::io::Cursor::new(&mut current_bytes));
+        zw.start_file("innermost.xml", FileOptions::<()>::default())
+            .unwrap();
+        zw.write_all(b"<root/>").unwrap();
+        zw.finish().unwrap();
+    }
+
+    for depth in 1..=5 {
+        let mut next_bytes = Vec::new();
+        {
+            let mut zw = ZipWriter::new(std::io::Cursor::new(&mut next_bytes));
+            zw.start_file(format!("level_{depth}.zip"), FileOptions::<()>::default())
+                .unwrap();
+            zw.write_all(&current_bytes).unwrap();
+            zw.finish().unwrap();
+        }
+        current_bytes = next_bytes;
+    }
+
+    // Attempt extraction on depth > 4 nested archive
+    let result = extract_archive_members(SourceFileType::Bvbg028InstrumentsFile, &current_bytes);
+    // At depth > 4, the current implementation silently drops entries, returning Layout error because members is empty
+    assert!(result.is_err(), "Deeply nested archive beyond max depth should fail rather than silently produce partial results");
+}

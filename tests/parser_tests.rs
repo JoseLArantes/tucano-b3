@@ -191,3 +191,66 @@ fn test_parse_cotahist_invalid_record_size() {
     let res = parse_cotahist("01TOO_SHORT");
     assert!(res.is_err());
 }
+
+#[test]
+fn test_parse_bvbg_028_iso_20022_structure_and_namespaces() {
+    let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+    <bvbg:Document xmlns:bvbg="urn:bvmf.052.01.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+      <bvbg:BizData>
+        <bvbg:Pyld>
+          <bvbg:Document>
+            <bvbg:InstrmInf>
+              <bvbg:Instrm>
+                <bvbg:SctyId>20000001</bvbg:SctyId>
+                <bvbg:MktIdrCd>BVMF</bvbg:MktIdrCd>
+                <bvbg:Asst>VALE</bvbg:Asst>
+                <bvbg:AsstDesc>VALE S.A. ON</bvbg:AsstDesc>
+                <bvbg:MktCd>10</bvbg:MktCd>
+                <bvbg:SgmtCd>1</bvbg:SgmtCd>
+                <bvbg:TckrSymb>VALE3</bvbg:TckrSymb>
+                <bvbg:ISIN>BRVALEACNOR0</bvbg:ISIN>
+                <bvbg:RptDt>2026-03-01</bvbg:RptDt>
+              </bvbg:Instrm>
+            </bvbg:InstrmInf>
+          </bvbg:Document>
+        </bvbg:Pyld>
+      </bvbg:BizData>
+    </bvbg:Document>
+    "#;
+
+    let parsed = parse_bvbg_028(Cursor::new(xml)).unwrap();
+    assert_eq!(parsed.rows.len(), 1);
+    assert_eq!(parsed.rows[0].security_id, "20000001");
+    assert_eq!(parsed.rows[0].ticker_symbol.as_deref(), Some("VALE3"));
+    assert_eq!(parsed.rows[0].isin.as_deref(), Some("BRVALEACNOR0"));
+    assert_eq!(parsed.rows[0].asset.as_deref(), Some("VALE"));
+    assert_eq!(
+        parsed.rows[0].asset_description.as_deref(),
+        Some("VALE S.A. ON")
+    );
+}
+
+#[test]
+fn test_parse_bvbg_086_iso_20022_structure() {
+    let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+    <Document xmlns="urn:bvmf.086.01.xsd">
+      <PricRpt>
+        <TradDt>2026-03-01</TradDt>
+        <TckrSymb>PETR4</TckrSymb>
+        <SctyId>10000001</SctyId>
+        <FrstPric>35.50</FrstPric>
+        <MinPric>35.10</MinPric>
+        <MaxPric>36.20</MaxPric>
+        <TradAvrgPric>35.80</TradAvrgPric>
+        <LastPric>36.00</LastPric>
+        <NtlRglrVol>125000000.00</NtlRglrVol>
+      </PricRpt>
+    </Document>
+    "#;
+
+    let parsed = parse_bvbg_086(Cursor::new(xml)).unwrap();
+    assert_eq!(parsed.rows.len(), 1);
+    assert_eq!(parsed.rows[0].ticker_symbol.as_deref(), Some("PETR4"));
+    assert_eq!(parsed.rows[0].last_price, Some(Decimal::new(3600, 2)));
+    assert_eq!(parsed.rows[0].first_price, Some(Decimal::new(3550, 2)));
+}

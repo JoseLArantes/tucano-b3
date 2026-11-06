@@ -148,3 +148,66 @@ async fn test_granular_field_audit_and_idempotency() {
         Some("MAGAZINE LUIZA S.A. ON".to_string())
     );
 }
+
+#[tokio::test]
+async fn test_nulls_not_distinct_uniqueness_invariant() {
+    let pool = get_test_pool().await;
+
+    let trade_date = NaiveDate::from_ymd_opt(2026, 3, 2).unwrap();
+
+    // Clean up
+    let _ = sqlx::query("DELETE FROM b3_cotahist_quotes WHERE trade_date = $1")
+        .bind(trade_date)
+        .execute(&pool)
+        .await;
+
+    let source_file_id = "sf-test-cotahist-nulls-001";
+    let _ = sqlx::query(
+        r#"
+        INSERT INTO b3_source_files (
+            id, source_file_type, source_name, reference_date, sha256,
+            byte_size, status, created_at, updated_at
+        ) VALUES ($1, 'COTAHIST_DAILY', 'test_nulls', $2, 'dummyhash_nulls', 100, 'ingested', NOW(), NOW())
+        ON CONFLICT (id) DO NOTHING
+        "#
+    )
+    .bind(source_file_id)
+    .bind(trade_date)
+    .execute(&pool)
+    .await;
+
+    // First insert with NULL distribution_number and NULL bdi_code
+    let insert_sql = r#"
+        INSERT INTO b3_cotahist_quotes (
+            id, source_file_id, trade_date, ticker_symbol, market_type, bdi_code, distribution_number,
+            source_row_hash, open_price, high_price, low_price, average_price, last_price,
+            resolution_status, created_at, updated_at
+        ) VALUES (
+            gen_random_uuid(), $1, $2, 'TEST3', '010', NULL, NULL,
+            'hash_test_1', 10.0, 11.0, 9.0, 10.5, 10.8,
+            'unresolved', NOW(), NOW()
+        )
+    "#;
+
+    let res1 = sqlx::query(insert_sql)
+        .bind(source_file_id)
+        .bind(trade_date)
+        .execute(&pool)
+        .await;
+    assert!(
+        res1.is_ok(),
+        "First insert with NULLs should succeed: {:?}",
+        res1.err()
+    );
+
+    // Second insert with identical NULL values - must trigger UNIQUE violation due to NULLS NOT DISTINCT
+    let res2 = sqlx::query(insert_sql)
+        .bind(source_file_id)
+        .bind(trade_date)
+        .execute(&pool)
+        .await;
+    assert!(
+        res2.is_err(),
+        "Duplicate row with NULLs must be rejected by NULLS NOT DISTINCT constraint"
+    );
+}
