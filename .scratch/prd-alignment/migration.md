@@ -68,9 +68,42 @@ Scope: Architecture, Data Safeguards, Implementation Sequence, and Release Gates
         lease_duration_seconds INT NOT NULL
     );
     ```
-  - **Safe Rollback Strategy (`down.sql`)**:
-    - Drops `b3_worker_leases`:
+  - **Active Revision Pointer & Status Normalization Schema**:
+    - Add explicit active revision tracking to `b3_source_files` in `0002_coordination_and_calendar.sql`:
       ```sql
+      ALTER TABLE b3_source_files
+          ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS revision_number INT NOT NULL DEFAULT 1;
+
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_source_files_active_revision
+          ON b3_source_files (source_file_type, reference_date)
+          WHERE is_active = true;
+      ```
+  - **Data Migration for Existing States (Executed in 0002 before active filtering)**:
+    - Normalize existing operational statuses from legacy values:
+      ```sql
+      UPDATE b3_source_files SET status = 'completed' WHERE status = 'ingested';
+      UPDATE b3_sync_runs SET status = 'completed' WHERE status = 'success';
+      ```
+    - Initialize the active revision pointer (`is_active = true`) for the latest completed file of each scope:
+      ```sql
+      WITH latest_completed_files AS (
+          SELECT DISTINCT ON (source_file_type, reference_date) id
+          FROM b3_source_files
+          WHERE status = 'completed' AND reference_date IS NOT NULL
+          ORDER BY source_file_type, reference_date, created_at DESC
+      )
+      UPDATE b3_source_files sf
+      SET is_active = true
+      FROM latest_completed_files lf
+      WHERE sf.id = lf.id;
+      ```
+  - **Safe Rollback Strategy (`down.sql`)**:
+    - Drops `b3_worker_leases` and active revision constraints/columns:
+      ```sql
+      DROP INDEX IF EXISTS uq_source_files_active_revision;
+      ALTER TABLE b3_source_files DROP COLUMN IF EXISTS revision_number;
+      ALTER TABLE b3_source_files DROP COLUMN IF EXISTS is_active;
       DROP TABLE IF EXISTS b3_worker_leases;
       ```
     - Removes only the added columns from `b3_trading_calendar`, preserving the base table and its rows:
@@ -89,35 +122,49 @@ Scope: Architecture, Data Safeguards, Implementation Sequence, and Release Gates
     - Return explicit `AppError::Layout("Maximum ZIP recursion depth (4) exceeded")` instead of silent `Ok(())`.
     - Enforce maximum uncompressed member size limit (e.g., 500 MB).
 
-### Package 4: Transactional Persistence, Publication Scope & Session-Lock Fencing (PRD Steps 4 & 5)
+### Package 4: Transactional Persistence, Versioned Fact Preservation & Active-Revision Publication (PRD Steps 4 & 5)
 - **Publication Scope Definition**:
   - The publication boundary is strictly the **Complete Source File Scope** (the source archive and 100% of its mandatory members for a given `source_file_type` and `reference_date`).
-  - **Zero Partial-Member Leakage**: A multi-member archive must either publish all required members together or publish nothing. Individual members (e.g., member A) must NEVER be committed independently to domain tables if a subsequent member (e.g., member B) fails.
+  - **Zero Partial-Member Leakage**: A multi-member archive must either publish all required members together or publish nothing. Individual members must NEVER be committed independently to domain tables if a subsequent member fails.
 - **Architecture & Invariants**:
   1. **Concurrency Exclusion**:
      - Acquire a session-level advisory lock (`pg_try_advisory_lock`) on a dedicated checkout connection from `PgPool` across the task duration.
      - Guarantees mutual exclusion between workers contending on the same file/date. Provides exclusion only, not transactional rollback.
-  2. **Atomic Complete-File Transaction**:
-     - The transaction boundary covers the **entire required file scope** (all members of the archive), NOT individual members.
-     - Fact insertions across all members, granular field audits (`b3_field_changes`), member progress (`b3_source_file_members`), quarantine entries (`b3_quarantine_records`), and run counters (`b3_sync_runs`) execute within a single PostgreSQL transaction (`sqlx::Transaction`).
-     - **Failure Rollback**: If *any* required member fails or an unrecoverable validation error occurs, the entire transaction issues an explicit `ROLLBACK`. All rows inserted across all members are discarded by PostgreSQL simultaneously, ensuring zero orphan or partial member data persists in domain tables.
-     - The failure status is recorded in a separate operational transaction (marking `b3_source_files` and `b3_sync_runs` as `failed` with error details).
-  3. **Active-Revision Pointer Mechanism in Query Layer**:
-     - To ensure that readers never see in-progress or superseded data (even during large historical backfills or staged re-ingestions), all reader queries in `src/services/query/` must strictly join against the active completed file revision:
+  2. **Preservation of Versioned Facts (Non-Destructive Ingestion & Rollback Guarantee)**:
+     - All fact records (`b3_cotahist_quotes`, `b3_price_report_quotes`, `b3_equities_simplified_price_quotes`, `b3_index_report_values`, `b3_index_portfolio_compositions`, `b3_tradable_securities`) retain their immutable link to `source_file_id`.
+     - Ingestion of a candidate revision does NOT overwrite or mutate facts belonging to the existing active revision in place (`ON CONFLICT DO UPDATE` cannot overwrite prior revision facts).
+     - Prior revision facts remain intact and queryable under the existing active revision pointer until the candidate revision is fully validated and published.
+     - **Rollback Guarantee**: If an active revision is superseded or needs revocation, previous facts are never destroyed: restoring the previous revision is an instantaneous, atomic pointer reactivation (`is_active = true` on prior `source_file_id`, `is_active = false` on superseded) without re-downloading or re-parsing raw archives.
+  3. **Explicit Active Revision Pointer per Scope**:
+     - Scope is uniquely defined as `(source_file_type, reference_date)`.
+     - An explicit partial unique index (`uq_source_files_active_revision`) guarantees at the database engine level that at most ONE file revision is active (`is_active = true`) per scope at any time.
+     - Reader queries in `src/services/query/` must join against the active revision pointer, NEVER on raw `status = 'completed'` (which admits superseded revisions):
        ```sql
-       JOIN b3_source_files sf ON sf.id = fact.source_file_id AND sf.status = 'completed'
+       JOIN b3_source_files sf ON sf.id = fact.source_file_id AND sf.is_active = true
        ```
-     - This provides dual-layer protection:
-       - **At persistence level**: Complete-file transaction rollback prevents partial member state from ever committing.
-       - **At query level**: The active-revision pointer (`sf.status = 'completed'`) ensures external consumers only observe facts that belong to fully validated, published revisions.
-  4. **Atomic Publication Pointer Flip**:
-     - Only after *all* mandatory members pass structural validation and row counts match trailers:
-       - Update all member rows in `b3_source_file_members` to `status = 'processed'`.
-       - Update `b3_source_files` to `status = 'completed'` and set `updated_at = NOW()`.
-       - Update `b3_sync_runs` to `status = 'completed'`.
-       - Issue transaction `COMMIT`.
-     - The `COMMIT` acts as an atomic publication flip, making all members and facts visible simultaneously.
-  5. **Lock Lifecycle**: The session advisory lock is released in an RAII drop guard or explicit `finally` block before returning the connection to the pool.
+     - Readers observe exactly one unambiguous, fully validated revision per scope.
+  4. **Data Migration Precondition**:
+     - Before introducing the `sf.is_active = true` filter into `src/services/query/`, migration `0002` normalizes legacy `ingested`/`success` states to `completed` and initializes `is_active = true` for the latest completed revision of each existing scope.
+  5. **Atomic Publication Pointer Flip**:
+     - Inside the complete-file transaction (holding the session advisory lock):
+       1. Insert candidate fact rows linked to `candidate_source_file_id`.
+       2. Validate trailer counts, member schemas, and record field audits in `b3_field_changes`.
+       3. Atomically switch the active revision pointer:
+          ```sql
+          -- Deactivate currently active revision for this scope
+          UPDATE b3_source_files
+          SET is_active = false, updated_at = NOW()
+          WHERE source_file_type = $1 AND reference_date = $2 AND is_active = true;
+
+          -- Activate candidate revision and mark completed
+          UPDATE b3_source_files
+          SET is_active = true, status = 'completed', updated_at = NOW()
+          WHERE id = $3;
+          ```
+       4. Update `b3_sync_runs` to `status = 'completed'`.
+       5. Issue transaction `COMMIT`.
+     - **Failure Rollback**: If any member validation fails or an unrecoverable error occurs, the transaction issues `ROLLBACK`. All candidate facts are discarded by PostgreSQL simultaneously, leaving the prior active revision intact and serving queries without interruption.
+  6. **Lock Lifecycle**: The session advisory lock is released in an RAII drop guard or explicit `finally` block before returning the connection to the pool.
 
 ### Package 5: Shared Query Services Layer (PRD Step 6)
 - **Scope**:
@@ -184,7 +231,7 @@ sequenceDiagram
 - [x] **R2 Parsers**: ISO 20022 schemas and depth limit tests added and verified.
 - [x] **R3 Persistence**: `UNIQUE NULLS NOT DISTINCT` invariant verified on natural keys.
 - [x] **R4 Coordination**: Transactional fencing and session lock helpers implemented and verified.
-- [x] **R5 Transports**: MCP read-only startup verified without migration rights.
+- [ ] **R5 Transports**: Static verification of migration bypass in `src/main.rs:52` on `Commands::Mcp`; runtime process test with restricted read-only PostgreSQL role remains pending.
 - [x] **R6 Consolidation**: Subsystem dispositions recorded; migration roadmap and issue tracking finalized.
 
 ### PRD Release Gates Status (PRD §19 / §20)

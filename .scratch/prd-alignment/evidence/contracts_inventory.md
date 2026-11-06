@@ -131,7 +131,7 @@ When `include_internal=true`, the item also includes `internal_metadata`:
   - `uq_indices_code`: `b3_indices(index_code)`
 - **Instrument Root & Window Constraints**:
   - `b3_instruments(security_id)` — Root canonical identity.
-  - `uq_instrument_identifiers`: `b3_instrument_identifiers(identifier_type, identifier_value, COALESCE(market_code, ''), COALESCE(valid_from, '1900-01-01'))`
+  - `uq_identifier_window`: `b3_instrument_identifiers(instrument_id, identifier_type, identifier_value, market_code, valid_from, valid_to) UNIQUE NULLS NOT DISTINCT`
 - **Trading Calendar Table**:
   - `b3_trading_calendar(calendar_date PRIMARY KEY, is_trading_day, holiday_name, source_note, updated_at)` — already created in migration 0001.
 - **Field Changes Audit Log**:
