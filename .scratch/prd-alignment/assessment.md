@@ -228,7 +228,7 @@ The suite **DOES NOT** demonstrate (Gaps to remediate):
    - While lock helpers (`try_acquire_pg_advisory_xact_lock_tx`, `try_acquire_session_advisory_lock`) were added and unit-tested, `B3SyncService::sync_b3_file` does not yet retain a dedicated connection across acquisition, parsing, and persistence.
    - *Severity*: P1. Blocks release gate G5.
 2. **Transaction Scope in Sync Service (`src/services/sync_service.rs`)**:
-   - In `sync_b3_file`, single-date processing executes queries against the pool. If a failure occurs mid-batch, partial writes may be committed without atomicity across facts, audits, and member status.
+   - In `sync_b3_file`, single-date processing executes queries against the pool. If a failure occurs mid-batch, partial writes may be committed without atomicity across facts, audits, and member status. Multi-member archives risk partial-member publication if individual members commit independently. The persistence boundary must cover the complete source file scope (all mandatory members) atomically, paired with active-revision pointer filtering (`JOIN b3_source_files sf ON sf.id = fact.source_file_id AND sf.status = 'completed'`) in query services.
    - *Severity*: P1. Blocks release gate G3.
 3. **Acquisition Memory Boundedness (`src/services/download_service.rs`)**:
    - HTTP response bodies are buffered into memory (`resp.bytes().await?.to_vec()`). Large COTAHIST annual files (200MB+) will cause severe memory pressure.

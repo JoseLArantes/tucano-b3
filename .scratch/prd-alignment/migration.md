@@ -89,14 +89,35 @@ Scope: Architecture, Data Safeguards, Implementation Sequence, and Release Gates
     - Return explicit `AppError::Layout("Maximum ZIP recursion depth (4) exceeded")` instead of silent `Ok(())`.
     - Enforce maximum uncompressed member size limit (e.g., 500 MB).
 
-### Package 4: Transactional Persistence & Session-Lock Fencing (PRD Steps 4 & 5)
+### Package 4: Transactional Persistence, Publication Scope & Session-Lock Fencing (PRD Steps 4 & 5)
+- **Publication Scope Definition**:
+  - The publication boundary is strictly the **Complete Source File Scope** (the source archive and 100% of its mandatory members for a given `source_file_type` and `reference_date`).
+  - **Zero Partial-Member Leakage**: A multi-member archive must either publish all required members together or publish nothing. Individual members (e.g., member A) must NEVER be committed independently to domain tables if a subsequent member (e.g., member B) fails.
 - **Architecture & Invariants**:
-  - **Exclusion vs. Atomicity Separation**: A session advisory lock provides process-level **mutual exclusion**; it does **not** provide transactional rollback for SQL statements executed on the connection. Therefore, locking and transaction management must be strictly decoupled:
-    1. **Concurrency Exclusion**: Acquire a session-level advisory lock (`pg_try_advisory_lock`) on a dedicated checkout connection from `PgPool` across the task duration. This guarantees that only one worker can process a given source file scope/date at any time.
-    2. **Transactional Atomicity**: All state mutations for a member or file — domain facts (`b3_cotahist_quotes`, etc.), granular field audits (`b3_field_changes`), member state (`b3_source_file_members`), quarantine entries (`b3_quarantine_records`), and run counters (`b3_sync_runs`) — **must be executed inside an explicit PostgreSQL transaction (`BEGIN ... COMMIT`)**.
-    3. **Failure Rollback**: In the event of an unrecoverable failure during ingestion, the transaction issues an explicit `ROLLBACK`. No autocommitted facts or partial batches remain in the database.
-    4. **Publication Mechanism**: New dataset revisions or historical slices become visible to readers atomically only when the transaction commits, transitioning `b3_source_files` and `b3_sync_runs` to status `completed`. External queries observe only committed, valid revisions via PostgreSQL snapshot isolation.
-    5. **Lock Lifecycle**: The session advisory lock is released in an RAII drop guard or explicit `finally` block before returning the connection to the pool.
+  1. **Concurrency Exclusion**:
+     - Acquire a session-level advisory lock (`pg_try_advisory_lock`) on a dedicated checkout connection from `PgPool` across the task duration.
+     - Guarantees mutual exclusion between workers contending on the same file/date. Provides exclusion only, not transactional rollback.
+  2. **Atomic Complete-File Transaction**:
+     - The transaction boundary covers the **entire required file scope** (all members of the archive), NOT individual members.
+     - Fact insertions across all members, granular field audits (`b3_field_changes`), member progress (`b3_source_file_members`), quarantine entries (`b3_quarantine_records`), and run counters (`b3_sync_runs`) execute within a single PostgreSQL transaction (`sqlx::Transaction`).
+     - **Failure Rollback**: If *any* required member fails or an unrecoverable validation error occurs, the entire transaction issues an explicit `ROLLBACK`. All rows inserted across all members are discarded by PostgreSQL simultaneously, ensuring zero orphan or partial member data persists in domain tables.
+     - The failure status is recorded in a separate operational transaction (marking `b3_source_files` and `b3_sync_runs` as `failed` with error details).
+  3. **Active-Revision Pointer Mechanism in Query Layer**:
+     - To ensure that readers never see in-progress or superseded data (even during large historical backfills or staged re-ingestions), all reader queries in `src/services/query/` must strictly join against the active completed file revision:
+       ```sql
+       JOIN b3_source_files sf ON sf.id = fact.source_file_id AND sf.status = 'completed'
+       ```
+     - This provides dual-layer protection:
+       - **At persistence level**: Complete-file transaction rollback prevents partial member state from ever committing.
+       - **At query level**: The active-revision pointer (`sf.status = 'completed'`) ensures external consumers only observe facts that belong to fully validated, published revisions.
+  4. **Atomic Publication Pointer Flip**:
+     - Only after *all* mandatory members pass structural validation and row counts match trailers:
+       - Update all member rows in `b3_source_file_members` to `status = 'processed'`.
+       - Update `b3_source_files` to `status = 'completed'` and set `updated_at = NOW()`.
+       - Update `b3_sync_runs` to `status = 'completed'`.
+       - Issue transaction `COMMIT`.
+     - The `COMMIT` acts as an atomic publication flip, making all members and facts visible simultaneously.
+  5. **Lock Lifecycle**: The session advisory lock is released in an RAII drop guard or explicit `finally` block before returning the connection to the pool.
 
 ### Package 5: Shared Query Services Layer (PRD Step 6)
 - **Scope**:
