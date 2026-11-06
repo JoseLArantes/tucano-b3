@@ -1,6 +1,6 @@
-# Vocabulário proposto para histórico de mercado B3
+# Vocabulário de histórico de mercado B3
 
-Glossário da proposta de PRD. Estas definições descrevem o domínio proposto e ainda não substituem decisões canônicas do projeto.
+Glossário de apoio ao [PRD vigente](../../docs/b3_prd.md), adotado em 06/11/2026. Define o vocabulário de domínio utilizado pelos requisitos; não declara todas as capacidades implementadas.
 
 ## Language
 

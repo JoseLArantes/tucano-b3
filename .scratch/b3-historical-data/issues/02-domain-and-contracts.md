@@ -2,7 +2,7 @@
 
 Status: needs-triage
 
-Data: 05/11/2026. Marco: G1. Dependências: adoção do PRD; resultados de corpus de 01 para decisões definitivas.
+Data: 05/11/2026. Marco: G1. Dependências: resultados de corpus de 01 para decisões definitivas.
 
 ## Problema
 
@@ -26,4 +26,4 @@ Ticker, instrumento, distribuição, fotografia de cadastro e revisão de arquiv
 
 ## Comments
 
-- 05/11/2026 — Proposta inicial em [PRD, seções 7–9, 12–13 e 19](../PRD.md). O [glossário](../CONTEXT.md) continua proposto até adoção.
+- 05/11/2026 — Requisitos em [PRD, seções 7–9, 12–13 e 19](../../../docs/b3_prd.md). O [glossário](../CONTEXT.md) acompanha o PRD vigente.

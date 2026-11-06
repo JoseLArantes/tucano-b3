@@ -26,4 +26,4 @@ Valores de índice, IOPV, referência de BDR, composição efetiva e prévia tê
 
 ## Comments
 
-- 05/11/2026 — Seções 5, 8, 13, 15–16 e 18 do [PRD](../PRD.md), com evidências [R16–R17](../RESEARCH.md#r16).
+- 05/11/2026 — Seções 5, 8, 13, 15–16 e 18 do [PRD](../../../docs/b3_prd.md), com evidências [R16–R17](../RESEARCH.md#r16).

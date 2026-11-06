@@ -31,4 +31,4 @@ PostgreSQL 16 real para NULLs, transações, concorrência e auditoria; repetir 
 
 ## Comments
 
-- 05/11/2026 — Detalhamento nas seções 7–12 e 18 do [PRD](../PRD.md). Não adicionar preços ajustados ou integração CVM.
+- 05/11/2026 — Detalhamento nas seções 7–12 e 18 do [PRD](../../../docs/b3_prd.md). Não adicionar preços ajustados ou integração CVM.

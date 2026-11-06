@@ -31,4 +31,4 @@ PostgreSQL 16 real, comandos Compose obrigatórios, build e smoke de API/worker 
 
 ## Comments
 
-- 05/11/2026 — Seções 10–11, 14 e 17–18 do [PRD](../PRD.md). Este marco começa antes da conclusão do núcleo histórico; recuperação não é fase opcional posterior.
+- 05/11/2026 — Seções 10–11, 14 e 17–18 do [PRD](../../../docs/b3_prd.md). Este marco começa antes da conclusão do núcleo histórico; recuperação não é fase opcional posterior.

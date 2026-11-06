@@ -31,4 +31,4 @@ Comandos Compose obrigatórios do PRD; build e smoke API/worker se houver mudan�
 
 ## Comments
 
-- 05/11/2026 — Requisitos nas seções 10, 11 e 18 do [PRD](../PRD.md). Coordenar cancelamento e fencing com a issue 06 desde o início.
+- 05/11/2026 — Requisitos nas seções 10, 11 e 18 do [PRD](../../../docs/b3_prd.md). Coordenar cancelamento e fencing com a issue 06 desde o início.

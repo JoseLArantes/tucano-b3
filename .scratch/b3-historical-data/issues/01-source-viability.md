@@ -30,4 +30,4 @@ Bypass de restrições, contratação paga, migração de runtime e implementaç
 
 ## Comments
 
-- 05/11/2026 — Criada a partir da [pesquisa](../RESEARCH.md) e da seção 4 do [PRD](../PRD.md). Requer evidência externa; os demais trabalhos offline independentes podem avançar após adoção da proposta.
+- 05/11/2026 — Criada a partir da [pesquisa](../RESEARCH.md) e da seção 4 do [PRD](../../../docs/b3_prd.md). Requer evidência externa; os demais trabalhos offline independentes podem avançar conforme o PRD vigente.

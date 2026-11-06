@@ -25,4 +25,4 @@ Relatórios completos, simplificados, edições e prazos não podem ser fundidos
 
 ## Comments
 
-- 05/11/2026 — Seções 5, 8–10, 13 e 18 do [PRD](../PRD.md). Não adicionar BVBG.187 ou TradeInformationConsolidated sem decisão explícita de escopo.
+- 05/11/2026 — Seções 5, 8–10, 13 e 18 do [PRD](../../../docs/b3_prd.md). Não adicionar BVBG.187 ou TradeInformationConsolidated sem decisão explícita de escopo.

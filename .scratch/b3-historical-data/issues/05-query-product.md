@@ -27,4 +27,4 @@ Consumidores precisam distinguir ausência, falha, identidade incerta e base nom
 
 ## Comments
 
-- 05/11/2026 — Referência nas seções 13–16 e 22 do [PRD](../PRD.md). Exposição a terceiros depende de finalidade elegível, mesmo com Bearer.
+- 05/11/2026 — Referência nas seções 13–16 e 22 do [PRD](../../../docs/b3_prd.md). Exposição a terceiros depende de finalidade elegível, mesmo com Bearer.

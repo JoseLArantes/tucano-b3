@@ -4,11 +4,11 @@ Status: needs-triage
 
 Data da pesquisa: **05/11/2026**, America/Sao_Paulo.
 
-Este relatório fundamenta a [proposta de PRD](PRD.md). Distingue fatos documentados, observações do repositório e recomendações. Não constitui confirmação de cobertura integral, autorização de coleta ou homologação dos conectores.
+Este relatório fundamenta a [PRD vigente](../../docs/b3_prd.md). Distingue fatos documentados, observações do repositório e recomendações. Não constitui confirmação de cobertura integral, autorização de coleta ou homologação dos conectores.
 
 ## 1. Método e limites
 
-- Revisão de `PRODUCT.md`, `docs/b3_prd.md`, README, módulos de aquisição, parsers, resolução, worker, REST, MCP, migrations, testes e Compose do `tucano-b3`, na base local cujo último commit era `cca1459`. Havia alterações não commitadas e outras ocorreram durante a sessão; a análise estática não equivale a auditar um commit imutável de toda a árvore.
+- Revisão de `PRODUCT.md`, a versão de `docs/b3_prd.md` anterior à adoção de 06/11/2026, README, módulos de aquisição, parsers, resolução, worker, REST, MCP, migrations, testes e Compose do `tucano-b3`, na base local cujo último commit era `cca1459`. Havia alterações não commitadas e outras ocorreram durante a sessão; a análise estática não equivale a auditar um commit imutável de toda a árvore.
 - Revisão do produto, contextos de ingestão e atualizações e ADRs 0003, 0004, 0007 e 0008 do `tucano-cvm`.
 - Pesquisa na web e leitura de páginas, glossários, catálogos e políticas da própria B3. O documento de política regulatória hospedado em `api.mziq.com` é uma publicação da B3; o ofício R08 indica a seção de governança do RI como seu ponto de distribuição.
 - Download de quatro PDFs de documentação para extração de texto e conferência de conteúdo. Nenhum arquivo de negociações foi baixado, nenhum intervalo histórico foi varrido e nenhum endpoint de dados foi certificado nesta sessão.
@@ -27,7 +27,7 @@ Não foram usados mirrors, Yahoo Finance, APIs de terceiros ou dados de corretor
 | O Security Definition Report documenta o Tradable Security List em CSV/JSON [R09](#r09) | A lista é uma fonte importante de identidade; não é apenas uma marca de negociabilidade |
 | O cadastro consolidado possui glossário próprio [R10](#r10) | Não tratar `InstrumentsConsolidated` e `BVBG.028` como aliases de um mesmo contrato |
 | O catálogo de instrumentos inclui identificação de distribuição [R11](#r11) | ISIN isolado é insuficiente para certas relações; preservar distribuição e contexto de mercado |
-| O trailer do COTAHIST inclui os registros de controle [R12](#r12) | Corrigir a tolerância genérica a duas convenções no PRD anterior |
+| O trailer do COTAHIST inclui os registros de controle [R12](#r12) | Exigir a convenção oficial e tratar exceções somente com evidência versionada |
 | Existem várias publicações diárias de boletins [R14](#r14) | Uma data pode ter edições distintas; a hora de download não identifica a edição oficial |
 | A política regulatória de 2025 prevê prazos por grupo de dados [R07](#r07) | A notícia de 2019 que menciona dez dias não pode definir a retenção atual |
 | A página de índices tem diferenças entre idiomas [R16](#r16) | Não prometer uma data inicial única sem verificar os arquivos |
@@ -239,7 +239,7 @@ Os hashes abaixo identificam os bytes de documentação lidos nesta pesquisa. N�
 3. Homologar catálogos/XSDs por período; testar namespaces e variantes reais, não apenas nomes de tags.
 4. Medir profundidade por família, formato, edição e data; registrar ausências e falhas separadamente.
 5. Verificar o mapeamento de `SecurityID`, fonte do identificador, bolsa, ISIN e distribuição entre os cadastros, com colisões e instrumentos expirados.
-6. Confirmar os fluxos de download do canal aprovado. A sequência `requestname`/token e endpoints do frontend mencionados no PRD anterior não foram certificados como APIs públicas estáveis.
+6. Confirmar os fluxos de download do canal aprovado. A sequência `requestname`/token e endpoints do frontend considerados na pesquisa não foram certificados como APIs públicas estáveis.
 7. Verificar retenção de raw, compartilhamento de fixtures e distribuição de exports. A licença do software não concede licença dos dados.
 8. Não anunciar preço ajustado, histórico completo de eventos, reconstrução point-in-time anterior à captura ou cobertura integral com base apenas nesta pesquisa.
 

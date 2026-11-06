@@ -9,7 +9,7 @@
 [![OpenAPI](https://img.shields.io/badge/OpenAPI-3.1-6BA539?logo=openapiinitiative&logoColor=white)](https://swagger.io/specification/)
 [![Docker Compose](https://img.shields.io/badge/Docker%20Compose-v2-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 
-Motor de normalização e exposição de dados públicos oficiais da **B3 (Brasil, Bolsa, Balcão)**, reconstruído inteiramente em **Rust**, com arquitetura assíncrona baseada em Tokio/Axum, persistência nativa em PostgreSQL 16 (sem dependência de Redis ou Celery) e conformidade estrita com a especificação [docs/b3_prd.md](file:///Users/joseluiz/workspace/projects/tucano-b3/docs/b3_prd.md).
+Motor de normalização e exposição de dados públicos oficiais da **B3 (Brasil, Bolsa, Balcão)**, reconstruído inteiramente em **Rust**, com arquitetura assíncrona baseada em Tokio/Axum, persistência nativa em PostgreSQL 16 (sem dependência de Redis ou Celery) com evolução orientada pelo [PRD de produto](docs/b3_prd.md).
 
 ---
 
