@@ -315,7 +315,7 @@ impl HistoryRepository {
                 price_correction_indicator,maturity_date,quotation_factor,exercise_price_points,isin,
                 field_changed_at
             )
-            SELECT DISTINCT
+            SELECT
                 f.id,s.business_hash,s.issuer_short_name,s.paper_specification,s.currency,
                 s.open_price,s.high_price,s.low_price,s.average_price,s.last_price,s.best_bid_price,s.best_ask_price,
                 s.trades_count,s.traded_quantity,s.traded_volume,s.option_exercise_price,
@@ -338,7 +338,12 @@ impl HistoryRepository {
                   AND f.term_days IS NOT DISTINCT FROM s.term_days
                 LIMIT 1
             ) f ON TRUE
-            LEFT JOIN b3_history_revision_quotes previous ON previous.revision_id=$1 AND previous.fact_id=f.id
+            LEFT JOIN LATERAL (
+                SELECT previous.version_id
+                FROM b3_history_revision_quotes previous
+                WHERE previous.revision_id=$1 AND previous.fact_id=f.id
+                LIMIT 1
+            ) previous ON TRUE
             LEFT JOIN b3_cotahist_versions old ON old.id=previous.version_id
             ON CONFLICT DO NOTHING
             "#,
@@ -367,16 +372,16 @@ impl HistoryRepository {
         )
         .execute(&mut *tx)
         .await?;
-        sqlx::query("INSERT INTO b3_history_conflicts(revision_id,fact_id,existing_version_id,incoming_version_id,source_member_id,record_index) SELECT $1,i.fact_id,q.version_id,i.version_id,$2,i.record_index FROM b3_history_incoming i JOIN b3_history_revision_quotes q ON q.revision_id=$1 AND q.fact_id=i.fact_id JOIN b3_source_file_members m ON m.id=$2 JOIN b3_source_files incoming ON incoming.id=m.source_file_id JOIN b3_history_revisions r ON r.id=$1 WHERE q.version_id<>i.version_id AND NOT COALESCE(incoming.replaces_publication AND q.selected_publication_key=incoming.publication_key AND incoming.official_revision>q.selected_official_revision,FALSE) ON CONFLICT DO NOTHING").bind(revision).bind(member).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO b3_history_conflicts(revision_id,fact_id,existing_version_id,incoming_version_id,source_member_id,record_index) SELECT $1,i.fact_id,q.version_id,i.version_id,$2,i.record_index FROM b3_history_incoming i JOIN LATERAL (SELECT q.version_id,q.selected_publication_key,q.selected_official_revision FROM b3_history_revision_quotes q WHERE q.revision_id=$1 AND q.fact_id=i.fact_id LIMIT 1) q ON TRUE JOIN b3_source_file_members m ON m.id=$2 JOIN b3_source_files incoming ON incoming.id=m.source_file_id JOIN b3_history_revisions r ON r.id=$1 WHERE q.version_id<>i.version_id AND NOT COALESCE(incoming.replaces_publication AND q.selected_publication_key=incoming.publication_key AND incoming.official_revision>q.selected_official_revision,FALSE) ON CONFLICT DO NOTHING").bind(revision).bind(member).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO b3_history_conflicts(revision_id,fact_id,existing_version_id,incoming_version_id,source_member_id,record_index) SELECT $1,a.fact_id,a.version_id,b.version_id,$2,b.record_index FROM b3_history_incoming a JOIN b3_history_incoming b ON a.fact_id=b.fact_id AND a.version_id<>b.version_id AND a.record_index<b.record_index ON CONFLICT DO NOTHING").bind(revision).bind(member).execute(&mut *tx).await?;
-        let counts=sqlx::query("WITH classified AS (SELECT i.*,row_number() OVER(PARTITION BY i.fact_id ORDER BY i.record_index) AS rn,EXISTS(SELECT 1 FROM b3_cotahist_occurrences o JOIN b3_cotahist_versions v ON v.id=o.version_id WHERE o.revision_id=$1 AND v.fact_id=i.fact_id) AS seen FROM b3_history_incoming i) SELECT count(*) FILTER(WHERE rn=1 AND NOT seen AND q.fact_id IS NULL)::bigint inserted,count(*) FILTER(WHERE rn=1 AND NOT seen AND q.version_id<>i.version_id)::bigint changed,count(*) FILTER(WHERE rn=1 AND NOT seen AND q.version_id=i.version_id)::bigint unchanged,count(*) FILTER(WHERE rn>1 OR seen)::bigint duplicates FROM classified i LEFT JOIN b3_history_revision_quotes q ON q.revision_id=$1 AND q.fact_id=i.fact_id").bind(revision).fetch_one(&mut *tx).await?;
+        let counts=sqlx::query("WITH classified AS (SELECT i.*,row_number() OVER(PARTITION BY i.fact_id ORDER BY i.record_index) AS rn,EXISTS(SELECT 1 FROM b3_cotahist_occurrences o JOIN b3_cotahist_versions v ON v.id=o.version_id WHERE o.revision_id=$1 AND v.fact_id=i.fact_id) AS seen FROM b3_history_incoming i) SELECT count(*) FILTER(WHERE rn=1 AND NOT seen AND q.fact_id IS NULL)::bigint inserted,count(*) FILTER(WHERE rn=1 AND NOT seen AND q.version_id<>i.version_id)::bigint changed,count(*) FILTER(WHERE rn=1 AND NOT seen AND q.version_id=i.version_id)::bigint unchanged,count(*) FILTER(WHERE rn>1 OR seen)::bigint duplicates FROM classified i LEFT JOIN LATERAL (SELECT q.fact_id,q.version_id FROM b3_history_revision_quotes q WHERE q.revision_id=$1 AND q.fact_id=i.fact_id LIMIT 1) q ON TRUE").bind(revision).fetch_one(&mut *tx).await?;
         let stats = BatchStats {
             inserted: counts.get("inserted"),
             changed: counts.get("changed"),
             unchanged: counts.get("unchanged"),
             duplicate_in_scope: counts.get("duplicates"),
         };
-        sqlx::query("INSERT INTO b3_field_changes(id,source_file_id,table_name,record_pk,field_name,old_value_text,new_value_text,history_revision_id) SELECT gen_random_uuid()::text,m.source_file_id,'b3_cotahist_versions',i.fact_id::text,n.key,o.value #>> '{}',n.value #>> '{}',$1 FROM (SELECT DISTINCT fact_id,version_id FROM b3_history_incoming) i JOIN b3_history_revision_quotes q ON q.revision_id=$1 AND q.fact_id=i.fact_id AND q.version_id<>i.version_id JOIN b3_cotahist_versions old ON old.id=q.version_id JOIN b3_cotahist_versions new ON new.id=i.version_id JOIN b3_source_file_members m ON m.id=$2 CROSS JOIN LATERAL jsonb_each(to_jsonb(new)-ARRAY['id','fact_id','business_hash','created_at','data_changed_at','field_changed_at']) n JOIN LATERAL jsonb_each(to_jsonb(old)) o ON o.key=n.key WHERE n.value IS DISTINCT FROM o.value AND NOT EXISTS(SELECT 1 FROM b3_history_conflicts c WHERE c.revision_id=$1 AND c.fact_id=i.fact_id)").bind(revision).bind(member).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO b3_field_changes(id,source_file_id,table_name,record_pk,field_name,old_value_text,new_value_text,history_revision_id) SELECT gen_random_uuid()::text,m.source_file_id,'b3_cotahist_versions',i.fact_id::text,n.key,o.value #>> '{}',n.value #>> '{}',$1 FROM (SELECT DISTINCT fact_id,version_id FROM b3_history_incoming) i JOIN LATERAL (SELECT q.version_id FROM b3_history_revision_quotes q WHERE q.revision_id=$1 AND q.fact_id=i.fact_id AND q.version_id<>i.version_id LIMIT 1) q ON TRUE JOIN b3_cotahist_versions old ON old.id=q.version_id JOIN b3_cotahist_versions new ON new.id=i.version_id JOIN b3_source_file_members m ON m.id=$2 CROSS JOIN LATERAL jsonb_each(to_jsonb(new)-ARRAY['id','fact_id','business_hash','created_at','data_changed_at','field_changed_at']) n JOIN LATERAL jsonb_each(to_jsonb(old)) o ON o.key=n.key WHERE n.value IS DISTINCT FROM o.value AND NOT EXISTS(SELECT 1 FROM b3_history_conflicts c WHERE c.revision_id=$1 AND c.fact_id=i.fact_id)").bind(revision).bind(member).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO b3_cotahist_occurrences(revision_id,source_member_id,record_index,version_id) SELECT $1,$2,record_index,version_id FROM b3_history_incoming ON CONFLICT DO NOTHING").bind(revision).bind(member).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO b3_history_revision_quotes(revision_id,fact_id,version_id,source_member_id,record_index,selected_publication_key,selected_official_revision) SELECT DISTINCT ON(i.fact_id) $1,i.fact_id,i.version_id,$2,i.record_index,COALESCE(incoming.publication_key,r.publication_key),COALESCE(incoming.official_revision,r.official_revision) FROM b3_history_incoming i JOIN b3_history_revisions r ON r.id=$1 JOIN b3_source_file_members m ON m.id=$2 JOIN b3_source_files incoming ON incoming.id=m.source_file_id ORDER BY i.fact_id,i.record_index ON CONFLICT(revision_id,fact_id) DO UPDATE SET version_id=EXCLUDED.version_id,source_member_id=EXCLUDED.source_member_id,record_index=EXCLUDED.record_index,selected_publication_key=EXCLUDED.selected_publication_key,selected_official_revision=EXCLUDED.selected_official_revision WHERE NOT EXISTS(SELECT 1 FROM b3_history_conflicts c WHERE c.revision_id=$1 AND c.fact_id=EXCLUDED.fact_id)").bind(revision).bind(member).execute(&mut *tx).await?;
         tx.commit().await?;
