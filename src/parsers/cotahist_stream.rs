@@ -44,14 +44,12 @@ pub fn parse_cotahist_stream<R: BufRead, F: FnMut(CotahistEvent) -> Result<()>>(
         }
         let start = offset;
         offset += size as u64;
+        let terminated = line.ends_with(b"\n");
         if line.ends_with(b"\n") {
             line.pop();
             if line.ends_with(b"\r") {
                 line.pop();
             }
-        }
-        if line.len() > 245 {
-            return Err(layout("Registro excede a largura máxima de 245 bytes."));
         }
         if trailer {
             return Err(layout("Conteúdo após o trailer COTAHIST."));
@@ -82,6 +80,19 @@ pub fn parse_cotahist_stream<R: BufRead, F: FnMut(CotahistEvent) -> Result<()>>(
             continue;
         }
         summary.detail_records += 1;
+        if line.len() > 245 {
+            if !terminated || !line.starts_with(b"01") {
+                return Err(layout("Registro excede a largura máxima de 245 bytes."));
+            }
+            on_record(CotahistEvent::Rejected {
+                raw: line.clone(),
+                reason: "Registro de detalhe excede a largura máxima de 245 bytes.".into(),
+                line_number,
+                byte_offset: start,
+            })?;
+            summary.rejected_records += 1;
+            continue;
+        }
         match parse_detail(&line) {
             Ok(row) => {
                 on_record(CotahistEvent::Valid {

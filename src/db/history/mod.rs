@@ -157,7 +157,7 @@ impl HistoryRepository {
         tx: &mut Transaction<'_, Postgres>,
         revision: Uuid,
     ) -> Result<()> {
-        let allowed:bool=sqlx::query_scalar("WITH channels AS (SELECT DISTINCT f.source_file_type,f.acquisition_channel FROM b3_history_revision_quotes q JOIN b3_source_file_members m ON m.id=q.source_member_id JOIN b3_source_files f ON f.id=m.source_file_id WHERE q.revision_id=$1 UNION SELECT DISTINCT f.source_file_type,f.acquisition_channel FROM b3_history_revision_sources rs JOIN b3_source_files f ON f.id=rs.source_file_id WHERE rs.revision_id=$1) SELECT NOT EXISTS(SELECT 1 FROM channels c CROSS JOIN unnest(ARRAY['processing','raw_retention','rest','mcp','third_party_delivery']) purpose WHERE NOT EXISTS(SELECT 1 FROM b3_source_eligibility e WHERE e.source_file_type=c.source_file_type AND e.channel=c.acquisition_channel AND e.purpose=purpose AND e.status='eligible' AND e.zero_cost AND e.verified_at IS NOT NULL AND length(trim(e.evidence_reference))>0))").bind(revision).fetch_one(&mut **tx).await?;
+        let allowed:bool=sqlx::query_scalar("WITH channels AS (SELECT DISTINCT f.source_file_type,f.acquisition_channel FROM b3_history_revision_quotes q JOIN b3_source_file_members m ON m.id=q.source_member_id JOIN b3_source_files f ON f.id=m.source_file_id WHERE q.revision_id=$1 UNION SELECT DISTINCT f.source_file_type,f.acquisition_channel FROM b3_history_revision_sources rs JOIN b3_source_files f ON f.id=rs.source_file_id WHERE rs.revision_id=$1) SELECT NOT EXISTS(SELECT 1 FROM channels c CROSS JOIN unnest(ARRAY['processing','raw_retention']) purpose WHERE NOT EXISTS(SELECT 1 FROM b3_source_eligibility e WHERE e.source_file_type=c.source_file_type AND e.channel=c.acquisition_channel AND e.purpose=purpose AND e.status='eligible' AND e.zero_cost AND e.verified_at IS NOT NULL AND length(trim(e.evidence_reference))>0))").bind(revision).fetch_one(&mut **tx).await?;
         if !allowed {
             return Err(AppError::Validation(
                 "Revisão contém canal/finalidade sem elegibilidade comprovada.".into(),
@@ -230,13 +230,7 @@ impl HistoryRepository {
                 &self.pool,
                 source,
                 &info.get::<String, _>("channel"),
-                &[
-                    SourcePurpose::Processing,
-                    SourcePurpose::RawRetention,
-                    SourcePurpose::Rest,
-                    SourcePurpose::Mcp,
-                    SourcePurpose::ThirdPartyDelivery,
-                ],
+                &[SourcePurpose::Processing, SourcePurpose::RawRetention],
             )
             .await?;
         }

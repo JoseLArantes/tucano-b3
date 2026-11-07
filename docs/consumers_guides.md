@@ -139,11 +139,11 @@ Erros da API têm o envelope:
 
 1. Um administrador executa ``POST /discovery/scan``. A resposta ``200`` informa ``checked_at`` e ``scheduled: false``; a checagem pode criar pendências, mas não cria arquivos nem jobs de ingestão.
 2. Consulte ``GET /pending-updates``. Uma pendência representa uma possível publicação nova, não alteração confirmada de cotação.
-3. Para adquirir/processar, submeta ``POST /jobs`` com operação ``ingest``, família e intervalo de datas. A API seleciona canais configurados no servidor; o consumidor não envia URL de download. Confirme ``enabled`` em capabilities e não envie família ``deferred``.
+3. Para adquirir/processar, submeta ``POST /jobs`` com operação ``ingest``, família e intervalo de datas. A API seleciona canais configurados no servidor; o consumidor não envia URL de download. O canal precisa estar habilitado e elegível para aquisição, retenção raw e processamento. ``capabilities.enabled`` descreve elegibilidade REST/terceiros, não a elegibilidade de ingestão.
 4. Guarde ``job_id`` e ``status_url`` do corpo. ``POST /jobs`` também retorna ``Location``. Consulte ``GET /jobs/{id}`` com credencial administrativa até status terminal. Não use a tela de sucesso do ``202`` como confirmação de ingestão.
-5. Examine ``outputs``. ``source_file`` aponta para um artefato visível em ``/source-files``; abra seus members em ``/source-files/{id}/members``. ``revision`` aponta para ``/data-revisions/{id}``; inspecione rejeições e conflitos antes de publicar.
-6. Publique uma revisão ``ready`` usando outro ``POST /jobs`` com ``publish_revision``. Se houver rejeições, ``acknowledge_issues`` precisa ser explicitamente ``true`` para permitir a publicação com problemas; conflitos bloqueiam a publicação. A revisão ativa anterior continua em uso até a promoção ser confirmada.
-7. Depois da publicação, use o novo ``data_revision`` em ``/diagnostics/coverage`` e ``/cotahist/quotes``. A revisão retornada na primeira consulta pode mudar entre telas se o consumidor omitir o ID.
+5. Examine ``outputs``. ``source_file`` aponta para um artefato visível em ``/source-files``; abra seus members em ``/source-files/{id}/members``. ``revision`` aponta para ``/data-revisions/{id}``; inspecione rejeições e conflitos.
+6. Uma importação sem rejeições ou conflitos publica automaticamente após os gates de qualidade e elegibilidade para processamento e retenção dos artefatos brutos. Uma candidata com rejeições pode ser publicada somente por um job ``publish_revision`` com ``acknowledge_issues=true``; conflitos continuam bloqueando a publicação. A elegibilidade de publicação interna não concede permissão para REST, MCP ou entrega a terceiros.
+7. Se a fonte também estiver elegível para o transporte e finalidade do consumidor, use o novo ``data_revision`` em ``/diagnostics/coverage`` e ``/cotahist/quotes``. A revisão retornada na primeira consulta pode mudar entre telas se o consumidor omitir o ID.
 
 ### 5.4 Cancelar, repetir ou reconhecer trabalho
 

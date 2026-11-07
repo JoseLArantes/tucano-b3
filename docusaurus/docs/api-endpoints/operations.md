@@ -20,6 +20,8 @@ Operações usam os mesmos jobs e estados PostgreSQL compartilhados entre API, C
 
 POST /jobs recebe idempotency_key, command, priority e max_attempts opcional. max_attempts padrão 3, faixa de 1 a 100. Commands são ingest, reparse, replay_quarantine, rebuild_identity, publish_revision, rollback_revision ou withdraw_window. Reuso da chave com comando idêntico retorna o mesmo job; uso incompatível retorna 409. O POST não faz download ou parsing dentro da requisição.
 
+Um import limpo publica automaticamente após elegibilidade para processamento e retenção raw. Essa publicação seleciona a revisão internamente; não habilita consultas REST/MCP nem entrega a terceiros, que continuam exigindo elegibilidade independente para cada finalidade. `capabilities.enabled` informa disponibilidade para REST/terceiros; o canal administrativo de ingestão também precisa estar configurado e elegível para aquisição, retenção raw e processamento.
+
 `ingest` exige uma família B3 oficial configurada e `from`/`to` inclusivos sobre a data de negócio. No `0.0.1`, somente COTAHIST diário, mensal ou anual é aceito: o worker seleciona cada fato pela `DATA DO PREGÃO`; o período declarado do arquivo só localiza possíveis publicações. O administrador envia o ano inteiro explicitamente se esse for o corte desejado. Publicações COTAHIST múltiplas selecionadas no mesmo job são consolidadas em uma revisão atômica. BVBG.028 e Tradable Security List permanecem `deferred` e são rejeitadas no comando de ingestão.
 
 Não há endpoint de upload. Importação local é configuração administrativa controlada para artefato oficial rastreável, não uma forma de consumidores enviarem dados. Os canais/finalidades sem elegibilidade permanecem desabilitados.

@@ -6,7 +6,10 @@ use tucano_b3::{
     db::enums::SourceFileType,
     db::history::HistoryRepository,
     db::run_migrations,
-    services::jobs::{ExecutionLane, JobCommand, JobCompletion, JobPriority, JobService},
+    services::{
+        jobs::{ExecutionLane, JobCommand, JobCompletion, JobPriority, JobService},
+        query::{QueryPurpose, QueryService},
+    },
 };
 use uuid::Uuid;
 
@@ -107,7 +110,7 @@ async fn two_worker_processes_ingest_once_and_publish_a_clean_candidate_automati
     )
     .unwrap();
     sqlx::query("INSERT INTO b3_source_channels(id,source_file_type,acquisition_mode,local_relative_path,enabled,publication_key,format_profile,period_start,period_end) VALUES('fixture','COTAHIST_YEARLY','local','year.txt',true,'year2025','cotahist_latin1','2025-01-01','2025-12-31')").execute(&pool).await.unwrap();
-    sqlx::query("INSERT INTO b3_source_eligibility(source_file_type,channel,purpose,status,zero_cost,evidence_reference,verified_at) SELECT 'COTAHIST_YEARLY','fixture',purpose,'eligible',true,'SYNTHETIC TEST ONLY',NOW() FROM unnest(ARRAY['acquisition','raw_retention','processing','rest','mcp','third_party_delivery']) AS purpose").execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO b3_source_eligibility(source_file_type,channel,purpose,status,zero_cost,evidence_reference,verified_at) SELECT 'COTAHIST_YEARLY','fixture',purpose,'eligible',true,'SYNTHETIC TEST ONLY',NOW() FROM unnest(ARRAY['acquisition','raw_retention','processing']) AS purpose").execute(&pool).await.unwrap();
     let jobs = JobService::new(pool.clone());
     let id = jobs
         .submit(
@@ -153,6 +156,10 @@ async fn two_worker_processes_ingest_once_and_publish_a_clean_candidate_automati
             .await
             .unwrap();
     assert_eq!(active, Some(revision));
+    assert!(QueryService::new(pool.clone())
+        .resolve_revision(None, QueryPurpose::Rest)
+        .await
+        .is_err());
     let count: i64 =
         sqlx::query_scalar("SELECT count(*) FROM b3_history_revision_quotes WHERE revision_id=$1")
             .bind(revision)

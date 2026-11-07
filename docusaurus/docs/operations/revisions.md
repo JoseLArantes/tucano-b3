@@ -21,7 +21,9 @@ Use GET /api/v1/b3/data-revisions/&#123;id&#125;/conflicts para versões diverge
 
 ## Publicar e reverter
 
-O import limpo publica automaticamente depois dos gates de qualidade e elegibilidade. Rejeições isoladas ou conflitos não mudam a visão ativa; `succeeded_with_issues` informa que uma candidata continua não publicada, e o administrador pode submeter `publish_revision` com reconhecimento explícito quando permitido. `rollback_revision` restaura uma revisão publicada anteriormente.
+O import limpo publica automaticamente depois dos gates de qualidade, processamento e retenção raw. Rejeições isoladas ou conflitos não mudam a visão ativa; `succeeded_with_issues` informa que uma candidata continua não publicada, e o administrador pode submeter `publish_revision` com reconhecimento explícito de rejeições. `rollback_revision` restaura uma revisão publicada anteriormente.
+
+`published` significa que a revisão foi selecionada internamente. Isso não concede leitura por REST ou MCP: cada consulta continua exigindo elegibilidade do transporte correspondente e de entrega a terceiros. Um corpus aprovado apenas para desenvolvimento local pode ficar publicado no banco e ainda assim indisponível nas consultas analíticas.
 
 `withdraw_window` cria uma revisão `withdrawal` que omite do resultado ativo as datas inclusivas pedidas. Raw, fatos, versões, ocorrências e auditoria permanecem disponíveis; rollback restaura a visão anterior e uma nova ingestão pode reimportar o período sem criar duplicatas de fatos/versões.
 

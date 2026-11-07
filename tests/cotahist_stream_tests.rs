@@ -116,6 +116,33 @@ fn invalid_detail_is_quarantined_without_losing_valid_neighbors() {
 }
 
 #[test]
+fn overwidth_detail_is_quarantined_without_losing_valid_neighbors() {
+    let mut overwidth = detail();
+    overwidth.push(b'X');
+    let bytes = file(&[detail(), overwidth.clone(), detail()], None, false);
+    let mut positions = Vec::new();
+    let summary = parse_cotahist_stream(Cursor::new(bytes), |event| {
+        if let CotahistEvent::Rejected {
+            raw,
+            reason,
+            line_number,
+            byte_offset,
+        } = event
+        {
+            assert_eq!(raw, overwidth);
+            assert!(reason.contains("245 bytes"));
+            positions.push((line_number, byte_offset));
+        }
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(summary.detail_records, 3);
+    assert_eq!(summary.valid_records, 2);
+    assert_eq!(summary.rejected_records, 1);
+    assert_eq!(positions, [(3, 492)]);
+}
+
+#[test]
 fn structural_failures_never_report_a_complete_member() {
     for data in [
         file(&[detail()], Some(1), false),

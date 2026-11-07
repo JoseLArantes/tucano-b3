@@ -19,7 +19,7 @@ Revisões e snapshots podem aparecer como draft, ready, published ou invalid:
 
 - **draft**: construção ainda não selada;
 - **ready**: validações de preparação permitem uma promoção administrativa;
-- **published**: revisão explicitamente publicada e consultável quando elegível;
+- **published**: revisão explicitamente selecionada internamente; REST/MCP continuam sujeitos à elegibilidade independente do transporte e da entrega a terceiros;
 - **invalid**: candidata não pode ser publicada no estado atual.
 
 Uma fotografia cadastral também tem revisão/identificador próprio; seu período é a data de referência da fonte, não uma janela de validade presumida.

@@ -306,8 +306,67 @@ impl HistoryRepository {
         }
         sqlx::query("DELETE FROM b3_history_stage s USING b3_cotahist_occurrences o WHERE o.revision_id=$1 AND o.source_member_id=$2 AND o.record_index=s.record_index").bind(revision).bind(member).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO b3_cotahist_facts(trade_date,ticker_symbol,market_type,bdi_code,distribution_number,term_days) SELECT DISTINCT trade_date,ticker_symbol,market_type,bdi_code,distribution_number,term_days FROM b3_history_stage ON CONFLICT DO NOTHING").execute(&mut *tx).await?;
-        sqlx::query("INSERT INTO b3_cotahist_versions(fact_id,business_hash,issuer_short_name,paper_specification,currency,open_price,high_price,low_price,average_price,last_price,best_bid_price,best_ask_price,trades_count,traded_quantity,traded_volume,option_exercise_price,price_correction_indicator,maturity_date,quotation_factor,exercise_price_points,isin,field_changed_at) SELECT DISTINCT f.id,s.business_hash,s.issuer_short_name,s.paper_specification,s.currency,s.open_price,s.high_price,s.low_price,s.average_price,s.last_price,s.best_bid_price,s.best_ask_price,s.trades_count,s.traded_quantity,s.traded_volume,s.option_exercise_price,s.price_correction_indicator,s.maturity_date,s.quotation_factor,s.exercise_price_points,s.isin,COALESCE(old.field_changed_at,'{}'::jsonb)||COALESCE((SELECT jsonb_object_agg(n.key,to_jsonb(NOW())) FROM jsonb_each(to_jsonb(s)-ARRAY['record_index','business_hash','trade_date','ticker_symbol','market_type','bdi_code','distribution_number','term_days']) n LEFT JOIN LATERAL jsonb_each(to_jsonb(old)) o ON o.key=n.key WHERE n.value IS DISTINCT FROM o.value AND (old.id IS NOT NULL OR n.value<>'null'::jsonb)),'{}'::jsonb) FROM b3_history_stage s JOIN b3_cotahist_facts f ON f.trade_date IS NOT DISTINCT FROM s.trade_date AND f.ticker_symbol IS NOT DISTINCT FROM s.ticker_symbol AND f.market_type IS NOT DISTINCT FROM s.market_type AND f.bdi_code IS NOT DISTINCT FROM s.bdi_code AND f.distribution_number IS NOT DISTINCT FROM s.distribution_number AND f.term_days IS NOT DISTINCT FROM s.term_days LEFT JOIN b3_history_revision_quotes previous ON previous.revision_id=$1 AND previous.fact_id=f.id LEFT JOIN b3_cotahist_versions old ON old.id=previous.version_id ON CONFLICT DO NOTHING").bind(revision).execute(&mut *tx).await?;
-        sqlx::query("CREATE TEMP TABLE b3_history_incoming ON COMMIT DROP AS SELECT s.record_index,f.id fact_id,v.id version_id FROM b3_history_stage s JOIN b3_cotahist_facts f ON f.trade_date IS NOT DISTINCT FROM s.trade_date AND f.ticker_symbol IS NOT DISTINCT FROM s.ticker_symbol AND f.market_type IS NOT DISTINCT FROM s.market_type AND f.bdi_code IS NOT DISTINCT FROM s.bdi_code AND f.distribution_number IS NOT DISTINCT FROM s.distribution_number AND f.term_days IS NOT DISTINCT FROM s.term_days JOIN b3_cotahist_versions v ON v.fact_id=f.id AND v.business_hash=s.business_hash").execute(&mut *tx).await?;
+        sqlx::query(
+            r#"
+            INSERT INTO b3_cotahist_versions(
+                fact_id,business_hash,issuer_short_name,paper_specification,currency,
+                open_price,high_price,low_price,average_price,last_price,best_bid_price,best_ask_price,
+                trades_count,traded_quantity,traded_volume,option_exercise_price,
+                price_correction_indicator,maturity_date,quotation_factor,exercise_price_points,isin,
+                field_changed_at
+            )
+            SELECT DISTINCT
+                f.id,s.business_hash,s.issuer_short_name,s.paper_specification,s.currency,
+                s.open_price,s.high_price,s.low_price,s.average_price,s.last_price,s.best_bid_price,s.best_ask_price,
+                s.trades_count,s.traded_quantity,s.traded_volume,s.option_exercise_price,
+                s.price_correction_indicator,s.maturity_date,s.quotation_factor,s.exercise_price_points,s.isin,
+                COALESCE(old.field_changed_at,'{}'::jsonb)||COALESCE((
+                    SELECT jsonb_object_agg(n.key,to_jsonb(NOW()))
+                    FROM jsonb_each(to_jsonb(s)-ARRAY['record_index','business_hash','trade_date','ticker_symbol','market_type','bdi_code','distribution_number','term_days']) n
+                    LEFT JOIN LATERAL jsonb_each(to_jsonb(old)) o ON o.key=n.key
+                    WHERE n.value IS DISTINCT FROM o.value AND (old.id IS NOT NULL OR n.value<>'null'::jsonb)
+                ),'{}'::jsonb)
+            FROM b3_history_stage s
+            JOIN LATERAL (
+                SELECT f.id
+                FROM b3_cotahist_facts f
+                WHERE f.trade_date=s.trade_date
+                  AND f.ticker_symbol=s.ticker_symbol
+                  AND f.market_type=s.market_type
+                  AND f.distribution_number=s.distribution_number
+                  AND f.bdi_code IS NOT DISTINCT FROM s.bdi_code
+                  AND f.term_days IS NOT DISTINCT FROM s.term_days
+                LIMIT 1
+            ) f ON TRUE
+            LEFT JOIN b3_history_revision_quotes previous ON previous.revision_id=$1 AND previous.fact_id=f.id
+            LEFT JOIN b3_cotahist_versions old ON old.id=previous.version_id
+            ON CONFLICT DO NOTHING
+            "#,
+        )
+        .bind(revision)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            r#"
+            CREATE TEMP TABLE b3_history_incoming ON COMMIT DROP AS
+            SELECT s.record_index,f.id fact_id,v.id version_id
+            FROM b3_history_stage s
+            JOIN LATERAL (
+                SELECT f.id
+                FROM b3_cotahist_facts f
+                WHERE f.trade_date=s.trade_date
+                  AND f.ticker_symbol=s.ticker_symbol
+                  AND f.market_type=s.market_type
+                  AND f.distribution_number=s.distribution_number
+                  AND f.bdi_code IS NOT DISTINCT FROM s.bdi_code
+                  AND f.term_days IS NOT DISTINCT FROM s.term_days
+                LIMIT 1
+            ) f ON TRUE
+            JOIN b3_cotahist_versions v ON v.fact_id=f.id AND v.business_hash=s.business_hash
+            "#,
+        )
+        .execute(&mut *tx)
+        .await?;
         sqlx::query("INSERT INTO b3_history_conflicts(revision_id,fact_id,existing_version_id,incoming_version_id,source_member_id,record_index) SELECT $1,i.fact_id,q.version_id,i.version_id,$2,i.record_index FROM b3_history_incoming i JOIN b3_history_revision_quotes q ON q.revision_id=$1 AND q.fact_id=i.fact_id JOIN b3_source_file_members m ON m.id=$2 JOIN b3_source_files incoming ON incoming.id=m.source_file_id JOIN b3_history_revisions r ON r.id=$1 WHERE q.version_id<>i.version_id AND NOT COALESCE(incoming.replaces_publication AND q.selected_publication_key=incoming.publication_key AND incoming.official_revision>q.selected_official_revision,FALSE) ON CONFLICT DO NOTHING").bind(revision).bind(member).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO b3_history_conflicts(revision_id,fact_id,existing_version_id,incoming_version_id,source_member_id,record_index) SELECT $1,a.fact_id,a.version_id,b.version_id,$2,b.record_index FROM b3_history_incoming a JOIN b3_history_incoming b ON a.fact_id=b.fact_id AND a.version_id<>b.version_id AND a.record_index<b.record_index ON CONFLICT DO NOTHING").bind(revision).bind(member).execute(&mut *tx).await?;
         let counts=sqlx::query("WITH classified AS (SELECT i.*,row_number() OVER(PARTITION BY i.fact_id ORDER BY i.record_index) AS rn,EXISTS(SELECT 1 FROM b3_cotahist_occurrences o JOIN b3_cotahist_versions v ON v.id=o.version_id WHERE o.revision_id=$1 AND v.fact_id=i.fact_id) AS seen FROM b3_history_incoming i) SELECT count(*) FILTER(WHERE rn=1 AND NOT seen AND q.fact_id IS NULL)::bigint inserted,count(*) FILTER(WHERE rn=1 AND NOT seen AND q.version_id<>i.version_id)::bigint changed,count(*) FILTER(WHERE rn=1 AND NOT seen AND q.version_id=i.version_id)::bigint unchanged,count(*) FILTER(WHERE rn>1 OR seen)::bigint duplicates FROM classified i LEFT JOIN b3_history_revision_quotes q ON q.revision_id=$1 AND q.fact_id=i.fact_id").bind(revision).fetch_one(&mut *tx).await?;

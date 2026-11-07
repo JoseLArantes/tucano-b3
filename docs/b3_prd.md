@@ -114,6 +114,8 @@ Cada entrada do catálogo deverá registrar:
 
 Estado de elegibilidade: `unreviewed`, `eligible`, `restricted` ou `ineligible`. A elegibilidade é do par **fonte/finalidade**, não apenas do hostname. A configuração de um operador não equivale a autorização da B3.
 
+A publicação de uma revisão ativa seleciona internamente um conjunto imutável e não significa que ele esteja exposto a consumidores. A publicação exige elegibilidade para processamento e retenção; REST, MCP e entrega a terceiros exigem suas próprias finalidades elegíveis em cada consulta. Um corpus autorizado somente para desenvolvimento local pode ser processado e publicado internamente sem habilitar esses transportes.
+
 ### 4.3 Caminhos de execução
 
 1. **Aquisição e finalidade confirmadas sem cobrança:** habilitar o canal correspondente, respeitando suas condições.
