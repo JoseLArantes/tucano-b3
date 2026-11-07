@@ -155,6 +155,35 @@ fn overwidth_detail_is_quarantined_without_losing_valid_neighbors() {
 }
 
 #[test]
+fn one_utf8_encoded_latin1_character_in_text_is_recovered_and_counted() {
+    let mut mixed_encoding = detail();
+    mixed_encoding.splice(28..29, [0xC3, 0x87]);
+    let bytes = file(&[mixed_encoding], None, false);
+    let mut seen = false;
+    let summary = parse_cotahist_stream(Cursor::new(bytes), |event| {
+        let CotahistEvent::Valid {
+            row,
+            line_number,
+            byte_offset,
+        } = event
+        else {
+            panic!("expected normalized detail to parse")
+        };
+        assert_eq!(line_number, 2);
+        assert_eq!(byte_offset, 246);
+        assert_eq!(row.issuer_short_name.as_deref(), Some("AÇÃO TESTE"));
+        seen = true;
+        Ok(())
+    })
+    .unwrap();
+
+    assert!(seen);
+    assert_eq!(summary.valid_records, 1);
+    assert_eq!(summary.rejected_records, 0);
+    assert_eq!(summary.normalized_encoding_records, 1);
+}
+
+#[test]
 fn structural_failures_never_report_a_complete_member() {
     for data in [
         file(&[detail()], Some(2), false),

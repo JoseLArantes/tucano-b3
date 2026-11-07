@@ -442,7 +442,7 @@ impl ReleaseExecutor {
                                     },
                                 )
                                 .await?;
-                            info!(job_id=%claim.id,run_id=%claim.owner_id,generation=claim.generation,source_file_id=%file_id,member_id=%id,member_index,revision_id=%revision,phase="parsing",detail_records=summary.detail_records,rejected_records=summary.rejected_records,byte_size=member_bytes,elapsed_ms=member_started.elapsed().as_millis() as u64,"Member COTAHIST processado");
+                            info!(job_id=%claim.id,run_id=%claim.owner_id,generation=claim.generation,source_file_id=%file_id,member_id=%id,member_index,revision_id=%revision,phase="parsing",detail_records=summary.detail_records,rejected_records=summary.rejected_records,normalized_encoding_records=summary.normalized_encoding_records,byte_size=member_bytes,elapsed_ms=member_started.elapsed().as_millis() as u64,"Member COTAHIST processado");
                         }
                         Err(error) => {
                             history

@@ -24,6 +24,7 @@ pub struct CotahistSummary {
     pub detail_records: u64,
     pub valid_records: u64,
     pub rejected_records: u64,
+    pub normalized_encoding_records: u64,
 }
 
 /// At most 248 bytes are buffered even when an attacker omits line delimiters.
@@ -86,14 +87,19 @@ pub fn parse_cotahist_stream<R: BufRead, F: FnMut(CotahistEvent) -> Result<()>>(
             if !terminated || !line.starts_with(b"01") {
                 return Err(layout("Registro excede a largura máxima de 245 bytes."));
             }
-            on_record(CotahistEvent::Rejected {
-                raw: line.clone(),
-                reason: "Registro de detalhe excede a largura máxima de 245 bytes.".into(),
-                line_number,
-                byte_offset: start,
-            })?;
-            summary.rejected_records += 1;
-            continue;
+            if let Some(normalized) = normalize_utf8_text_overwidth(&line) {
+                line = normalized;
+                summary.normalized_encoding_records += 1;
+            } else {
+                on_record(CotahistEvent::Rejected {
+                    raw: line.clone(),
+                    reason: "Registro de detalhe excede a largura máxima de 245 bytes.".into(),
+                    line_number,
+                    byte_offset: start,
+                })?;
+                summary.rejected_records += 1;
+                continue;
+            }
         }
         match parse_detail(&line) {
             Ok(row) => {
@@ -119,6 +125,38 @@ pub fn parse_cotahist_stream<R: BufRead, F: FnMut(CotahistEvent) -> Result<()>>(
         return Err(layout("Trailer COTAHIST ausente."));
     }
     Ok(summary)
+}
+
+/// Recover one UTF-8 encoded Latin-1 character inside COTAHIST text columns
+/// when that encoding expansion is the record's only extra byte. The source
+/// artifact remains unchanged and the reconstructed record must parse fully.
+fn normalize_utf8_text_overwidth(line: &[u8]) -> Option<Vec<u8>> {
+    if line.len() != 246 || !line.starts_with(b"01") {
+        return None;
+    }
+    let mut valid = None;
+    // Text columns occupy bytes 28-49. Index 48 may start a character whose
+    // continuation byte spills into position 50, accounting for the extra byte.
+    for index in 27..=48 {
+        let first = *line.get(index)?;
+        let second = *line.get(index + 1)?;
+        if !(0xC2..=0xC3).contains(&first) || !(0x80..=0xBF).contains(&second) {
+            continue;
+        }
+        let latin1 = ((first & 0x1F) << 6) | (second & 0x3F);
+        let mut candidate = Vec::with_capacity(245);
+        candidate.extend_from_slice(&line[..index]);
+        candidate.push(latin1);
+        candidate.extend_from_slice(&line[index + 2..]);
+        if candidate.len() != 245 || parse_detail(&candidate).is_err() {
+            continue;
+        }
+        if valid.replace(candidate).is_some() {
+            // More than one reconstruction is valid, so the source is ambiguous.
+            return None;
+        }
+    }
+    valid
 }
 
 /// Decode each fixed byte slice independently as ISO-8859-1. Unicode length never changes offsets.

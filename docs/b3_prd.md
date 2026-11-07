@@ -309,6 +309,7 @@ O leiaute oficial orienta a leitura; detalhes confirmados estão em [R12](RESEAR
 
 - Validar largura em bytes antes da decodificação; tratar CRLF/LF e final de arquivo sem alterar os 245 bytes do registro.
 - Selecionar encoding por perfil homologado. Não tratar ISO-8859-1 e Windows-1252 como equivalentes universais.
+- Aceitar a exceção estreita observada em publicações reais: um detalhe com 246 bytes pode ser normalizado somente quando um único caractere UTF-8 representável em ISO-8859-1 está nas colunas textuais, a redução restaura exatamente 245 bytes e todos os campos passam pela validação completa. Manter o artefato raw imutável, contar e registrar essas normalizações; qualquer outro detalhe com largura divergente vai para quarentena ou invalida estruturalmente o member conforme a regra de largura.
 - Exigir registros de controle únicos, ordem válida, datas coerentes, escopo correto e contagem física consistente, incluindo linhas de detalhe inválidas preservadas na quarentena.
 - Aplicar as escalas declaradas a cada campo, em vez de uma regra decimal global.
 - Preservar `term_days`, distribuição, código original de identificação e atributos opcionais, sem usar sentinelas como datas efetivas.

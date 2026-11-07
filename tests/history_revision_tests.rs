@@ -224,6 +224,53 @@ async fn immutable_facts_complete_revision_correction_and_rollback() {
 }
 
 #[tokio::test]
+async fn candidate_carry_forward_resumes_and_does_not_count_identical_retry_twice() {
+    let f = Fixture::new().await;
+    let repo = HistoryRepository::new(f.pool.clone());
+
+    let (first_file, first_member) = f.file("COTAHIST_YEARLY").await;
+    let first_claim = f.claim().await;
+    let published = f
+        .candidate(&repo, &first_claim, first_file, "annual:2025", Some(1))
+        .await;
+    repo.stage_batch(&first_claim, published, &first_member, &[quote(1000)])
+        .await
+        .unwrap();
+    seal(&repo, &first_claim, published, &first_member, 1).await;
+    repo.publish(&first_claim, published, false).await.unwrap();
+
+    let retry_claim = f.claim().await;
+    let (retry_file, _) = f.file("COTAHIST_YEARLY").await;
+    let candidate = f
+        .candidate(&repo, &retry_claim, retry_file, "annual:2025", Some(1))
+        .await;
+    let (same_artifact_file, _) = f.file("COTAHIST_YEARLY").await;
+    let resumed = f
+        .candidate(
+            &repo,
+            &retry_claim,
+            same_artifact_file,
+            "annual:2025",
+            Some(1),
+        )
+        .await;
+
+    assert_eq!(candidate, resumed);
+    let (expected_members, source_count, quote_count): (i32, i64, i64) = sqlx::query_as(
+        "SELECT expected_members,(SELECT count(*) FROM b3_history_revision_sources WHERE revision_id=$1),(SELECT count(*) FROM b3_history_revision_quotes WHERE revision_id=$1) FROM b3_history_revisions WHERE id=$1",
+    )
+    .bind(candidate)
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    assert_eq!(expected_members, 1);
+    assert_eq!(source_count, 2);
+    assert_eq!(quote_count, 1);
+
+    f.close().await;
+}
+
+#[tokio::test]
 async fn repeated_fact_in_one_revision_is_counted_as_an_in_scope_duplicate() {
     let f = Fixture::new().await;
     let repo = HistoryRepository::new(f.pool.clone());

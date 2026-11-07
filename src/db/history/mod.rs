@@ -11,6 +11,8 @@ use serde::Serialize;
 use sqlx::{PgPool, Postgres, Row, Transaction};
 use uuid::Uuid;
 
+const CANDIDATE_CARRY_BATCH_SIZE: i64 = 25_000;
+
 use crate::db::enums::SourceFileType;
 use crate::{
     error::{AppError, Result},
@@ -82,12 +84,13 @@ impl HistoryRepository {
                 "Canal, família ou inventário da revisão não corresponde ao artefato.".into(),
             ));
         }
-        let existing = sqlx::query("SELECT id,source_file_id,period_start,period_end FROM b3_history_revisions WHERE job_id=$1 AND revision_kind='ingest' AND status='draft' FOR UPDATE")
+        let existing = sqlx::query("SELECT id,base_revision_id,period_start,period_end FROM b3_history_revisions WHERE job_id=$1 AND revision_kind='ingest' AND status='draft' FOR UPDATE")
             .bind(claim.id)
             .fetch_optional(&mut *tx)
             .await?;
-        if let Some(existing) = existing {
+        let (id, base) = if let Some(existing) = existing {
             let id: Uuid = existing.get("id");
+            let base: Option<Uuid> = existing.get("base_revision_id");
             if existing.get::<NaiveDate, _>("period_start") != spec.period_start
                 || existing.get::<NaiveDate, _>("period_end") != spec.period_end
             {
@@ -101,9 +104,39 @@ impl HistoryRepository {
                 .bind(&spec.source_file_id)
                 .fetch_one(&mut *tx)
                 .await?;
-            if attached {
-                return Ok(id);
+            if !attached {
+                let equivalent_source: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM b3_history_revision_sources rs JOIN b3_source_files prior ON prior.id=rs.source_file_id JOIN b3_source_files incoming ON incoming.id=$2 WHERE rs.revision_id=$1 AND prior.source_file_type=incoming.source_file_type AND prior.acquisition_channel=incoming.acquisition_channel AND prior.sha256=incoming.sha256 AND prior.publication_key IS NOT DISTINCT FROM incoming.publication_key AND prior.official_revision IS NOT DISTINCT FROM incoming.official_revision AND prior.replaces_publication=incoming.replaces_publication AND prior.format_profile=incoming.format_profile AND prior.requested_from IS NOT DISTINCT FROM incoming.requested_from AND prior.requested_to IS NOT DISTINCT FROM incoming.requested_to)")
+                    .bind(id)
+                    .bind(&spec.source_file_id)
+                    .fetch_one(&mut *tx)
+                    .await?;
+                sqlx::query("INSERT INTO b3_history_revision_sources(revision_id,source_file_id,requested_from,requested_to) VALUES($1,$2,$3,$4)")
+                    .bind(id)
+                    .bind(&spec.source_file_id)
+                    .bind(spec.period_start)
+                    .bind(spec.period_end)
+                    .execute(&mut *tx)
+                    .await?;
+                if !equivalent_source {
+                    sqlx::query(
+                        "UPDATE b3_history_revisions SET expected_members=expected_members+$2 WHERE id=$1",
+                    )
+                    .bind(id)
+                    .bind(spec.expected_members)
+                    .execute(&mut *tx)
+                    .await?;
+                }
             }
+            tx.commit().await?;
+            (id, base)
+        } else {
+            let base: Option<Uuid> =
+                sqlx::query_scalar("SELECT revision_id FROM b3_history_active WHERE singleton")
+                    .fetch_one(&mut *tx)
+                    .await?;
+            let id = Uuid::new_v4();
+            sqlx::query("INSERT INTO b3_history_revisions(id,base_revision_id,source_file_id,channel,period_start,period_end,publication_key,official_revision,replaces_publication,expected_members,job_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)")
+                .bind(id).bind(base).bind(&spec.source_file_id).bind(spec.channel).bind(spec.period_start).bind(spec.period_end).bind(spec.publication_key).bind(spec.official_revision).bind(spec.replaces_publication).bind(spec.expected_members).bind(claim.id).execute(&mut *tx).await?;
             sqlx::query("INSERT INTO b3_history_revision_sources(revision_id,source_file_id,requested_from,requested_to) VALUES($1,$2,$3,$4)")
                 .bind(id)
                 .bind(&spec.source_file_id)
@@ -111,41 +144,44 @@ impl HistoryRepository {
                 .bind(spec.period_end)
                 .execute(&mut *tx)
                 .await?;
-            sqlx::query(
-                "UPDATE b3_history_revisions SET expected_members=expected_members+$2 WHERE id=$1",
+            tx.commit().await?;
+            (id, base)
+        };
+        if let Some(base) = base {
+            self.carry_forward_candidate(claim, id, base).await?;
+        }
+        Ok(id)
+    }
+
+    /// Copy a base revision in restartable batches so lease heartbeats and
+    /// cancellation can acquire the job row between batches.
+    async fn carry_forward_candidate(
+        &self,
+        claim: &JobClaim,
+        revision: Uuid,
+        base: Uuid,
+    ) -> Result<()> {
+        let jobs = JobService::new(self.pool.clone());
+        let mut cursor: Option<Uuid> = None;
+        loop {
+            let mut tx = jobs.begin_confirmation(claim).await?;
+            Self::draft(&mut tx, revision).await?;
+            let next: Option<Uuid> = sqlx::query_scalar(
+                "WITH batch AS MATERIALIZED (SELECT fact_id,version_id,source_member_id,record_index,instrument_id,resolution_status,selected_publication_key,selected_official_revision FROM b3_history_revision_quotes WHERE revision_id=$2 AND ($3::uuid IS NULL OR fact_id>$3) ORDER BY fact_id LIMIT $4), copied AS (INSERT INTO b3_history_revision_quotes(revision_id,fact_id,version_id,source_member_id,record_index,instrument_id,resolution_status,selected_publication_key,selected_official_revision) SELECT $1,fact_id,version_id,source_member_id,record_index,instrument_id,resolution_status,selected_publication_key,selected_official_revision FROM batch ON CONFLICT(revision_id,fact_id) DO NOTHING RETURNING fact_id) SELECT fact_id FROM batch ORDER BY fact_id DESC LIMIT 1",
             )
-            .bind(id)
-            .bind(spec.expected_members)
-            .execute(&mut *tx)
+            .bind(revision)
+            .bind(base)
+            .bind(cursor)
+            .bind(CANDIDATE_CARRY_BATCH_SIZE)
+            .fetch_optional(&mut *tx)
             .await?;
             tx.commit().await?;
-            return Ok(id);
+            match next {
+                Some(next) if cursor != Some(next) => cursor = Some(next),
+                _ => break,
+            }
         }
-        let base: Option<Uuid> =
-            sqlx::query_scalar("SELECT revision_id FROM b3_history_active WHERE singleton")
-                .fetch_one(&mut *tx)
-                .await?;
-        let id = Uuid::new_v4();
-        sqlx::query("INSERT INTO b3_history_revisions(id,base_revision_id,source_file_id,channel,period_start,period_end,publication_key,official_revision,replaces_publication,expected_members,job_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)")
-            .bind(id).bind(base).bind(&spec.source_file_id).bind(spec.channel).bind(spec.period_start).bind(spec.period_end).bind(spec.publication_key).bind(spec.official_revision).bind(spec.replaces_publication).bind(spec.expected_members).bind(claim.id).execute(&mut *tx).await?;
-        if let Some(base) = base {
-            // Carrying a large active revision forward is a bounded set-based
-            // copy, but may exceed the normal 30-second per-statement budget.
-            // The job row remains lease-fenced and this override is transaction-local.
-            sqlx::query("SET LOCAL statement_timeout='90s'")
-                .execute(&mut *tx)
-                .await?;
-            sqlx::query("INSERT INTO b3_history_revision_quotes SELECT $1,fact_id,version_id,source_member_id,record_index,instrument_id,resolution_status,selected_publication_key,selected_official_revision FROM b3_history_revision_quotes WHERE revision_id=$2").bind(id).bind(base).execute(&mut *tx).await?;
-        }
-        sqlx::query("INSERT INTO b3_history_revision_sources(revision_id,source_file_id,requested_from,requested_to) VALUES($1,$2,$3,$4)")
-            .bind(id)
-            .bind(&spec.source_file_id)
-            .bind(spec.period_start)
-            .bind(spec.period_end)
-            .execute(&mut *tx)
-            .await?;
-        tx.commit().await?;
-        Ok(id)
+        Ok(())
     }
 
     pub(crate) async fn draft(

@@ -16,6 +16,10 @@ COTAHIST é a família de arquivos oficiais da B3 consultada pelas rotas /api/v1
 - DISMES (distribution_number) faz parte da granularidade do fato.
 - Prazo a termo é um discriminador da linha.
 
+## Leiaute e codificação
+
+O parser valida registros por largura em bytes e preserva o artefato bruto. Há uma recuperação limitada para um detalhe de 246 bytes que contenha exatamente um caractere UTF-8 representável em ISO-8859-1 nas colunas textuais: o parser reconstrói a largura de 245 bytes e aceita a linha somente se todos os campos passarem pela validação. A normalização fica contada nos logs operacionais. Outras larguras divergentes não são ajustadas automaticamente e seguem para quarentena ou falha estrutural.
+
 > **Aviso obrigatório:** os preços são nominais brutos, na moeda e forma de cotação da época, sem ajustes retroativos por inflação ou eventos corporativos. O serviço não preenche pregões ausentes nem apresenta série derivada como publicação oficial B3.
 
 ## Cobertura
