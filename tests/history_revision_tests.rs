@@ -261,6 +261,16 @@ async fn repeated_fact_in_one_revision_is_counted_as_an_in_scope_duplicate() {
     .unwrap();
     assert_eq!(quotes, 1);
     assert_eq!(occurrences, 2);
+    let (raw, inserted, duplicates): (Option<i32>, Option<i32>, i64) = sqlx::query_as(
+        "SELECT row_count_raw,row_count_inserted,row_count_duplicate FROM b3_source_file_members WHERE id=$1",
+    )
+    .bind(member)
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    assert_eq!(raw, Some(2));
+    assert_eq!(inserted, Some(1));
+    assert_eq!(duplicates, 1);
     f.close().await;
 }
 

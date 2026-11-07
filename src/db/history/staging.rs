@@ -381,6 +381,14 @@ impl HistoryRepository {
             unchanged: counts.get("unchanged"),
             duplicate_in_scope: counts.get("duplicates"),
         };
+        sqlx::query("UPDATE b3_source_file_members SET row_count_inserted=COALESCE(row_count_inserted,0)+$2,row_count_changed=COALESCE(row_count_changed,0)+$3,row_count_unchanged=COALESCE(row_count_unchanged,0)+$4,row_count_duplicate=row_count_duplicate+$5 WHERE id=$1")
+            .bind(member)
+            .bind(stats.inserted as i32)
+            .bind(stats.changed as i32)
+            .bind(stats.unchanged as i32)
+            .bind(stats.duplicate_in_scope)
+            .execute(&mut *tx)
+            .await?;
         sqlx::query("INSERT INTO b3_field_changes(id,source_file_id,table_name,record_pk,field_name,old_value_text,new_value_text,history_revision_id) SELECT gen_random_uuid()::text,m.source_file_id,'b3_cotahist_versions',i.fact_id::text,n.key,o.value #>> '{}',n.value #>> '{}',$1 FROM (SELECT DISTINCT fact_id,version_id FROM b3_history_incoming) i JOIN LATERAL (SELECT q.version_id FROM b3_history_revision_quotes q WHERE q.revision_id=$1 AND q.fact_id=i.fact_id AND q.version_id<>i.version_id LIMIT 1) q ON TRUE JOIN b3_cotahist_versions old ON old.id=q.version_id JOIN b3_cotahist_versions new ON new.id=i.version_id JOIN b3_source_file_members m ON m.id=$2 CROSS JOIN LATERAL jsonb_each(to_jsonb(new)-ARRAY['id','fact_id','business_hash','created_at','data_changed_at','field_changed_at']) n JOIN LATERAL jsonb_each(to_jsonb(old)) o ON o.key=n.key WHERE n.value IS DISTINCT FROM o.value AND NOT EXISTS(SELECT 1 FROM b3_history_conflicts c WHERE c.revision_id=$1 AND c.fact_id=i.fact_id)").bind(revision).bind(member).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO b3_cotahist_occurrences(revision_id,source_member_id,record_index,version_id) SELECT $1,$2,record_index,version_id FROM b3_history_incoming ON CONFLICT DO NOTHING").bind(revision).bind(member).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO b3_history_revision_quotes(revision_id,fact_id,version_id,source_member_id,record_index,selected_publication_key,selected_official_revision) SELECT DISTINCT ON(i.fact_id) $1,i.fact_id,i.version_id,$2,i.record_index,COALESCE(incoming.publication_key,r.publication_key),COALESCE(incoming.official_revision,r.official_revision) FROM b3_history_incoming i JOIN b3_history_revisions r ON r.id=$1 JOIN b3_source_file_members m ON m.id=$2 JOIN b3_source_files incoming ON incoming.id=m.source_file_id ORDER BY i.fact_id,i.record_index ON CONFLICT(revision_id,fact_id) DO UPDATE SET version_id=EXCLUDED.version_id,source_member_id=EXCLUDED.source_member_id,record_index=EXCLUDED.record_index,selected_publication_key=EXCLUDED.selected_publication_key,selected_official_revision=EXCLUDED.selected_official_revision WHERE NOT EXISTS(SELECT 1 FROM b3_history_conflicts c WHERE c.revision_id=$1 AND c.fact_id=EXCLUDED.fact_id)").bind(revision).bind(member).execute(&mut *tx).await?;
