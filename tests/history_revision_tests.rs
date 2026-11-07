@@ -224,6 +224,47 @@ async fn immutable_facts_complete_revision_correction_and_rollback() {
 }
 
 #[tokio::test]
+async fn repeated_fact_in_one_revision_is_counted_as_an_in_scope_duplicate() {
+    let f = Fixture::new().await;
+    let repo = HistoryRepository::new(f.pool.clone());
+    let (file, member) = f.file("COTAHIST_YEARLY").await;
+    let claim = f.claim().await;
+    let revision = f
+        .candidate(&repo, &claim, file, "annual:2025-duplicate", Some(1))
+        .await;
+
+    let first = repo
+        .stage_batch(&claim, revision, &member, &[quote(1000)])
+        .await
+        .unwrap();
+    assert_eq!(first.inserted, 1);
+
+    let mut repeated_quote = quote(1000);
+    repeated_quote.record_index = 3;
+    let repeated = repo
+        .stage_batch(&claim, revision, &member, &[repeated_quote])
+        .await
+        .unwrap();
+    assert_eq!(repeated.inserted, 0);
+    assert_eq!(repeated.changed, 0);
+    assert_eq!(repeated.unchanged, 0);
+    assert_eq!(repeated.duplicate_in_scope, 1);
+
+    seal(&repo, &claim, revision, &member, 2).await;
+    repo.publish(&claim, revision, false).await.unwrap();
+    let (quotes, occurrences): (i64, i64) = sqlx::query_as(
+        "SELECT (SELECT count(*) FROM b3_history_revision_quotes WHERE revision_id=$1),(SELECT count(*) FROM b3_cotahist_occurrences WHERE revision_id=$1)",
+    )
+    .bind(revision)
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    assert_eq!(quotes, 1);
+    assert_eq!(occurrences, 2);
+    f.close().await;
+}
+
+#[tokio::test]
 async fn conflicts_rejections_and_invalid_structure_never_silently_replace() {
     let f = Fixture::new().await;
     let repo = HistoryRepository::new(f.pool.clone());
