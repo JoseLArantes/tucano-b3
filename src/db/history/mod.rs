@@ -129,6 +129,12 @@ impl HistoryRepository {
         sqlx::query("INSERT INTO b3_history_revisions(id,base_revision_id,source_file_id,channel,period_start,period_end,publication_key,official_revision,replaces_publication,expected_members,job_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)")
             .bind(id).bind(base).bind(&spec.source_file_id).bind(spec.channel).bind(spec.period_start).bind(spec.period_end).bind(spec.publication_key).bind(spec.official_revision).bind(spec.replaces_publication).bind(spec.expected_members).bind(claim.id).execute(&mut *tx).await?;
         if let Some(base) = base {
+            // Carrying a large active revision forward is a bounded set-based
+            // copy, but may exceed the normal 30-second per-statement budget.
+            // The job row remains lease-fenced and this override is transaction-local.
+            sqlx::query("SET LOCAL statement_timeout='90s'")
+                .execute(&mut *tx)
+                .await?;
             sqlx::query("INSERT INTO b3_history_revision_quotes SELECT $1,fact_id,version_id,source_member_id,record_index,instrument_id,resolution_status,selected_publication_key,selected_official_revision FROM b3_history_revision_quotes WHERE revision_id=$2").bind(id).bind(base).execute(&mut *tx).await?;
         }
         sqlx::query("INSERT INTO b3_history_revision_sources(revision_id,source_file_id,requested_from,requested_to) VALUES($1,$2,$3,$4)")
