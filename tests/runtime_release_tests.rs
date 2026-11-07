@@ -75,7 +75,7 @@ fn fixture_rows(rows: &[(&str, &str)]) -> Vec<u8> {
         .collect::<Vec<_>>();
     let mut trailer = vec![b' '; 245];
     trailer[..2].copy_from_slice(b"99");
-    let record_count = format!("{:011}", rows.len() + 2);
+    let record_count = format!("{:011}", rows.len());
     trailer[31..42].copy_from_slice(record_count.as_bytes());
     std::iter::once(header)
         .chain(details)

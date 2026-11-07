@@ -27,7 +27,7 @@ pub struct CotahistSummary {
 }
 
 /// At most 248 bytes are buffered even when an attacker omits line delimiters.
-/// Trailer count is the total physical record count, including header and trailer.
+/// The trailer count covers detail records only; header and trailer lines are excluded.
 pub fn parse_cotahist_stream<R: BufRead, F: FnMut(CotahistEvent) -> Result<()>>(
     mut reader: R,
     mut on_record: F,
@@ -73,8 +73,10 @@ pub fn parse_cotahist_stream<R: BufRead, F: FnMut(CotahistEvent) -> Result<()>>(
                 .ok()
                 .and_then(|s| s.parse::<u64>().ok())
                 .ok_or_else(|| layout("Contagem do trailer COTAHIST inválida."))?;
-            if declared != summary.physical_records {
-                return Err(layout("Contagem física diverge do trailer COTAHIST."));
+            if declared != summary.detail_records {
+                return Err(layout(
+                    "Contagem de registros de detalhe diverge do trailer COTAHIST.",
+                ));
             }
             trailer = true;
             continue;

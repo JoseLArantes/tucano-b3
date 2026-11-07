@@ -43,8 +43,7 @@ fn file(details: &[Vec<u8>], count: Option<usize>, crlf: bool) -> Vec<u8> {
     header[..2].copy_from_slice(b"00");
     let mut trailer = vec![b' '; 245];
     trailer[..2].copy_from_slice(b"99");
-    trailer[31..42]
-        .copy_from_slice(format!("{:011}", count.unwrap_or(details.len() + 2)).as_bytes());
+    trailer[31..42].copy_from_slice(format!("{:011}", count.unwrap_or(details.len())).as_bytes());
     let newline = if crlf {
         b"\r\n".as_slice()
     } else {
@@ -86,7 +85,20 @@ fn bytes_encoding_precision_and_locations_survive_streaming() {
         .unwrap();
     assert_eq!(seen, 1);
     assert_eq!(summary.physical_records, 3);
+    assert_eq!(summary.detail_records, 1);
     assert_eq!(summary.rejected_records, 0);
+}
+
+#[test]
+fn trailer_count_excludes_header_and_trailer_records() {
+    let summary = parse_cotahist_stream(
+        Cursor::new(file(&[detail(), detail()], Some(2), false)),
+        |_| Ok(()),
+    )
+    .unwrap();
+
+    assert_eq!(summary.physical_records, 4);
+    assert_eq!(summary.detail_records, 2);
 }
 
 #[test]
@@ -145,7 +157,7 @@ fn overwidth_detail_is_quarantined_without_losing_valid_neighbors() {
 #[test]
 fn structural_failures_never_report_a_complete_member() {
     for data in [
-        file(&[detail()], Some(1), false),
+        file(&[detail()], Some(2), false),
         b"01short".to_vec(),
         vec![b'0'; 1_000_000],
     ] {
