@@ -35,6 +35,8 @@ services:
     depends_on:
       b3_postgres:
         condition: service_healthy
+      b3_migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
       interval: 10s
@@ -60,8 +62,11 @@ services:
     depends_on:
       b3_postgres:
         condition: service_healthy
+      b3_migrate:
+        condition: service_completed_successfully
 
   cargo:
+    profiles: [tools]
     build:
       context: .
       dockerfile: Dockerfile.dev
@@ -79,7 +84,6 @@ services:
 
   b3_migrate:
     build: .
-    profiles: [tools]
     command: ["tucano-b3", "migrate"]
     environment:
       DATABASE_URL: ${B3_MIGRATION_DATABASE_URL:-postgres://postgres:postgres@b3_postgres:5432/tucano_b3}

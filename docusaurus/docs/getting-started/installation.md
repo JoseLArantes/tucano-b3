@@ -14,16 +14,16 @@ O serviço e o site de documentação são processos separados. A API e o worker
 
 ## API e worker
 
-Na raiz do repositório, prepare as variáveis e inicie as dependências na ordem documentada no README:
+Na raiz do repositório, prepare as variáveis e defina credenciais Bearer de leitura e administração distintas e não vazias. Mantenha a credencial administrativa privada. Em seguida, use `docker compose up -d`:
 
     cp .env.example .env
     docker compose config --quiet
-    docker compose build b3_api b3_worker
-    docker compose up -d b3_postgres
-    docker compose --profile tools run --rm b3_migrate
-    docker compose up -d b3_api b3_worker
+    docker compose up -d
+    docker compose ps --all
 
-O Compose local publica a API na porta 8010 do host e PostgreSQL na 5433. Na rede interna Compose, a API usa a porta 8000 e PostgreSQL usa 5432. As credenciais do exemplo são somente locais; substitua-as fora do ambiente de desenvolvimento.
+O Compose espera PostgreSQL saudável, executa o serviço `b3_migrate` usando `B3_MIGRATION_DATABASE_URL` e só inicia API/worker depois que as migrations terminam com sucesso. API, worker e MCP verificam o schema; seus processos não executam DDL. Para reaplicar a cadeia manualmente, rode `docker compose run --rm b3_migrate`; para reconstruir imagens após alterações de código, use `docker compose up --build -d`.
+
+O Compose local publica a API na porta 8010 do host e PostgreSQL na 5433. Na rede interna Compose, a API usa a porta 8000 e PostgreSQL usa 5432. As credenciais do exemplo são somente locais; substitua-as fora do ambiente de desenvolvimento. O serviço `cargo` pertence ao profile `tools` e não inicia com a stack de runtime.
 
 Para confirmar que o processo HTTP responde sem autenticação, use a checagem de liveness:
 

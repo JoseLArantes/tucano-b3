@@ -4,7 +4,7 @@ Status: plataforma 0.0.1 qualificada com PostgreSQL 16 e fixture sintética; can
 
 ## Inicialização e papéis
 
-Aplicar a cadeia de migrations explicitamente com `tucano-b3 migrate`, usando a credencial de migração. API, worker e MCP verificam versão/checksums do schema e não executam DDL na inicialização. O serviço Compose `b3_migrate`, no profile `tools`, usa a imagem da aplicação para essa operação.
+Aplicar a cadeia de migrations com `tucano-b3 migrate`, usando `B3_MIGRATION_DATABASE_URL` e a credencial de migração. API, worker e MCP verificam versão/checksums do schema e não executam DDL em seus próprios processos. No Compose local, `b3_migrate` é um serviço de tarefa única: `docker compose up -d` aguarda sua conclusão bem-sucedida antes de iniciar API e worker. Para executar a migration separadamente, rode `docker compose run --rm b3_migrate`. Em produção, preserve a mesma ordem explícita no pipeline de release; não conceda DDL à credencial de runtime.
 
 Usar credenciais separadas para migração, escrita administrativa/ingestão e leitura analítica. O papel do MCP precisa ler os metadados SQLx de schema e as relações usadas pelos query services, sem INSERT/UPDATE/DELETE/DDL. Credenciais Bearer de leitura e administração devem ser distintas; exceções públicas não incluem operações de ingestão.
 

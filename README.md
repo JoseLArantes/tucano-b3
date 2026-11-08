@@ -33,27 +33,29 @@ Rust/Tokio, Axum, SQLx/PostgreSQL 16, quick-xml, rust_decimal e Utoipa/OpenAPI 3
 
 ## Desenvolvimento com Compose
 
-1. Copiar `.env.example` para `.env`, configurar credenciais por função e dois tokens distintos, não vazios.
-2. Construir as imagens e inicializar PostgreSQL.
-3. Aplicar migrations com o comando explícito de migração antes de iniciar API/worker. Esses processos e o MCP verificam o schema; não executam DDL na inicialização.
-4. Iniciar API e worker apenas com fontes/canais registrados e finalidade elegível.
+1. Copiar `.env.example` para `.env` e definir dois tokens Bearer distintos e não vazios.
+2. Executar `docker compose up -d`. Compose sobe PostgreSQL, executa `b3_migrate` como serviço de tarefa única e só inicia API/worker depois que a migration termina com sucesso.
+3. API, worker e MCP verificam o schema na inicialização; os processos de runtime não executam DDL. O container separado `b3_migrate` usa `B3_MIGRATION_DATABASE_URL` para aplicar migrations.
+4. Configurar fontes/canais elegíveis antes de habilitar aquisição; a stack inicia com discovery e fontes externas desativadas.
 
 ```bash
 docker compose config --quiet
-docker compose build b3_api b3_worker
-docker compose up -d b3_postgres
-docker compose --profile tools run --rm b3_migrate
-docker compose up -d b3_api b3_worker
+docker compose up -d
+docker compose ps --all
+curl --fail http://localhost:8010/healthz
+curl --fail http://localhost:8010/api/v1/health
 ```
+
+Compose constrói imagens ausentes durante `up`. Depois de alterações de código, execute `docker compose up --build -d`. Para aplicar migrations sem iniciar a stack, rode `docker compose run --rm b3_migrate`; esse é o mesmo comando de migração isolado usado por automações de release.
 
 A API usa a porta host `8010` e PostgreSQL `5433`; na rede Compose, `8000` e `5432`. O exemplo PostgreSQL é local e não define credenciais de produção. Não usar `docker compose down -v` como rotina: remove evidência persistente.
 
 O volume `b3_processed_files` guarda apenas artefatos derivados de exportação, com expiração de 30 dias; eles podem ser reconstruídos a partir das revisões PostgreSQL. Em uma implantação com várias instâncias de API, configure `B3_PROCESSED_DATA_DIR` para um filesystem persistente compartilhado por elas. A composição atual não fornece armazenamento de objetos multi-host.
 
 ```bash
-docker compose run --rm cargo cargo fmt --all -- --check
-docker compose run --rm cargo cargo clippy --all-targets --all-features -- -D warnings
-docker compose run --rm cargo cargo test --all-targets --all-features
+docker compose --profile tools run --rm cargo cargo fmt --all -- --check
+docker compose --profile tools run --rm cargo cargo clippy --all-targets --all-features -- -D warnings
+docker compose --profile tools run --rm cargo cargo test --all-targets --all-features
 ```
 
 Testes de persistência/concorrência exigem PostgreSQL 16 real em base isolada. A ausência de banco não pode produzir falso verde. Testes HTTP determinísticos usam mocks; aquisição real é separada, limitada e depende de elegibilidade.
@@ -62,7 +64,7 @@ O serviço `cargo` usa `tucano_b3_test`, separado do banco de operação. Na pri
 
 ```bash
 docker compose exec -T b3_postgres createdb -U postgres tucano_b3_test
-docker compose run --rm cargo cargo run --bin tucano-b3 -- migrate
+docker compose --profile tools run --rm cargo cargo run --bin tucano-b3 -- migrate
 ```
 
 Não aponte `B3_TEST_DATABASE_URL` para `tucano_b3` ou outra base com dados operacionais. Testes de integração criam e removem apenas bases de nomes aleatórios dentro do servidor indicado.
