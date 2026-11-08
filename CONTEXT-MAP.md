@@ -17,6 +17,7 @@ O contexto atualmente documentado é compartilhado por aquisição, persistênci
 - [PRD de produto](docs/b3_prd.md): escopo e comportamento-alvo.
 - [Pesquisa de fontes](docs/RESEARCH.md): evidências, datas e limitações da pesquisa.
 - [Plano de revisão e migração](docs/19-plan.md): avaliação do código existente.
+- [ADR 0001](docs/adr/0001-revision-pinned-cotahist-export.md): contrato NDJSON, cache derivada e revisão fixa para exportações COTAHIST longas.
 - [Backlog](docs/issues/README.md): prontidão, dependências e critérios de aceite.
 - [Documentação Docusaurus](docusaurus/README.md): site público de guias para consumidores e operadores, alinhado ao OpenAPI gerado.
 

@@ -5,13 +5,15 @@ use crate::services::query::{
 use crate::services::{
     jobs::{JobCommand, JobPriority, JobService},
     query::{JobView, QueryError, QueryPurpose, QueryService, QuoteFilters, QuotePage},
+    quote_export::{ExportError, QuoteExportEvent, QuoteExportFilters, QuoteExportService},
 };
 use axum::{
+    body::Body,
     extract::{
         rejection::{JsonRejection, QueryRejection},
         Path, Query, State,
     },
-    http::{header, HeaderMap, StatusCode},
+    http::{header, HeaderMap, Response, StatusCode},
     Json,
 };
 use serde::{Deserialize, Serialize};
@@ -191,6 +193,171 @@ pub async fn quotes(
             .quotes(filters, QueryPurpose::Rest, false)
             .await?,
     ))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/b3/cotahist/quotes/export",
+    tag = "COTAHIST",
+    summary = "Exportar todo o histórico COTAHIST de um ticker em NDJSON",
+    description = "Emite uma resposta NDJSON finita com eventos meta, quote, checkpoint e complete. Cada cotação preserva a projeção tipada, preços nominais sem ajuste, estado de identidade e proveniência até arquivo/member/registro.\nA revisão é resolvida uma vez e fica presa em todos os lotes; informe data_revision e o cursor checkpoint para retomada reproduzível. A ordenação é crescente por data do pregão e UUID do fato.\nO endpoint é dedicado a exportação integral e não aplica o limite de 1.000 itens das listas. Gera lotes de banco limitados e armazena artefato derivado com chave por revisão, ticker, versão do schema e cursor. Elegibilidade REST e third_party_delivery é revalidada antes de consultar a cache.\nValores decimais são strings e datas seguem ISO 8601. A cache pode ser reconstruída e nunca substitui as tabelas e revisões PostgreSQL. Respostas usam cache privado e variam por Authorization e Accept-Encoding; não devem ser compartilhadas por cache HTTP público.",
+    params(QuoteExportFilters, ("If-None-Match" = Option<String>, Header, description = "ETag forte do artefato completo recebido anteriormente; produz 304 somente para uma representação pronta e idêntica.")),
+    responses(
+        (status = 200, description = "Fluxo NDJSON completo ou em geração compartilhada", content_type = "application/x-ndjson", body = QuoteExportEvent),
+        (status = 304, description = "Artefato pronto sem alterações para o ETag informado"),
+        (status = 400, description = "Ticker, cursor ou revisão inconsistente", body = super::release_error::ErrorResponse),
+        (status = 401, description = "Bearer de leitura ausente ou inválido", body = super::release_error::ErrorResponse),
+        (status = 403, description = "A fonte/revisão não está elegível para REST ou third_party_delivery", body = super::release_error::ErrorResponse),
+        (status = 404, description = "Ticker sem ocorrência na revisão publicada", body = super::release_error::ErrorResponse),
+        (status = 500, description = "Falha interna antes do início do fluxo", body = super::release_error::ErrorResponse),
+        (status = 503, description = "Revisão, PostgreSQL ou storage temporariamente indisponível", body = super::release_error::ErrorResponse)
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn quote_export(
+    State(state): State<Arc<AppState>>,
+    filters: Result<Query<QuoteExportFilters>, QueryRejection>,
+    headers: HeaderMap,
+) -> Result<Response<Body>, ApiError> {
+    let Query(filters) = filters.map_err(|_| {
+        ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "INVALID_FILTER",
+            "Parâmetros de exportação inválidos.",
+        )
+    })?;
+    let query = QueryService::new(state.pool.clone());
+    let service =
+        QuoteExportService::new(state.pool.clone(), &state.settings.b3_processed_data_dir)
+            .map_err(|_| {
+                ApiError::new(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "EXPORT_STORAGE_UNAVAILABLE",
+                    "Armazenamento de exportação indisponível.",
+                )
+            })?;
+    let prepared = service
+        .prepare(&query, filters)
+        .await
+        .map_err(map_export_error)?;
+
+    let accept_gzip = headers
+        .get(header::ACCEPT_ENCODING)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| {
+            value.split(',').any(|encoding| {
+                let mut parts = encoding.trim().split(';');
+                parts
+                    .next()
+                    .is_some_and(|name| name.trim().eq_ignore_ascii_case("gzip"))
+                    && !parts.any(|part| {
+                        part.trim()
+                            .strip_prefix("q=")
+                            .and_then(|value| value.parse::<f32>().ok())
+                            .is_some_and(|quality| quality <= 0.0)
+                    })
+            })
+        });
+    let representation = service.ready_representation(&prepared, accept_gzip);
+    if let Some((_, sha256, _, _)) = &representation {
+        let etag = format!("\"{sha256}\"");
+        let not_modified = headers
+            .get(header::IF_NONE_MATCH)
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| {
+                value.split(',').any(|candidate| {
+                    let candidate = candidate.trim();
+                    candidate == "*" || candidate == etag || candidate == format!("W/{etag}")
+                })
+            });
+        if not_modified {
+            let mut response = Response::new(Body::empty());
+            *response.status_mut() = StatusCode::NOT_MODIFIED;
+            set_export_headers(response.headers_mut(), Some(&etag), None, false);
+            return Ok(response);
+        }
+    }
+
+    let mut response = Response::new(Body::from_stream(
+        service.stream(prepared, representation.clone()),
+    ));
+    *response.status_mut() = StatusCode::OK;
+    let (etag, length, gzip) = representation
+        .map(|(_, sha, size, gzip)| (Some(format!("\"{sha}\"")), Some(size), gzip))
+        .unwrap_or((None, None, false));
+    set_export_headers(response.headers_mut(), etag.as_deref(), length, gzip);
+    Ok(response)
+}
+
+fn set_export_headers(
+    headers: &mut axum::http::HeaderMap,
+    etag: Option<&str>,
+    content_length: Option<u64>,
+    gzip: bool,
+) {
+    headers.insert(
+        header::CONTENT_TYPE,
+        "application/x-ndjson; charset=utf-8"
+            .parse()
+            .expect("static header"),
+    );
+    headers.insert(
+        header::CACHE_CONTROL,
+        "private, max-age=0, must-revalidate"
+            .parse()
+            .expect("static header"),
+    );
+    headers.insert(
+        header::VARY,
+        "Authorization, Accept-Encoding"
+            .parse()
+            .expect("static header"),
+    );
+    headers.insert(
+        header::CONTENT_DISPOSITION,
+        "attachment; filename=\"cotahist-quotes.ndjson\""
+            .parse()
+            .expect("static header"),
+    );
+    if let Some(etag) = etag {
+        if let Ok(value) = etag.parse() {
+            headers.insert(header::ETAG, value);
+        }
+    }
+    if let Some(length) = content_length {
+        if let Ok(value) = length.to_string().parse() {
+            headers.insert(header::CONTENT_LENGTH, value);
+        }
+    }
+    if gzip {
+        headers.insert(
+            header::CONTENT_ENCODING,
+            "gzip".parse().expect("static header"),
+        );
+    }
+}
+
+fn map_export_error(error: ExportError) -> ApiError {
+    match error {
+        ExportError::Invalid => ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "INVALID_FILTER",
+            "Ticker, revisão ou cursor de exportação inválido.",
+        ),
+        ExportError::NotFound => ApiError::new(
+            StatusCode::NOT_FOUND,
+            "TICKER_NOT_FOUND",
+            "Ticker sem fatos na revisão selecionada.",
+        ),
+        ExportError::Query(error) => error.into(),
+        ExportError::Unavailable | ExportError::Storage | ExportError::Database(_) => {
+            ApiError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "EXPORT_UNAVAILABLE",
+                "A exportação está temporariamente indisponível.",
+            )
+        }
+    }
 }
 
 #[utoipa::path(get,path="/api/v1/b3/cotahist/series",tag="COTAHIST",summary="Consultar série COTAHIST inequívoca com preços nominais sem ajuste",description="Seleciona fatos oficiais da família COTAHIST para ticker, ISIN ou instrumento temporal.\nExige desambiguação se mais de um mercado/distribuição/prazo permanecer no mesmo pregão.\nPREULT significa último negócio publicado, sem redefinir fechamento oficial.\nPaginação, precisão, proveniência e revisão seguem a mesma consulta de fatos; não faz forward-fill ou ingestão.",params(QuoteFilters),responses((status=200,description="Página da série selecionada",body=QuotePage),(status=400,description="Filtros inválidos"),(status=401,description="Não autenticado"),(status=403,description="Finalidade não elegível"),(status=404,description="Revisão inexistente"),(status=409,description="Série ambígua"),(status=500,description="Falha interna"),(status=503,description="Revisão indisponível")),security(("bearer_auth"=[])))]

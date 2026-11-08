@@ -14,6 +14,10 @@ Enviar `Authorization: Bearer <credencial-de-leitura>` nas consultas protegidas.
 
 Ticker identifica um código no contexto e período. O mesmo ticker pode ter mercados, distribuições, prazos e instrumentos diferentes. Datas são inclusivas; paginação inválida retorna 400. `limit` padrão 100, máximo 1000; `offset` padrão 0. Filtros adicionais incluem instrumento, ISIN, BDI, distribuição e prazo.
 
+Para transferir o histórico integral de um único ticker, use `GET /api/v1/b3/cotahist/quotes/export?ticker_symbol=EXMP3`. A resposta é NDJSON finito em eventos `meta`, `quote`, `checkpoint` e `complete`; retome após desconexão usando o cursor do checkpoint com o mesmo ticker e a revisão registrada em `meta`. A exportação não usa `limit`/`offset` nem representa mercado ao vivo. Verifique `complete` antes de aceitar ou armazenar o resultado.
+
+A exportação lê lotes keyset de uma revisão publicada e mantém artefatos derivados no volume persistente `B3_PROCESSED_DATA_DIR/quote-exports` por até 30 dias. Cache não é fonte de verdade; elegibilidade e autorização são verificadas em cada chamada. O HTTP cache é privado, com ETag somente depois que o artefato está pronto. Consulte o contrato `/openapi.json` e o [guia de eventos NDJSON](../docusaurus/docs/schemas/cotahist.md).
+
 ## Precisão, revisão e cobertura
 
 Valores financeiros são strings decimais. Preservar sua precisão; não converter para ponto flutuante para cálculos de auditoria. Moeda, fator de cotação e códigos originais continuam no registro. `last_price` corresponde ao último negócio publicado, sem garantir equivalência a outras medidas de fechamento.

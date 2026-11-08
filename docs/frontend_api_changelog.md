@@ -1,5 +1,13 @@
 # Alterações da API para consumidores
 
+## 08/11/2026 — Exportação integral COTAHIST em NDJSON
+
+- Adiciona `GET /api/v1/b3/cotahist/quotes/export`, protegido por Bearer de leitura, com `ticker_symbol` obrigatório e `data_revision`, `cursor` e `include_internal` opcionais.
+- Responde com linhas `meta`, `quote`, `checkpoint`, `complete` ou `error`; consumidores devem validar `complete` e `content_sha256`, e podem retomar depois do checkpoint mais recente na mesma revisão.
+- O formato `HistoricalQuote` mantém precisão decimal textual, identidade, proveniência e o aviso de preços nominais sem ajuste. A lista paginada existente não muda.
+- Cache derivada é privada, revalidada por elegibilidade e expira após 30 dias. ETag e `304` aplicam-se somente a artefatos prontos. Compatibilidade: aditiva; nenhum campo ou semântica da rota `/quotes` existente mudou.
+- Runtime local: configurar/compartilhar `B3_PROCESSED_DATA_DIR` para que instâncias da API usem o mesmo volume. Não se anuncia ainda a meta de primeira cotação inferior a um segundo sob 50 consumidores; ela depende de benchmark reproduzível.
+
 ## 06/11/2026 — COTAHIST como única fonte de import no 0.0.1
 
 - ``GET /api/v1/b3/capabilities`` marca BVBG.028 e Tradable Security List como ``deferred``; a data de uma fotografia ou arquivo não satisfaz corte por data interna de cada registro.

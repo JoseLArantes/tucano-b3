@@ -70,6 +70,59 @@ async fn fixture() -> (PgPool, PgPool, String, String, Uuid) {
     (pool, admin, name, url.to_string(), revision)
 }
 
+#[tokio::test]
+async fn quote_export_migration_upgrades_a_schema_at_version_0013() {
+    let base_url =
+        std::env::var("DATABASE_URL").expect("PostgreSQL integration requires DATABASE_URL");
+    let admin = PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&base_url)
+        .await
+        .unwrap();
+    let name = format!("export_migration_{}", Uuid::new_v4().simple());
+    sqlx::query(&format!("CREATE DATABASE {name}"))
+        .execute(&admin)
+        .await
+        .unwrap();
+    let mut database_url = url::Url::parse(&base_url).unwrap();
+    database_url.set_path(&name);
+    let pool = PgPoolOptions::new()
+        .max_connections(4)
+        .connect(database_url.as_str())
+        .await
+        .unwrap();
+
+    let all_migrations = sqlx::migrate!("./migrations");
+    let previous_migrations = all_migrations
+        .iter()
+        .filter(|migration| migration.version < 14)
+        .cloned()
+        .collect();
+    let previous = sqlx::migrate::Migrator {
+        migrations: std::borrow::Cow::Owned(previous_migrations),
+        ignore_missing: false,
+        locking: true,
+        no_tx: false,
+    };
+    previous.run(&pool).await.unwrap();
+    all_migrations.run(&pool).await.unwrap();
+
+    let manifest_exists: bool =
+        sqlx::query_scalar("SELECT to_regclass('public.b3_quote_export_artifacts') IS NOT NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let cursor_index_exists: bool = sqlx::query_scalar(
+        "SELECT to_regclass('public.idx_history_quotes_resolved_instrument') IS NOT NULL",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(manifest_exists);
+    assert!(cursor_index_exists);
+    cleanup(pool, admin, name).await;
+}
+
 async fn cleanup(pool: PgPool, admin: PgPool, name: String) {
     pool.close().await;
     sqlx::query(&format!("DROP DATABASE {name} WITH (FORCE)"))
@@ -151,6 +204,182 @@ async fn rest_and_shared_mcp_queries_keep_precision_revision_and_provenance() {
         )
         .await
         .is_err());
+    cleanup(pool, admin, name).await;
+}
+
+#[tokio::test]
+async fn ticker_export_streams_revision_pinned_ndjson_and_reuses_private_artifact() {
+    let (pool, admin, name, _, revision) = fixture().await;
+    let cache_dir = tempfile::tempdir().unwrap();
+    let settings = Arc::new(B3Settings {
+        tucano_b3_read_token: "fixture-read".into(),
+        tucano_b3_admin_token: "fixture-admin".into(),
+        b3_processed_data_dir: cache_dir.path().display().to_string(),
+        ..Default::default()
+    });
+    let app = create_router(Arc::new(AppState {
+        pool: pool.clone(),
+        settings: settings.clone(),
+        sync_service: Arc::new(B3SyncService::new(pool.clone(), (*settings).clone())),
+    }));
+    let request = || {
+        Request::builder()
+            .uri("/api/v1/b3/cotahist/quotes/export?ticker_symbol=exmp3")
+            .header("Authorization", "Bearer fixture-read")
+            .body(Body::empty())
+            .unwrap()
+    };
+    let (response, concurrent_response) = tokio::join!(
+        app.clone().oneshot(request()),
+        app.clone().oneshot(request())
+    );
+    let response = response.unwrap();
+    let concurrent_response = concurrent_response.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(concurrent_response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers()["content-type"],
+        "application/x-ndjson; charset=utf-8"
+    );
+    assert!(response.headers()["cache-control"]
+        .to_str()
+        .unwrap()
+        .contains("private"));
+    let first_body = axum::body::to_bytes(response.into_body(), 1_048_576)
+        .await
+        .unwrap();
+    let concurrent_body = axum::body::to_bytes(concurrent_response.into_body(), 1_048_576)
+        .await
+        .unwrap();
+    assert_eq!(first_body, concurrent_body);
+    let ready_artifact_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM b3_quote_export_artifacts WHERE revision_id=$1 AND ticker_symbol='EXMP3' AND status='ready'",
+    )
+    .bind(revision)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(ready_artifact_count, 1);
+    let events: Vec<Value> = first_body
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(|line| serde_json::from_slice(line).unwrap())
+        .collect();
+    assert_eq!(events[0]["type"], "meta");
+    assert_eq!(events[0]["data_revision"], revision.to_string());
+    assert!(events[0]["disclaimer"]
+        .as_str()
+        .unwrap()
+        .contains("sem ajustes"));
+    let quote = events
+        .iter()
+        .find(|event| event["type"] == "quote")
+        .unwrap();
+    assert_eq!(quote["data"]["ticker_symbol"], "EXMP3");
+    assert_eq!(quote["data"]["identity"]["status"], "unresolved");
+    assert_eq!(quote["data"]["provenance"]["record_index"], 2);
+    assert!(quote["data"].get("internal").is_none());
+    let checkpoint = events
+        .iter()
+        .find(|event| event["type"] == "checkpoint")
+        .unwrap()["cursor"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let complete = events
+        .iter()
+        .find(|event| event["type"] == "complete")
+        .unwrap();
+    assert_eq!(complete["record_count"], 1);
+    assert_eq!(complete["content_sha256"].as_str().unwrap().len(), 64);
+
+    let cached = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/v1/b3/cotahist/quotes/export?ticker_symbol=EXMP3&data_revision={revision}"
+                ))
+                .header("Authorization", "Bearer fixture-read")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(cached.status(), StatusCode::OK);
+    let etag = cached.headers()["etag"].to_str().unwrap().to_owned();
+    assert!(!etag.is_empty());
+    assert!(cached.headers().contains_key("content-length"));
+    let _ = axum::body::to_bytes(cached.into_body(), 1_048_576)
+        .await
+        .unwrap();
+
+    let unchanged = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/v1/b3/cotahist/quotes/export?ticker_symbol=EXMP3&data_revision={revision}"
+                ))
+                .header("Authorization", "Bearer fixture-read")
+                .header("If-None-Match", etag)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(unchanged.status(), StatusCode::NOT_MODIFIED);
+
+    let resumed = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/v1/b3/cotahist/quotes/export?ticker_symbol=EXMP3&cursor={checkpoint}"
+                ))
+                .header("Authorization", "Bearer fixture-read")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resumed.status(), StatusCode::OK);
+    let resumed_body = axum::body::to_bytes(resumed.into_body(), 1_048_576)
+        .await
+        .unwrap();
+    let resumed_events: Vec<Value> = resumed_body
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(|line| serde_json::from_slice(line).unwrap())
+        .collect();
+    assert_eq!(resumed_events[0]["resumed_after"], checkpoint);
+    assert_eq!(
+        resumed_events
+            .iter()
+            .find(|event| event["type"] == "complete")
+            .unwrap()["record_count"],
+        0
+    );
+
+    sqlx::query(
+        "UPDATE b3_source_eligibility SET status='restricted' WHERE channel='synthetic-contract'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let denied_cache_hit = app
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/v1/b3/cotahist/quotes/export?ticker_symbol=EXMP3&data_revision={revision}"
+                ))
+                .header("Authorization", "Bearer fixture-read")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(denied_cache_hit.status(), StatusCode::FORBIDDEN);
     cleanup(pool, admin, name).await;
 }
 

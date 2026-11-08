@@ -4,6 +4,12 @@ title: Changelog da documentação
 
 # Changelog
 
+## 08/11/2026 — Exportação integral COTAHIST
+
+- Publicado `GET /api/v1/b3/cotahist/quotes/export` em NDJSON finito, com revisão pinada, checkpoints, marcador `complete`, cache privado reconstruível e suporte a gzip/ETag para artefatos prontos.
+- A consulta paginada existente permanece compatível; consulte [endpoints COTAHIST](../api-endpoints/cotahist.md) e [schema COTAHIST](../schemas/cotahist.md).
+- A meta de primeira cotação sob um segundo e 50 consumidores simultâneos ainda requer benchmark e não é resultado medido.
+
 ## 06/11/2026 — Primeira versão do site Docusaurus
 
 - Criado guia de consumidores e operadores para o contrato REST inicial, fontes, schemas, autenticação, operação e MCP.

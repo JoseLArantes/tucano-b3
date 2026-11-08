@@ -90,6 +90,7 @@ Erros da API têm o envelope:
 | ``GET /api/v1/b3/capabilities`` | Leitura | ``OperationPage<Capability>`` | Descobre famílias implementadas, habilitadas ou adiadas. |
 | ``GET /api/v1/b3/diagnostics/coverage`` | Leitura | ``DatasetDiagnostics`` | Obtém uma revisão ativa ou fixa e seus limites gerais de cobertura. |
 | ``GET /api/v1/b3/cotahist/quotes`` | Leitura | ``QuotePage`` | Retorna fatos COTAHIST; pode retornar várias linhas no mesmo pregão. |
+| ``GET /api/v1/b3/cotahist/quotes/export`` | Leitura | ``application/x-ndjson`` | Exporta o histórico integral de um ticker em linhas tipadas e retomáveis. |
 | ``GET /api/v1/b3/cotahist/series`` | Leitura | ``QuotePage`` | Mesmos fatos/filtros; exige identidade de busca e uma linha inequívoca por data. |
 | ``GET /api/v1/b3/instruments`` | Leitura | ``InstrumentPage`` | Rota implementada, mas fontes cadastrais adiadas; não há snapshot no fluxo suportado do ``0.0.1``. |
 | ``GET /api/v1/b3/instruments/{id}`` | Leitura | ``InstrumentPage`` | Rota cadastral sem evidência publicada neste release. |
@@ -241,7 +242,43 @@ Exemplo de resposta abreviado:
 
 O exemplo é sintético e abreviado; uma resposta real pode incluir ``null`` em mais campos. ``last_price`` corresponde a ``PREULT``, o último negócio publicado. Não é preço ajustado, retorno total ou garantia de fechamento oficial.
 
-### 6.2 Cadastro e fotografias
+### 6.2 COTAHIST: exportação integral em NDJSON
+
+Use ``GET /api/v1/b3/cotahist/quotes/export`` quando o consumidor precisa transferir todo o histórico de um ticker, sem paginação ``offset`` e sem o teto de 1.000 linhas da consulta de lista. A resposta é finita, ordenada por ``trade_date`` e ``id``, e não representa cotações ao vivo.
+
+| Query/header | Tipo | Semântica |
+|---|---|---|
+| ``ticker_symbol`` | string | Obrigatório; 1–64 caracteres; o servidor remove espaços externos e normaliza para maiúsculas. |
+| ``data_revision`` | UUID | Opcional; fixa revisão publicada. Se ausente, a revisão ativa é escolhida uma vez e aparece em ``meta``. |
+| ``cursor`` | string URL-safe | Opcional; retoma exclusivamente depois de ``(trade_date, id)``. O token é ligado ao ticker, revisão e versão do schema. |
+| ``include_internal`` | boolean | Default ``false``; ``true`` acrescenta ``internal.version_id`` e ``internal.business_hash`` por cotação. |
+| ``If-None-Match`` | header | Opcional; ETag de artefato pronto. Correspondência retorna ``304`` sem corpo. |
+| ``Accept-Encoding`` | header | Clientes podem aceitar ``gzip``. A primeira geração pode chegar sem compressão; chamadas posteriores podem usar gzip. |
+
+Cada linha é um objeto JSON UTF-8 encerrado por LF, com o discriminador ``type``:
+
+| Evento | Uso |
+|---|---|
+| ``meta`` | Primeira linha; schema, ticker, revisão, cursor de retomada e aviso de preço nominal. |
+| ``quote`` | Uma instância de ``HistoricalQuote`` em ``data``. Conserva strings decimais, ``identity`` e ``provenance``. |
+| ``checkpoint`` | Cursor opaco emitido após um lote. Persista o cursor mais recente para retomada depois de uma desconexão. |
+| ``complete`` | Confirma que o segmento terminou; contém contagem desta resposta, cursor final e SHA-256 das linhas anteriores. |
+| ``error`` | Falha segura depois do início do corpo. Ausência de ``complete`` sempre significa que não há confirmação de sucesso. |
+
+Exemplo de linhas abreviadas:
+
+```ndjson
+{"type":"meta","schema_version":1,"ticker_symbol":"EXMP3","data_revision":"00000000-0000-4000-8000-000000000001","resumed_after":null,"disclaimer":"Preços históricos nominais brutos, na moeda e forma de cotação da época, sem ajustes retroativos por inflação ou eventos corporativos."}
+{"type":"quote","data":{"id":"00000000-0000-4000-8000-000000000010","trade_date":"2025-01-02","ticker_symbol":"EXMP3","open_price":"30.10","identity":{"instrument_id":null,"status":"unresolved"},"provenance":{"source_file_id":"00000000-0000-4000-8000-000000000011","source_file_type":"COTAHIST_YEARLY","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","source_member_id":"00000000-0000-4000-8000-000000000012","source_member_name":"COTAHIST.2025.TXT","record_index":42}}}
+{"type":"checkpoint","cursor":"eyJzY2hlbWFfdmVyc2lvbiI6MX0","records_sent":1}
+{"type":"complete","record_count":1,"last_cursor":"eyJzY2hlbWFfdmVyc2lvbiI6MX0","content_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+```
+
+Para continuar, envie ``ticker_symbol`` e o cursor do último checkpoint. O cursor conserva a revisão, mesmo se a revisão ativa mudar; se enviar ``data_revision`` explicitamente, ela deve coincidir. ``record_count`` é o número emitido nesta resposta, então some as contagens de segmentos para totalizar uma exportação retomada. Respostas cacheadas são reconstruíveis e privadas. A autorização e a elegibilidade REST/``third_party_delivery`` são revalidadas antes de usar cache; o cliente não deve encaminhar respostas autenticadas a CDN/cache público.
+
+Antes dos headers, a API retorna o envelope comum e status ``400``, ``401``, ``403``, ``404``, ``500`` ou ``503``. Depois que o corpo começou, HTTP não pode trocar o status: examine ``error`` e sempre exija o evento ``complete``. A revisão, schema e aviso COTAHIST continuam obrigatórios também neste transporte. Veja [endpoints COTAHIST](../docusaurus/docs/api-endpoints/cotahist.md) e [schemas COTAHIST](../docusaurus/docs/schemas/cotahist.md).
+
+### 6.3 Cadastro e fotografias
 
 Rotas: ``GET /instruments``, ``GET /instruments/{id}``, ``GET /instruments/{id}/identifiers`` e ``GET /tradable-securities``.
 
@@ -268,7 +305,7 @@ Cada ``InstrumentEvidence`` contém ``instrument_id`` nullable, ``snapshot_id``,
 
 ``GET /instruments/{id}/identifiers`` mantém o schema preparado para evidências futuras, mas não há ingestão cadastral habilitada nem itens suportados pelo ``0.0.1``. Não use esta rota como catálogo nem derive uma janela de validade para fatos históricos.
 
-### 6.3 Capacidades e diagnóstico
+### 6.4 Capacidades e diagnóstico
 
 ``GET /capabilities`` aceita ``limit`` e ``offset``; a resposta é ``OperationPage<Capability>`` sem ``total``. Cada item tem ``source_file_type``, ``implemented``, ``enabled`` e ``status`` (``enabled``, ``not_enabled`` ou ``deferred``). O catálogo conhece ``BVBG_028_INSTRUMENTS_FILE``, ``TRADABLE_SECURITY_LIST``, as três granularidades COTAHIST, ``BVBG_086_PRICE_REPORT``, ``BVBG_186_EQUITIES_SIMPLIFIED_PRICE_REPORT``, ``BVBG_087_INDEX_REPORT`` e ``B3_INDEX_PORTFOLIO_COMPOSITION``. Em ``0.0.1``, somente as três granularidades COTAHIST implementam ingestão; BVBG.028/TSL estão adiadas até suportarem cortes por data interna de cada registro, e as outras famílias permanecem adiadas por escopo. ``enabled`` exige canal ligado e elegibilidade para REST e distribuição a terceiros sem custo; não comprova que haja registro para uma data ou ticker.
 

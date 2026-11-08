@@ -36,6 +36,14 @@ _Evitar_: Intervalo de observação como prova automática de vigência.
 Fato de preço, quantidade ou estatística referente a uma data e granularidade de negociação publicada pela B3.
 _Evitar_: Linha de ação sem mercado, candle genérico.
 
+**Exportação histórica**:
+Entrega finita dos registros de um escopo histórico em uma revisão publicada identificada.
+_Evitar_: Feed em tempo real, série ajustada.
+
+**Retomada de exportação**:
+Continuação de uma exportação na mesma revisão a partir do último registro confirmado, sem repetir nem saltar fatos.
+_Evitar_: Recomeço pela revisão ativa, paginação por deslocamento.
+
 **Preço nominal bruto**:
 Preço histórico na moeda e base de cotação da época, sem ajuste retroativo por inflação ou eventos corporativos.
 _Evitar_: Preço ajustado, retorno total.

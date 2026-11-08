@@ -61,6 +61,19 @@ async fn public_exceptions_and_read_admin_separation_are_explicit() {
             .status(),
         StatusCode::UNAUTHORIZED
     );
+    assert_eq!(
+        app()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/b3/cotahist/quotes/export?ticker_symbol=EXMP3")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
     for path in [
         "/api/v1/b3/jobs",
         "/api/v1/b3/source-files",
@@ -147,6 +160,7 @@ async fn openapi_describes_only_supported_release_contracts() {
         .contains("não ajustados"));
     for path in [
         "/api/v1/b3/cotahist/quotes",
+        "/api/v1/b3/cotahist/quotes/export",
         "/api/v1/b3/cotahist/series",
         "/api/v1/b3/instruments/{id}",
         "/api/v1/b3/instruments/{id}/identifiers",
@@ -161,4 +175,12 @@ async fn openapi_describes_only_supported_release_contracts() {
     assert!(spec["paths"]["/api/v1/b3/jobs"]["post"]["responses"]
         .get("202")
         .is_some());
+    let export = &spec["paths"]["/api/v1/b3/cotahist/quotes/export"]["get"];
+    assert_eq!(
+        export["responses"]["200"]["content"]["application/x-ndjson"]["schema"]["$ref"],
+        "#/components/schemas/QuoteExportEvent"
+    );
+    assert!(export["responses"].get("304").is_some());
+    assert!(export["security"][0].get("bearer_auth").is_some());
+    assert!(spec["components"]["schemas"]["QuoteExportFilters"].is_object());
 }

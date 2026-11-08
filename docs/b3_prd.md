@@ -541,6 +541,7 @@ Campos novos opcionais podem ser aditivos quando seguros para consumidores. Alte
 | Instrumentos | `/instruments`, detalhe e identificadores; filtro temporal e evidência de origem |
 | Lista negociável | `/tradable-securities`; fotografias de referência e identificação publicada |
 | COTAHIST | `/cotahist/quotes` e consultas por ticker, ISIN, data e ID |
+| Exportação integral COTAHIST | `/cotahist/quotes/export`; NDJSON finito, revisão fixada e retomada por cursor |
 | Séries COTAHIST | Proposta aditiva `/cotahist/series`; seleção explícita de mercado e granularidade diária |
 | PriceReport | `/price-report/quotes`; filtros de edição e prazo |
 | Simplificado | `/equities-simplified-price-report/quotes`; contrato próprio |
@@ -719,7 +720,9 @@ Benchmarks separados: download, descompactação, parsing, normalização, resol
 
 Orçamentos de timeout, memória, storage e concorrência são configuráveis. Após a medição inicial, fixar metas para hardware de referência e adicionar regressão de desempenho com tolerância documentada. Não herdar metas como “50 mil req/s por vCPU” ou “500 MB em dois segundos” sem demonstração.
 
-Otimização inicial recomendada: streaming real, lotes limitados, SQL em conjunto, índices adequados e eliminação de trabalho repetido. Cache persistente, read replica e armazenamento colunar só entram quando um gargalo medido justificar.
+Otimização inicial recomendada: streaming real, lotes limitados, SQL em conjunto, índices adequados e eliminação de trabalho repetido. Para `GET /cotahist/quotes/export`, foi aprovada uma exceção estreita à regra de cache após benchmark: o endpoint precisa entregar históricos longos em fluxo e suportar concorrência alta sem reconstruir o mesmo ticker/revisão para cada consumidor. A cache é derivada e reconstruível, chaveada por revisão publicada, ticker, versão do schema, projeção `include_internal` e cursor; PostgreSQL continua sendo a fonte de verdade e a elegibilidade é verificada antes de cada uso de cache. Artefatos expiram em 30 dias. O miss consulta PostgreSQL em lotes keyset limitados e começa a transmitir enquanto a geração prossegue.
+
+O endpoint visa tempo p95 até a primeira cotação inferior a 1 segundo, com 50 consumidores simultâneos, em hardware, corpus e mistura de cache/cold miss documentados. Isso é uma meta a medir, não um resultado deste PRD. O runtime atual usa filesystem persistente para a cache em `B3_PROCESSED_DATA_DIR`; deployments com várias instâncias precisam apontar para um filesystem compartilhado. Object storage, read replica e armazenamento colunar permanecem decisões posteriores, condicionadas por medições de throughput, latência, concorrência, disco e impacto da ingestão.
 
 ### 17.4 Observabilidade, segurança e recuperação
 

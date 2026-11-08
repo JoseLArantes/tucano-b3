@@ -22,6 +22,12 @@ A operação separa descoberta de publicações, aquisição e processamento pes
 
 Uma revisão com rejeições ou conflitos não é publicada automaticamente e termina com issues para decisão administrativa. O fluxo também pode terminar com falha ou cancelamento. A consulta de dados não inicia esse fluxo.
 
+## Cache de exportação COTAHIST
+
+`GET /api/v1/b3/cotahist/quotes/export` usa o PostgreSQL para gerar lotes keyset de uma revisão publicada e grava uma cópia derivada em `B3_PROCESSED_DATA_DIR/quote-exports`. O manifesto PostgreSQL coordena uma geração por chave, registra lease/checksum/tamanho e aplica expiração de 30 dias. A perda de um arquivo invalida a entrada e permite reconstruí-la; não remova o schema ou a revisão para limpar a cache.
+
+O volume de exportações não contém fonte oficial nem é necessário para backup/restore do histórico. A aplicação pode montá-lo em storage persistente compartilhado quando tiver várias instâncias no mesmo deployment; a configuração Compose local não oferece filesystem multi-host ou object storage. Autorização e elegibilidade externa são verificadas antes de usar cada artefato. Como o endpoint é finito, o evento `complete` valida término; uma conexão encerrada antes dele é incompleta.
+
 ## Segurança e autorização
 
 POST de comando, cancelamento, retry, scan e reconhecimento de pendência exige Bearer administrativo. GET de jobs, sync-runs, arquivos, members, pendências e revisões também exige administração. Não publique credenciais administrativas a consumidores da API.

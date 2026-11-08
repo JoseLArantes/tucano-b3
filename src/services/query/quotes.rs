@@ -311,61 +311,10 @@ impl QueryService {
         .bind(offset)
         .fetch_all(&self.pool)
         .await?;
-        let mut items = Vec::with_capacity(rows.len());
-        for row in rows {
-            let identity = match row.get::<String, _>("resolution_status").as_str() {
-                "resolved" => IdentityStatus::Resolved,
-                "ambiguous" => IdentityStatus::Ambiguous,
-                _ => IdentityStatus::Unresolved,
-            };
-            items.push(HistoricalQuote {
-                id: row.get("id"),
-                trade_date: row.get("trade_date"),
-                ticker_symbol: row.get("ticker_symbol"),
-                market_type: row.get("market_type"),
-                bdi_code: row.get("bdi_code"),
-                distribution_number: row.get("distribution_number"),
-                term_days: row.get("term_days"),
-                issuer_short_name: row.get("issuer_short_name"),
-                paper_specification: row.get("paper_specification"),
-                currency: row.get("currency"),
-                open_price: row.get("open_price"),
-                high_price: row.get("high_price"),
-                low_price: row.get("low_price"),
-                average_price: row.get("average_price"),
-                last_price: row.get("last_price"),
-                best_bid_price: row.get("best_bid_price"),
-                best_ask_price: row.get("best_ask_price"),
-                trades_count: row.get("trades_count"),
-                traded_quantity: row.get("traded_quantity"),
-                traded_volume: row.get("traded_volume"),
-                option_exercise_price: row.get("option_exercise_price"),
-                price_correction_indicator: row.get("price_correction_indicator"),
-                maturity_date: row.get("maturity_date"),
-                quotation_factor: row.get("quotation_factor"),
-                exercise_price_points: row.get("exercise_price_points"),
-                isin: row.get("isin"),
-                identity: QuoteIdentity {
-                    instrument_id: row.get("instrument_id"),
-                    status: identity,
-                },
-                provenance: QuoteProvenance {
-                    source_file_id: row.get("source_file_id"),
-                    source_file_type: row.get("source_file_type"),
-                    sha256: row.get("sha256"),
-                    source_member_id: row.get("source_member_id"),
-                    source_member_name: row.get("member_name"),
-                    record_index: row.get("record_index"),
-                },
-                internal: filters
-                    .include_internal
-                    .unwrap_or(false)
-                    .then(|| QuoteInternal {
-                        version_id: row.get("version_id"),
-                        business_hash: row.get("business_hash"),
-                    }),
-            });
-        }
+        let items = rows
+            .iter()
+            .map(|row| historical_quote_from_row(row, filters.include_internal.unwrap_or(false)))
+            .collect();
         let mut coverage = self.coverage(revision, purpose).await?;
         coverage.requested_from = filters.trade_date_from;
         coverage.requested_to = filters.trade_date_to;
@@ -381,6 +330,51 @@ impl QueryService {
             disclaimer: NOMINAL_WARNING.into(),
             coverage,
         })
+    }
+
+    /// Tests whether the pinned revision contains this published ticker before opening a stream.
+    pub async fn ticker_has_quotes(
+        &self,
+        revision: Uuid,
+        ticker_symbol: &str,
+    ) -> Result<bool, QueryError> {
+        self.bounded(async {
+            Ok(sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM b3_cotahist_facts f JOIN b3_history_revision_quotes q ON q.fact_id=f.id WHERE q.revision_id=$1 AND f.ticker_symbol=$2)",
+            )
+            .bind(revision)
+            .bind(ticker_symbol)
+            .fetch_one(&self.pool)
+            .await?)
+        })
+        .await
+    }
+
+    /// Fetches one bounded keyset page for the immutable revision-pinned ticker export.
+    pub async fn ticker_quote_batch(
+        &self,
+        revision: Uuid,
+        ticker_symbol: &str,
+        after: Option<(NaiveDate, Uuid)>,
+        include_internal: bool,
+        batch_size: i64,
+    ) -> Result<Vec<HistoricalQuote>, QueryError> {
+        self.bounded(async {
+            let fields="SELECT f.id,f.trade_date,f.ticker_symbol,f.market_type,f.bdi_code,f.distribution_number,f.term_days,v.id AS version_id,v.business_hash,v.issuer_short_name,v.paper_specification,v.currency,v.open_price::text,v.high_price::text,v.low_price::text,v.average_price::text,v.last_price::text,v.best_bid_price::text,v.best_ask_price::text,v.trades_count,v.traded_quantity::text,v.traded_volume::text,v.option_exercise_price::text,v.price_correction_indicator,v.maturity_date,v.quotation_factor,v.exercise_price_points::text,v.isin,q.instrument_id,q.resolution_status,sf.id AS source_file_id,sf.source_file_type,sf.sha256,m.id AS source_member_id,m.member_name,q.record_index FROM b3_cotahist_facts f JOIN b3_history_revision_quotes q ON q.fact_id=f.id JOIN b3_cotahist_versions v ON v.id=q.version_id JOIN b3_source_file_members m ON m.id=q.source_member_id JOIN b3_source_files sf ON sf.id=m.source_file_id WHERE q.revision_id=$1 AND f.ticker_symbol=$2 AND ($3::date IS NULL OR (f.trade_date,f.id)>($3,$4)) ORDER BY f.trade_date,f.id LIMIT $5";
+            let rows = sqlx::query(fields)
+                .bind(revision)
+                .bind(ticker_symbol)
+                .bind(after.map(|cursor| cursor.0))
+                .bind(after.map(|cursor| cursor.1))
+                .bind(batch_size.clamp(1, 1000))
+                .fetch_all(&self.pool)
+                .await?;
+            Ok(rows
+                .iter()
+                .map(|row| historical_quote_from_row(row, include_internal))
+                .collect())
+        })
+        .await
     }
 
     pub async fn coverage(
@@ -405,5 +399,60 @@ impl QueryService {
             unresolved: row.get("unresolved"),
             calendar_status: "unknown".into(),
         })
+    }
+}
+
+fn historical_quote_from_row(
+    row: &sqlx::postgres::PgRow,
+    include_internal: bool,
+) -> HistoricalQuote {
+    let identity = match row.get::<String, _>("resolution_status").as_str() {
+        "resolved" => IdentityStatus::Resolved,
+        "ambiguous" => IdentityStatus::Ambiguous,
+        _ => IdentityStatus::Unresolved,
+    };
+    HistoricalQuote {
+        id: row.get("id"),
+        trade_date: row.get("trade_date"),
+        ticker_symbol: row.get("ticker_symbol"),
+        market_type: row.get("market_type"),
+        bdi_code: row.get("bdi_code"),
+        distribution_number: row.get("distribution_number"),
+        term_days: row.get("term_days"),
+        issuer_short_name: row.get("issuer_short_name"),
+        paper_specification: row.get("paper_specification"),
+        currency: row.get("currency"),
+        open_price: row.get("open_price"),
+        high_price: row.get("high_price"),
+        low_price: row.get("low_price"),
+        average_price: row.get("average_price"),
+        last_price: row.get("last_price"),
+        best_bid_price: row.get("best_bid_price"),
+        best_ask_price: row.get("best_ask_price"),
+        trades_count: row.get("trades_count"),
+        traded_quantity: row.get("traded_quantity"),
+        traded_volume: row.get("traded_volume"),
+        option_exercise_price: row.get("option_exercise_price"),
+        price_correction_indicator: row.get("price_correction_indicator"),
+        maturity_date: row.get("maturity_date"),
+        quotation_factor: row.get("quotation_factor"),
+        exercise_price_points: row.get("exercise_price_points"),
+        isin: row.get("isin"),
+        identity: QuoteIdentity {
+            instrument_id: row.get("instrument_id"),
+            status: identity,
+        },
+        provenance: QuoteProvenance {
+            source_file_id: row.get("source_file_id"),
+            source_file_type: row.get("source_file_type"),
+            sha256: row.get("sha256"),
+            source_member_id: row.get("source_member_id"),
+            source_member_name: row.get("member_name"),
+            record_index: row.get("record_index"),
+        },
+        internal: include_internal.then(|| QuoteInternal {
+            version_id: row.get("version_id"),
+            business_hash: row.get("business_hash"),
+        }),
     }
 }

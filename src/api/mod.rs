@@ -8,7 +8,11 @@ pub mod schemas;
 
 use crate::{
     config::B3Settings,
-    services::{query::*, sync_service::B3SyncService},
+    services::{
+        query::*,
+        quote_export::{QuoteExportEvent, QuoteExportFilters},
+        sync_service::B3SyncService,
+    },
 };
 use axum::{
     middleware,
@@ -38,7 +42,7 @@ impl Modify for SecurityAddon {
 }
 
 #[derive(OpenApi)]
-#[openapi(info(title="Tucano B3",version="0.0.1",description="Histórico oficial nominal B3 com precisão, revisão fixada e proveniência. Preços COTAHIST não ajustados por inflação ou eventos corporativos."),modifiers(&SecurityAddon),paths(release::quotes,release::series,release::instruments,release::instrument,release::instrument_identifiers,release::tradable_securities,release::submit_job,release::job,release::cancel_job,release_ops::source_files,release_ops::pending,release_ops::revision,release_ops::conflicts,release_ops::rejections,release_ops::members,release_ops::scan,release_ops::jobs,release_ops::sync_runs,release_ops::capabilities,healthz,health),components(schemas(QuoteFilters,QuotePage,HistoricalQuote,QuoteProvenance,QuoteIdentity,QuoteInternal,Coverage,CoverageStatus,IdentityStatus,InstrumentFilters,InstrumentPage,InstrumentEvidence,InstrumentIdentifierEvidence,InstrumentIdentifierPage,InstrumentIdentifierProvenance,JobView,JobStatus,RevisionView,ConflictView,RejectionView,SourceFileView,MemberView,PendingView,ListFilters,Capability,CapabilityStatus,release::SubmitJob,release::AcceptedJob,release_error::ErrorResponse,Health)),tags((name="COTAHIST",description="Arquivos oficiais COTAHIST anual/mensal/diário; preços nominais sem ajustes"),(name="Cadastro",description="Fotografias oficiais com evidências temporais"),(name="Operação",description="Comandos rastreados, somente para administração"),(name="Saúde",description="Exceções públicas explícitas")))]
+#[openapi(info(title="Tucano B3",version="0.0.1",description="Histórico oficial nominal B3 com precisão, revisão fixada e proveniência. Preços COTAHIST não ajustados por inflação ou eventos corporativos."),modifiers(&SecurityAddon),paths(release::quotes,release::quote_export,release::series,release::instruments,release::instrument,release::instrument_identifiers,release::tradable_securities,release::submit_job,release::job,release::cancel_job,release_ops::source_files,release_ops::pending,release_ops::revision,release_ops::conflicts,release_ops::rejections,release_ops::members,release_ops::scan,release_ops::jobs,release_ops::sync_runs,release_ops::capabilities,healthz,health),components(schemas(QuoteFilters,QuotePage,HistoricalQuote,QuoteProvenance,QuoteIdentity,QuoteInternal,QuoteExportFilters,QuoteExportEvent,Coverage,CoverageStatus,IdentityStatus,InstrumentFilters,InstrumentPage,InstrumentEvidence,InstrumentIdentifierEvidence,InstrumentIdentifierPage,InstrumentIdentifierProvenance,JobView,JobStatus,RevisionView,ConflictView,RejectionView,SourceFileView,MemberView,PendingView,ListFilters,Capability,CapabilityStatus,release::SubmitJob,release::AcceptedJob,release_error::ErrorResponse,Health)),tags((name="COTAHIST",description="Arquivos oficiais COTAHIST anual/mensal/diário; preços nominais sem ajustes"),(name="Cadastro",description="Fotografias oficiais com evidências temporais"),(name="Operação",description="Comandos rastreados, somente para administração"),(name="Saúde",description="Exceções públicas explícitas")))]
 struct BaseDoc;
 
 #[derive(OpenApi)]
@@ -109,6 +113,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/docs", get(swagger_ui))
         .route("/docs/", get(swagger_ui))
         .route("/api/v1/b3/cotahist/quotes", get(release::quotes))
+        .route(
+            "/api/v1/b3/cotahist/quotes/export",
+            get(release::quote_export),
+        )
         .route("/api/v1/b3/instruments", get(release::instruments))
         .route("/api/v1/b3/instruments/{id}", get(release::instrument))
         .route(

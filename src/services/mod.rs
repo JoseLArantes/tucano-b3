@@ -3,5 +3,6 @@ pub mod download_service;
 pub mod eligibility;
 pub mod jobs;
 pub mod query;
+pub mod quote_export;
 pub mod runtime;
 pub mod sync_service;

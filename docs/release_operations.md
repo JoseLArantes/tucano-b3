@@ -26,6 +26,8 @@ O fluxo de duas etapas com token não é anunciado como homologado: exige canal/
 
 ## Backup consistente de SQL e raw
 
+O cache de exportações em `B3_PROCESSED_DATA_DIR/quote-exports` é derivado e reconstruível; não é incluído no backup consistente de SQL+raw nem necessário para restaurar o histórico. As entradas expiram após 30 dias. Após perda do volume, manifests sem arquivo são marcados como falha e a próxima chamada reconstrói o artefato. Em várias instâncias da API, o caminho precisa ser um filesystem persistente compartilhado. O Compose de desenvolvimento usa um volume local e não fornece armazenamento multi-host.
+
 `scripts/release_snapshot.py` usa apenas Python padrão como ferramenta operacional; a aplicação continua em Rust. PostgreSQL é acessado pelos clientes do container Compose, sem imprimir senhas ou aceitar credenciais em URL na linha de comando.
 
 O backup exporta um snapshot PostgreSQL de leitura e mantém a transação viva durante a captura. O dump, os localizadores raw e a consulta de referência usam esse mesmo snapshot. Como os bytes raw são imutáveis, a cópia pode acontecer sem bloquear ingestões; limpeza não deve remover arquivos referenciados enquanto um backup está em andamento.

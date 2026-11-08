@@ -25,11 +25,13 @@ services:
     environment:
       DATABASE_URL: ${B3_API_DATABASE_URL:-postgres://postgres:postgres@b3_postgres:5432/tucano_b3}
       B3_DB_MAX_CONNECTIONS: ${B3_DB_MAX_CONNECTIONS:-8}
+      B3_PROCESSED_DATA_DIR: /data/processed
       TUCANO_B3_READ_TOKEN: ${TUCANO_B3_READ_TOKEN:-}
       TUCANO_B3_ADMIN_TOKEN: ${TUCANO_B3_ADMIN_TOKEN:-}
       RUST_LOG: ${RUST_LOG:-info}
     volumes:
       - b3_raw_files:/data/raw
+      - b3_processed_files:/data/processed
     depends_on:
       b3_postgres:
         condition: service_healthy
@@ -88,6 +90,7 @@ services:
 volumes:
   postgres_data:
   b3_raw_files:
+  b3_processed_files:
   cargo_target:
   cargo_registry:
   cargo_git:

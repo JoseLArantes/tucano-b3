@@ -39,3 +39,19 @@ QuotePage contém disclaimer e coverage. Coverage tem requested_from, requested_
 ## Limitação semântica
 
 Todos os preços são nominais sem ajuste retroativo. PREULT não deve ser transformado em campo de fechamento oficial genérico; traded_volume não deve ser confundido com traded_quantity.
+
+## Eventos da exportação NDJSON
+
+`GET /api/v1/b3/cotahist/quotes/export` envia uma linha JSON UTF-8 por evento. As linhas são independentes e terminam com LF. O schema `QuoteExportEvent` no `/openapi.json` define as formas fechadas; use a URL de OpenAPI da API do ambiente em uso.
+
+| `type` | Campos | Interpretação |
+| --- | --- | --- |
+| `meta` | `schema_version`, `ticker_symbol`, `data_revision`, `resumed_after`, `disclaimer` | Identifica a projeção e revisão imutável antes das cotações. `disclaimer` preserva o aviso de preços nominais sem ajustes. |
+| `quote` | `data: HistoricalQuote` | Ocorrência oficial; conserva decimais como strings, data ISO, identidade temporal e proveniência até arquivo/member/registro. |
+| `checkpoint` | `cursor`, `records_sent` | Cursor opaco depois do último fato de um lote. `records_sent` conta as linhas `quote` desta resposta, não o total histórico. |
+| `complete` | `record_count`, `last_cursor`, `content_sha256` | Confirma o fim da resposta. `content_sha256` cobre, em ordem, todas as linhas anteriores, incluindo `meta`, cotações e checkpoints, sem a linha `complete`. |
+| `error` | `code`, `message`, `request_id` | Falha segura depois que os headers HTTP já foram enviados. A resposta fica incompleta e não pode ser armazenada como exportação válida. |
+
+O cursor é Base64 URL-safe sem padding de um token opaco ligado à versão do schema, ticker, revisão e chave `(trade_date, id)`. Ele é exclusivo: a retomada começa depois do último fato já confirmado. Preserve o cursor exatamente e envie novamente o mesmo ticker. A resposta retomada gera seu próprio `meta`, checkpoints, contagem e checksum; some as contagens se precisar do total entre segmentos. Sem `complete`, não há confirmação de integridade, mesmo que o corpo termine sem erro aparente.
+
+`include_internal=true` acrescenta `internal.version_id` e `internal.business_hash` dentro de cada `HistoricalQuote`. Esses valores não substituem `provenance` e não mudam a revisão. O ETag HTTP representa os bytes da representação pronta (gzip ou NDJSON sem compressão), enquanto `content_sha256` do evento final representa as linhas NDJSON anteriores a `complete`.

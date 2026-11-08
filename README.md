@@ -13,6 +13,7 @@ O primeiro lançamento **0.0.1** entrega a plataforma de ingestão histórica, s
 - Operações administrativas persistem jobs e retornam `202 Accepted` com localização de acompanhamento. O aceite HTTP não significa conclusão da ingestão.
 - Listas usam `limit=100`, máximo `1000`, `offset=0` e ordem determinística. Revisão informada no payload pode ser fixada nas páginas seguintes.
 - Cotações têm proveniência até arquivo/member/registro, estado da identidade e limitações de cobertura. Valores financeiros são strings decimais.
+- `GET /api/v1/b3/cotahist/quotes/export` transmite o histórico integral de um ticker em NDJSON finito, com revisão fixada, checkpoints retomáveis e artefatos cacheados reconstruíveis em `B3_PROCESSED_DATA_DIR`.
 - MCP inicial usa stdio, os mesmos serviços de consulta e credencial PostgreSQL somente leitura. Logs vão para stderr; stdout contém apenas o protocolo.
 - BVBG.028 e Tradable Security List ficam adiadas até que a seleção dos registros por `from`/`to` possa usar uma data de negócio interna. BVBG.086/186, BVBG.087 e carteiras permanecem nos marcos G6/G7, sem fallback silencioso para COTAHIST.
 
@@ -46,6 +47,8 @@ docker compose up -d b3_api b3_worker
 ```
 
 A API usa a porta host `8010` e PostgreSQL `5433`; na rede Compose, `8000` e `5432`. O exemplo PostgreSQL é local e não define credenciais de produção. Não usar `docker compose down -v` como rotina: remove evidência persistente.
+
+O volume `b3_processed_files` guarda apenas artefatos derivados de exportação, com expiração de 30 dias; eles podem ser reconstruídos a partir das revisões PostgreSQL. Em uma implantação com várias instâncias de API, configure `B3_PROCESSED_DATA_DIR` para um filesystem persistente compartilhado por elas. A composição atual não fornece armazenamento de objetos multi-host.
 
 ```bash
 docker compose run --rm cargo cargo fmt --all -- --check
