@@ -6,9 +6,9 @@ title: Padrões da API
 
 ## Base e contrato legível por máquina
 
-O namespace de domínio é /api/v1/b3. O contrato OpenAPI 3.1 é gerado pelo binário e servido em GET /openapi.json. GET /docs é uma página HTML pequena que aponta para esse JSON. O Docusaurus é o guia narrativo separado.
+O namespace de domínio é /api/v1/b3. O contrato OpenAPI 3.1 é gerado pelo binário e servido em GET /openapi.json. GET /docs redireciona com 303 para /docs/, onde a Swagger UI está ligada a esse mesmo documento e oferece “Try it out” para o ambiente em execução. O Docusaurus é o guia narrativo separado.
 
-Rotas de domínio e operação exigem Bearer. GET /healthz, GET /api/v1/health, GET /docs e GET /openapi.json são exceções públicas explícitas.
+Rotas de domínio e operação exigem Bearer. GET /healthz, GET /api/v1/health, GET /openapi.json, GET /docs e os assets GET sob /docs/ são exceções públicas explícitas. Tornar a UI pública não torna públicas as operações que ela chama; elas continuam com as permissões descritas na referência de cada endpoint.
 
 ## Paginação
 

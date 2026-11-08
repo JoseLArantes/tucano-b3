@@ -9,6 +9,7 @@ pub const NOMINAL_WARNING: &str = "Preços históricos nominais brutos, na moeda
 
 /// Filtros do histórico nominal COTAHIST; datas inclusivas.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, IntoParams, ToSchema)]
+#[into_params(parameter_in = Query)]
 #[serde(deny_unknown_fields)]
 pub struct QuoteFilters {
     /// Código de negociação; não identifica um instrumento permanente.
@@ -222,6 +223,7 @@ pub struct DatasetDiagnostics {
 }
 /// Revisão opcional para diagnóstico consistente.
 #[derive(Debug, Default, Clone, Deserialize, IntoParams, ToSchema)]
+#[into_params(parameter_in = Query)]
 #[serde(deny_unknown_fields)]
 pub struct DiagnosticsFilters {
     /// Revisão publicada a fixar; ausente seleciona a ativa.

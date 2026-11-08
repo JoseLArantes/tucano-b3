@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 /// Paginação de inspeção administrativa.
 #[derive(Debug, Default, Deserialize, IntoParams, ToSchema)]
+#[into_params(parameter_in = Query)]
 #[serde(deny_unknown_fields)]
 pub struct ListFilters {
     /// Quantidade por página, padrão 100, máximo 1000.

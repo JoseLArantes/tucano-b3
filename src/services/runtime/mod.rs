@@ -1,5 +1,6 @@
 //! Release execution and scheduled discovery share PostgreSQL coordination.
 pub mod discovery;
+pub mod discovery_locations;
 pub mod executor;
 mod registry;
 
@@ -10,6 +11,7 @@ use std::path::PathBuf;
 pub struct RuntimeSettings {
     pub raw_root: PathBuf,
     pub allowed_hosts: Vec<String>,
+    pub discovery_locations: String,
     pub batch_records: usize,
     pub batch_bytes: usize,
     pub lease_seconds: i32,
@@ -24,6 +26,7 @@ impl RuntimeSettings {
                 .split(',')
                 .map(|s| s.trim().to_string())
                 .collect(),
+            discovery_locations: settings.b3_discovery_locations.clone(),
             batch_records: configured("B3_BATCH_RECORDS", 500),
             batch_bytes: configured("B3_BATCH_BYTES", 4 * 1024 * 1024),
             lease_seconds: configured("B3_LEASE_SECONDS", 120).try_into().unwrap_or(0),
@@ -31,6 +34,7 @@ impl RuntimeSettings {
     }
 
     pub fn validate(&self) -> crate::error::Result<()> {
+        discovery_locations::parse_locations(&self.discovery_locations, &self.allowed_hosts)?;
         if !(1..=1000).contains(&self.batch_records)
             || !(1024..=64 * 1024 * 1024).contains(&self.batch_bytes)
             || !(3..=3600).contains(&self.lease_seconds)

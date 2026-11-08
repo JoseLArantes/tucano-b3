@@ -8,7 +8,7 @@ O primeiro lançamento **0.0.1** entrega a plataforma de ingestão histórica, s
 
 ## Contratos do primeiro lançamento
 
-- REST em `/api/v1/b3/...`, com OpenAPI em `/openapi.json` e documentação em `/docs`.
+- REST em `/api/v1/b3/...`, com OpenAPI gerado em `/openapi.json` e Swagger UI interativa em `/docs`.
 - Consumidores e administradores usam tokens Bearer distintos. Credencial de leitura não autoriza ingestão, replay, rebuild, publicação ou rollback.
 - Operações administrativas persistem jobs e retornam `202 Accepted` com localização de acompanhamento. O aceite HTTP não significa conclusão da ingestão.
 - Listas usam `limit=100`, máximo `1000`, `offset=0` e ordem determinística. Revisão informada no payload pode ser fixada nas páginas seguintes.
@@ -21,7 +21,7 @@ O primeiro lançamento **0.0.1** entrega a plataforma de ingestão histórica, s
 
 ## Modelo de execução
 
-A descoberta leve registra checagens e pendências. Administradores solicitam aquisição/ingestão com cortes `from`/`to`; um import limpo publica automaticamente após os gates de qualidade. O worker consome jobs duráveis PostgreSQL, com lanes de manutenção/trabalho pesado, tentativas, lease, heartbeat, fencing e cancelamento.
+A descoberta leve registra checagens de canais e percorre os locais definidos em `B3_DISCOVERY_LOCATIONS` (`folder:`, `b3_url:` e `object_storage_bucket:`), retornando metadados COTAHIST sem baixar arquivos. No Compose, a pasta local `./data/imports` é montada somente leitura em `/data/raw/imports`. Para S3 compatível, use o provedor de credenciais AWS e `AWS_ENDPOINT_URL_S3` opcional com permissão restrita a listar objetos. Um candidato encontrado não vira canal elegível nem inicia ingestão. Administradores solicitam aquisição/ingestão com cortes `from`/`to`; um import limpo publica automaticamente após os gates de qualidade. O worker consome jobs duráveis PostgreSQL, com lanes de manutenção/trabalho pesado, tentativas, lease, heartbeat, fencing e cancelamento.
 
 A aquisição preserva raw por SHA-256 e inventaria ZIPs aninhados em disco. O processamento produz registros tipados em lotes limitados e quarentena localizada. A revisão anterior continua consultável até a promoção atômica da candidata completa. Divergências sem precedência comprovada não são resolvidas pela ordem de download.
 
@@ -96,6 +96,6 @@ Para servir e validar o site localmente:
     npm --prefix docusaurus start
     npm --prefix docusaurus run build
 
-O servidor Docusaurus usa http://localhost:3000. Ele é separado da API em execução: /docs e /openapi.json são rotas do serviço, enquanto o site Docusaurus contém guias completos para pessoas e documentação operacional.
+O servidor Docusaurus usa http://localhost:3000. Ele é separado da API em execução: /docs redireciona para a Swagger UI em /docs/, ligada ao contrato do binário, e /openapi.json entrega o documento legível por máquina; o site Docusaurus contém guias completos para pessoas e documentação operacional. A UI Swagger permite executar chamadas reais, mas as rotas protegidas continuam exigindo o Bearer e o nível de autorização adequados.
 
 Referências: [marcos](docs/prd_dev_milestones.md), [backlog](docs/issues/README.md), [pesquisa de fontes](docs/RESEARCH.md), [guia B3](docs/B3.md), [referência técnica das famílias](docs/ref_b3.md), [contextos](CONTEXT-MAP.md) e [revisão inicial](docs/19-plan.md). Documentação e aprovação de PRD não equivalem a uma publicação externa.

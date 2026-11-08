@@ -4,6 +4,12 @@ title: Changelog da documentação
 
 # Changelog
 
+## 08/11/2026 — Descoberta configurável de COTAHIST
+
+- `POST /api/v1/b3/discovery/scan` consulta pastas, URLs diretas oficiais B3 e buckets AWS S3 compatíveis configurados em `B3_DISCOVERY_LOCATIONS`.
+- O contrato responde com resultados por local e candidatos tipados por metadados, sem baixar, ingerir ou criar pendências de canal para esses locais.
+- Veja [descoberta](../operations/discovery.md), [endpoints operacionais](../api-endpoints/operations.md) e [schemas operacionais](../schemas/operations.md). Compatibilidade aditiva na resposta do endpoint existente.
+
 ## 08/11/2026 — Exportação integral COTAHIST
 
 - Publicado `GET /api/v1/b3/cotahist/quotes/export` em NDJSON finito, com revisão pinada, checkpoints, marcador `complete`, cache privado reconstruível e suporte a gzip/ETag para artefatos prontos.

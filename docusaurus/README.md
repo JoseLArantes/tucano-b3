@@ -35,7 +35,7 @@ O workflow .github/workflows/deploy-docs.yml publica o build no GitHub Pages ap�
 ## Regras editoriais
 
 - Escreva documentação pública em português brasileiro e preserve os identificadores técnicos.
-- Use o OpenAPI servido pelo binário em /openapi.json como referência de contrato legível por máquina. A rota /docs do serviço é apenas uma página mínima com link para o JSON; não é este site.
+- Use o OpenAPI servido pelo binário em /openapi.json como referência de contrato legível por máquina. A rota /docs do serviço serve a Swagger UI interativa ligada a esse documento; ela não substitui este site nem as permissões Bearer das operações.
 - Descreva todos os métodos, parâmetros, limites, permissões, respostas e campos relevantes nas páginas de endpoint e schema.
 - Mantenha cada afirmação alinhada a código, testes e estado publicado. Escopo do PRD não significa que uma fonte esteja habilitada ou disponível ao consumidor.
 - Ao alterar contrato, atualize a descrição Utoipa/OpenAPI e as páginas correspondentes de endpoint e schema no mesmo trabalho.

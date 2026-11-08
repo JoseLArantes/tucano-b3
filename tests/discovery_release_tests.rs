@@ -3,7 +3,11 @@ use sqlx::{postgres::PgPoolOptions, PgPool};
 use std::path::PathBuf;
 use tucano_b3::{
     db::run_migrations,
-    services::runtime::{discovery::DiscoveryService, RuntimeSettings},
+    services::runtime::{
+        discovery::DiscoveryService,
+        discovery_locations::{DiscoveryFileType, DiscoveryLocationOutcome},
+        RuntimeSettings,
+    },
 };
 use uuid::Uuid;
 
@@ -69,6 +73,7 @@ async fn discovery_uses_evidence_deduplicates_pending_and_revalidates_acknowledg
         RuntimeSettings {
             raw_root: PathBuf::from(root.path()),
             allowed_hosts: vec![],
+            discovery_locations: String::new(),
             batch_records: 100,
             batch_bytes: 4096,
             lease_seconds: 120,
@@ -178,5 +183,68 @@ async fn discovery_uses_evidence_deduplicates_pending_and_revalidates_acknowledg
         .await
         .unwrap();
     assert_eq!(jobs, 0, "discovery must not enqueue ingestion work");
+    cleanup(pool, admin, name).await;
+}
+
+#[tokio::test]
+async fn configured_folder_discovery_records_cotahist_metadata_without_ingesting() {
+    let (pool, admin, name) = database().await;
+    let temp = tempfile::tempdir().unwrap();
+    let imports = temp.path().join("imports");
+    std::fs::create_dir(&imports).unwrap();
+    let file_name = "COTAHIST_A2025.ZIP";
+    let payload = b"synthetic COTAHIST metadata fixture";
+    std::fs::write(imports.join(file_name), payload).unwrap();
+    let settings = RuntimeSettings {
+        raw_root: PathBuf::from(temp.path()),
+        allowed_hosts: vec!["www.b3.com.br".into()],
+        discovery_locations: format!("folder:{}", imports.display()),
+        batch_records: 100,
+        batch_bytes: 4096,
+        lease_seconds: 120,
+    };
+    let service = DiscoveryService::new(pool.clone(), settings);
+
+    let first = service
+        .scan(Uuid::new_v4(), false, Utc::now())
+        .await
+        .unwrap();
+    assert_eq!(first.locations.len(), 1);
+    assert_eq!(
+        first.locations[0].outcome,
+        DiscoveryLocationOutcome::Available
+    );
+    assert_eq!(first.candidate_count, 1);
+    assert_eq!(
+        first.candidates[0].source_file_type,
+        DiscoveryFileType::CotahistYearly
+    );
+    assert_eq!(first.candidates[0].byte_size, Some(payload.len() as i64));
+
+    service
+        .scan(Uuid::new_v4(), false, Utc::now())
+        .await
+        .unwrap();
+    let checks: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM b3_discovery_location_checks WHERE location_kind='folder'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let candidates: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM b3_discovery_location_candidates WHERE source_file_type='COTAHIST_YEARLY' AND source_locator=$1",
+    )
+    .bind(format!("folder:1/{file_name}"))
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let source_files: i64 = sqlx::query_scalar("SELECT count(*) FROM b3_source_files")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(checks, 2);
+    assert_eq!(candidates, 2);
+    assert_eq!(source_files, 0);
+
     cleanup(pool, admin, name).await;
 }

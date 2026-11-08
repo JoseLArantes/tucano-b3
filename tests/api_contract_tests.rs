@@ -38,7 +38,7 @@ async fn body(response: axum::response::Response) -> Value {
 
 #[tokio::test]
 async fn public_exceptions_and_read_admin_separation_are_explicit() {
-    for path in ["/healthz", "/openapi.json"] {
+    for path in ["/healthz", "/openapi.json", "/docs/"] {
         assert_eq!(
             app()
                 .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
@@ -89,7 +89,7 @@ async fn public_exceptions_and_read_admin_separation_are_explicit() {
             )
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert_eq!(response.status(), StatusCode::FORBIDDEN, "{path}");
         assert_eq!(body(response).await["code"], "ADMIN_REQUIRED");
     }
     let response = app()
@@ -103,6 +103,191 @@ async fn public_exceptions_and_read_admin_separation_are_explicit() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    let response = app()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/b3/discovery/scan")
+                .header("Authorization", "Bearer test-read")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert_eq!(body(response).await["code"], "ADMIN_REQUIRED");
+
+    let response = app()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/docs")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn swagger_ui_loads_the_generated_openapi_contract_publicly() {
+    let response = app()
+        .oneshot(Request::builder().uri("/docs").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(response.headers()[axum::http::header::LOCATION], "/docs/");
+
+    let response = app()
+        .oneshot(
+            Request::builder()
+                .uri("/docs/")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let html = String::from_utf8(
+        axum::body::to_bytes(response.into_body(), 1_048_576)
+            .await
+            .unwrap()
+            .to_vec(),
+    )
+    .unwrap();
+    assert!(html.contains("swagger-ui"));
+
+    let response = app()
+        .oneshot(
+            Request::builder()
+                .uri("/docs/swagger-initializer.js")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let initializer = String::from_utf8(
+        axum::body::to_bytes(response.into_body(), 1_048_576)
+            .await
+            .unwrap()
+            .to_vec(),
+    )
+    .unwrap();
+    assert!(initializer.contains("/openapi.json"));
+
+    let response = app()
+        .oneshot(
+            Request::builder()
+                .uri("/docs/swagger-ui.css")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let spec = body(
+        app()
+            .oneshot(
+                Request::builder()
+                    .uri("/openapi.json")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(spec["openapi"], "3.1.0");
+    assert_eq!(spec["info"]["version"], "0.0.1");
+    assert!(spec["components"]["securitySchemes"]["bearer_auth"].is_object());
+    let auth_description = spec["components"]["securitySchemes"]["bearer_auth"]["description"]
+        .as_str()
+        .unwrap();
+    assert!(auth_description.contains("TUCANO_B3_READ_TOKEN"));
+    assert!(auth_description.contains("TUCANO_B3_ADMIN_TOKEN"));
+    let export = &spec["paths"]["/api/v1/b3/cotahist/quotes/export"]["get"];
+    assert!(export.is_object());
+    assert!(!export["summary"].as_str().unwrap_or_default().is_empty());
+    assert!(export["parameters"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|parameter| parameter["name"] == "ticker_symbol"));
+    assert!(export["security"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|scheme| scheme["bearer_auth"].is_array()));
+    for status in ["200", "400", "401", "403", "404", "500", "503"] {
+        assert!(
+            export["responses"][status].is_object(),
+            "missing response {status}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn openapi_query_parameters_are_optional_queries_with_pagination_defaults() {
+    let spec = body(
+        app()
+            .oneshot(
+                Request::builder()
+                    .uri("/openapi.json")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap(),
+    )
+    .await;
+    let paths = spec["paths"].as_object().unwrap();
+    let mut limit_count = 0;
+    let mut offset_count = 0;
+
+    for (path, path_item) in paths {
+        for (method, operation) in path_item.as_object().unwrap() {
+            if !matches!(method.as_str(), "get" | "post" | "put" | "patch" | "delete") {
+                continue;
+            }
+            let Some(parameters) = operation["parameters"].as_array() else {
+                continue;
+            };
+            for parameter in parameters {
+                let name = parameter["name"].as_str().unwrap();
+                let location = parameter["in"].as_str().unwrap();
+                if location == "path" {
+                    assert!(
+                        path.contains(&format!("{{{name}}}")),
+                        "{name} is not a path placeholder in {path}"
+                    );
+                }
+                if name == "limit" || name == "offset" {
+                    assert_eq!(
+                        location, "query",
+                        "{name} must be a query parameter on {path}"
+                    );
+                    assert_eq!(parameter["required"], false, "{name} is optional on {path}");
+                    let expected_default = if name == "limit" { 100 } else { 0 };
+                    assert_eq!(parameter["schema"]["default"], expected_default);
+                    if name == "limit" {
+                        limit_count += 1;
+                    } else {
+                        offset_count += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    assert!(
+        limit_count >= 10,
+        "only {limit_count} operations expose limit"
+    );
+    assert_eq!(limit_count, offset_count);
 }
 
 #[tokio::test]
@@ -166,6 +351,7 @@ async fn openapi_describes_only_supported_release_contracts() {
         "/api/v1/b3/instruments/{id}/identifiers",
         "/api/v1/b3/tradable-securities",
         "/api/v1/b3/jobs",
+        "/api/v1/b3/discovery/scan",
     ] {
         assert!(spec["paths"].get(path).is_some());
     }
@@ -183,6 +369,38 @@ async fn openapi_describes_only_supported_release_contracts() {
     assert!(export["responses"].get("304").is_some());
     assert!(export["security"][0].get("bearer_auth").is_some());
     assert!(spec["components"]["schemas"]["QuoteExportFilters"].is_object());
+
+    let discovery = &spec["paths"]["/api/v1/b3/discovery/scan"]["post"];
+    assert!(discovery["description"]
+        .as_str()
+        .unwrap()
+        .contains("B3_DISCOVERY_LOCATIONS"));
+    assert_eq!(
+        discovery["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/DiscoveryResult"
+    );
+    assert!(spec["components"]["schemas"]["DiscoveryLocationResult"].is_object());
+    assert!(spec["components"]["schemas"]["DiscoveryCandidateResult"].is_object());
+    for value in ["folder", "b3_url", "object_storage_bucket"] {
+        assert!(
+            spec["components"]["schemas"]["DiscoveryLocationKind"]["enum"]
+                .as_array()
+                .unwrap()
+                .contains(&json!(value))
+        );
+    }
+    for value in ["available", "absent", "inconclusive", "failed"] {
+        assert!(
+            spec["components"]["schemas"]["DiscoveryLocationOutcome"]["enum"]
+                .as_array()
+                .unwrap()
+                .contains(&json!(value))
+        );
+    }
+    assert_eq!(
+        spec["components"]["schemas"]["DiscoveryFileType"]["enum"][0],
+        "COTAHIST_YEARLY"
+    );
 
     let description = export["description"].as_str().unwrap();
     for required_detail in [

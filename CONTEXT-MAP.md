@@ -18,6 +18,7 @@ O contexto atualmente documentado é compartilhado por aquisição, persistênci
 - [Pesquisa de fontes](docs/RESEARCH.md): evidências, datas e limitações da pesquisa.
 - [Plano de revisão e migração](docs/19-plan.md): avaliação do código existente.
 - [ADR 0001](docs/adr/0001-revision-pinned-cotahist-export.md): contrato NDJSON, cache derivada e revisão fixa para exportações COTAHIST longas.
+- [ADR 0002](docs/adr/0002-configured-metadata-discovery.md): locais configuráveis para descoberta metadata-only de COTAHIST.
 - [Backlog](docs/issues/README.md): prontidão, dependências e critérios de aceite.
 - [Documentação Docusaurus](docusaurus/README.md): site público de guias para consumidores e operadores, alinhado ao OpenAPI gerado.
 

@@ -30,5 +30,5 @@ Este contexto cobre o site Docusaurus, os guias públicos da API, os schemas nar
 
 - **OpenAPI gerado**: documento JSON do binário em /openapi.json, que descreve o contrato legível por máquina.
 - **Site Docusaurus**: guias narrativos com endereço de publicação https://joselarantes.github.io/b3-tucano/.
-- **/docs da API**: rota mínima do serviço que aponta para /openapi.json; não é a documentação Docusaurus.
+- **Swagger UI da API**: interface interativa do serviço em /docs, ligada ao OpenAPI gerado e servido em /openapi.json; chamadas continuam sujeitas às permissões da operação. Não é a documentação Docusaurus.
 - **Comportamento implementado**: comportamento apoiado por código e testes no estado atual, sem inferência a partir dos requisitos futuros.

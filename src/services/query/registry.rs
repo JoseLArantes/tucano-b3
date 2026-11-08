@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 /// Busca de evidências cadastrais publicadas; não aplica cadastro atual ao histórico.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, IntoParams, ToSchema)]
+#[into_params(parameter_in = Query)]
 #[serde(deny_unknown_fields)]
 pub struct InstrumentFilters {
     /// UUID canônico do instrumento, quando resolvido.

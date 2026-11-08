@@ -1,5 +1,19 @@
 # Alterações da API para consumidores
 
+## 08/11/2026 — Descoberta configurável de fontes COTAHIST
+
+- Amplia `POST /api/v1/b3/discovery/scan` para percorrer `B3_DISCOVERY_LOCATIONS`: pastas, URLs HTTPS diretas de arquivos em hosts oficiais B3 e buckets AWS S3 compatíveis com prefixo.
+- A resposta `DiscoveryResult` agora inclui totais e truncamento, estado por local e até 1.000 candidatos com família inferida, locador sem segredo e metadados. Cada checagem e candidato fica persistido em tabelas próprias.
+- A descoberta permanece metadata-only: pasta sem seguir symlink, HEAD para URL B3 e ListObjectsV2 para S3. Não baixa, cria arquivo bruto, cria pendência de canal nem inicia ingestão. Um candidato requer canal configurado e elegibilidade antes de uso.
+- Configuração: `AWS_REGION`, `AWS_ENDPOINT_URL_S3` e credenciais do provedor AWS para listar buckets; Compose monta `./data/imports` somente leitura em `/data/raw/imports`. Limites: 32 locais, 10.000 entradas por local e 1.000 candidatos na resposta.
+- Compatibilidade: mudança aditiva na resposta do endpoint existente. Clientes que validam objetos fechados devem aceitar os novos campos; nenhum parâmetro de requisição foi adicionado.
+
+## 08/11/2026 — Swagger UI vinculada ao OpenAPI em execução
+
+- `GET /docs` redireciona com `303` para `GET /docs/`, que serve Swagger UI com “Try it out” e carrega o documento gerado e publicado pelo mesmo binário em `GET /openapi.json`.
+- Os assets GET sob `/docs/` são públicos para permitir carregar a interface. As chamadas a operações continuam sujeitas às regras Bearer e aos papéis de leitura/administração já publicados; a UI não concede acesso.
+- Compatibilidade: nenhuma operação, campo ou semântica de payload REST mudou. A documentação narrativa detalhada continua no Docusaurus.
+
 ## 08/11/2026 — Exportação integral COTAHIST em NDJSON
 
 - Adiciona `GET /api/v1/b3/cotahist/quotes/export`, protegido por Bearer de leitura, com `ticker_symbol` obrigatório e `data_revision`, `cursor` e `include_internal` opcionais.

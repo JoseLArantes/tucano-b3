@@ -2,17 +2,33 @@
 
 Status: contrato 0.0.1 qualificado com fixtures sintéticas. Consultar o OpenAPI gerado em `/openapi.json` para o conjunto exato de operações registrado pelo binário. A plataforma não depende de dados reais pré-carregados; acesso a cada fonte continua dependente de elegibilidade própria.
 
-Para a referência narrativa de endpoints, parâmetros, schemas e fluxos operacionais, consulte o [site Docusaurus](../docusaurus/docs/intro.md). O JSON em /openapi.json é a fonte de contrato legível por máquina; a rota /docs do serviço é uma página mínima com link para esse JSON, não o site Docusaurus.
+Para explorar o contrato HTTP do binário em execução, abra `/docs`: a interface Swagger carrega o mesmo documento gerado e publicado em `/openapi.json`. Use o JSON para gerar clientes ou automatizar validações. As chamadas feitas por “Try it out” continuam sujeitas à autenticação e às permissões de cada operação. Para a referência narrativa detalhada de endpoints, parâmetros, schemas e fluxos operacionais, consulte o [site Docusaurus](../docusaurus/docs/intro.md), que é separado da interface Swagger.
 
 Para um inventário detalhado do contrato HTTP implementado, fluxos de frontend, filtros, paginação, permissões, erros e relações entre recursos, consulte o [guia detalhado de consumo](consumers_guides.md).
 
 ## Autenticação e filtros
 
-Enviar `Authorization: Bearer <credencial-de-leitura>` nas consultas protegidas. Credencial administrativa é separada e não deve ser distribuída a consumidores. `include_internal=true` não amplia permissões nem revela tokens/caminhos privados.
+Enviar `Authorization: Bearer <credencial-de-leitura>` nas consultas protegidas. Operações administrativas, incluindo `POST /api/v1/b3/discovery/scan`, exigem `TUCANO_B3_ADMIN_TOKEN`; o valor configurado como `TUCANO_B3_TOKEN` não substitui essa credencial. A janela “Authorize” do Swagger UI não lê o `.env`: cole nela o token correspondente ao papel exigido. Credencial administrativa é separada e não deve ser distribuída a consumidores. `include_internal=true` não amplia permissões nem revela tokens/caminhos privados.
 
 `GET /api/v1/b3/cotahist/quotes?ticker_symbol=EXMP3&market_type=010&trade_date_from=2025-01-01&trade_date_to=2025-12-31&limit=100&offset=0`
 
 Ticker identifica um código no contexto e período. O mesmo ticker pode ter mercados, distribuições, prazos e instrumentos diferentes. Datas são inclusivas; paginação inválida retorna 400. `limit` padrão 100, máximo 1000; `offset` padrão 0. Filtros adicionais incluem instrumento, ISIN, BDI, distribuição e prazo.
+
+## Descoberta de arquivos e fontes COTAHIST
+
+`POST /api/v1/b3/discovery/scan` exige `TUCANO_B3_ADMIN_TOKEN` no Bearer e não recebe corpo. A descoberta consulta canais registrados e também percorre os locais de `B3_DISCOVERY_LOCATIONS`, uma lista separada por ponto e vírgula ou vírgula. Prefira ponto e vírgula se os prefixos puderem conter vírgula. Ela lê apenas metadados: não baixa, abre, extrai, faz parsing, cria arquivo bruto nem inicia um job.
+
+```dotenv
+B3_DISCOVERY_LOCATIONS=folder:/data/raw/imports;b3_url:https://www.b3.com.br/arquivos/COTAHIST_A2025.ZIP;object_storage_bucket:s3://dados/cotahist/
+AWS_REGION=us-east-1
+AWS_ENDPOINT_URL_S3=https://s3.compatible.example
+```
+
+`folder` requer caminho absoluto; no Compose, `./data/imports` é montado somente leitura em `/data/raw/imports`. O scanner não segue links simbólicos e examina no máximo 10.000 entradas e 8 níveis por pasta. `b3_url` requer URL HTTPS direta para nome de arquivo COTAHIST `.TXT`/`.ZIP` em um host exato de `B3_ALLOWED_HOSTS`; usa `HEAD` com verificação de DNS e redirecionamentos e não faz fallback para GET. `host:` é alias aceito. `object_storage_bucket` aceita `s3://bucket/prefixo/`, consulta `ListObjectsV2` na cadeia padrão de credenciais AWS e exige `s3:ListBucket` somente; nenhum objeto é lido. Para endpoint compatível, informe `AWS_ENDPOINT_URL_S3`; configure região e credenciais somente leitura conforme o provedor. Até 32 locais podem ser informados e cada bucket limita a listagem a 10.000 objetos. Tipos desconhecidos ou endereços inválidos falham a validação, em vez de serem silenciosamente ignorados.
+
+A resposta `DiscoveryResult` retorna `checked_at`, `scheduled`, `locations_scanned`, `candidate_count`, `candidates_truncated`, `locations` (tipo, rótulo sem raiz privada, resultado e truncamento) e até 1.000 `candidates`. Cada candidato tem `source_file_type`, `source_locator`, `byte_size`, `remote_etag` e `remote_last_modified`. O tipo vem do nome `COTAHIST_A{AAAA}`, `COTAHIST_M{MMAAAA}` ou `COTAHIST_D{DDMMAAAA}`; isso não valida o conteúdo, não define data de referência nem escolhe uma revisão. ETag não é SHA-256. As observações são gravadas em `b3_discovery_location_checks` e `b3_discovery_location_candidates`. Um achado ainda precisa ser registrado como canal e passar pelas regras de elegibilidade antes de aquisição ou ingestão.
+
+Consulte o [guia detalhado de descoberta](../docusaurus/docs/operations/discovery.md) para a resposta completa, limites, statuses e operação. A resposta manual não renova saúde agendada; falha de um local é mostrada como `failed` e os demais são consultados.
 
 ## Exportação integral COTAHIST em NDJSON
 

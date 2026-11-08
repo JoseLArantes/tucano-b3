@@ -9,7 +9,7 @@ services:
     ports:
       - "5433:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./data/postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d tucano_b3"]
       interval: 5s
@@ -25,12 +25,21 @@ services:
     environment:
       DATABASE_URL: ${B3_API_DATABASE_URL:-postgres://postgres:postgres@b3_postgres:5432/tucano_b3}
       B3_DB_MAX_CONNECTIONS: ${B3_DB_MAX_CONNECTIONS:-8}
+      B3_ALLOWED_HOSTS: ${B3_ALLOWED_HOSTS:-www.b3.com.br,b3.com.br,bvmf.bmfbovespa.com.br,arquivos.b3.com.br,sistemaswebb3-listados.b3.com.br}
+      B3_RAW_DATA_DIR: /data/raw
       B3_PROCESSED_DATA_DIR: /data/processed
+      B3_DISCOVERY_LOCATIONS: ${B3_DISCOVERY_LOCATIONS:-folder:/data/raw/imports}
       TUCANO_B3_READ_TOKEN: ${TUCANO_B3_READ_TOKEN:-}
       TUCANO_B3_ADMIN_TOKEN: ${TUCANO_B3_ADMIN_TOKEN:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ENDPOINT_URL_S3: ${AWS_ENDPOINT_URL_S3:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
       RUST_LOG: ${RUST_LOG:-info}
     volumes:
       - b3_raw_files:/data/raw
+      - ./data/imports:/data/raw/imports:ro
       - b3_processed_files:/data/processed
     depends_on:
       b3_postgres:
@@ -51,14 +60,21 @@ services:
       DATABASE_URL: ${B3_WORKER_DATABASE_URL:-postgres://postgres:postgres@b3_postgres:5432/tucano_b3}
       B3_DB_MAX_CONNECTIONS: ${B3_DB_MAX_CONNECTIONS:-8}
       B3_DISCOVERY_ENABLED: ${B3_DISCOVERY_ENABLED:-false}
+      B3_DISCOVERY_LOCATIONS: ${B3_DISCOVERY_LOCATIONS:-folder:/data/raw/imports}
       B3_ALLOWED_HOSTS: ${B3_ALLOWED_HOSTS:-www.b3.com.br,b3.com.br,bvmf.bmfbovespa.com.br,arquivos.b3.com.br,sistemaswebb3-listados.b3.com.br}
       B3_RAW_DATA_DIR: /data/raw
       B3_BATCH_RECORDS: ${B3_BATCH_RECORDS:-500}
       B3_BATCH_BYTES: ${B3_BATCH_BYTES:-4194304}
       B3_LEASE_SECONDS: ${B3_LEASE_SECONDS:-120}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ENDPOINT_URL_S3: ${AWS_ENDPOINT_URL_S3:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
       RUST_LOG: ${RUST_LOG:-info}
     volumes:
       - b3_raw_files:/data/raw
+      - ./data/imports:/data/raw/imports:ro
     depends_on:
       b3_postgres:
         condition: service_healthy

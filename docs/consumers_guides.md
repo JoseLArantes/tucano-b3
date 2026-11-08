@@ -11,7 +11,7 @@ Use a origem configurada para o ambiente. No Compose de desenvolvimento, a API f
 | Recurso | Caminho | Uso |
 |---|---|---|
 | OpenAPI 3.1 | ``GET /openapi.json`` | Contratos e schemas do binário em execução; rota pública. |
-| Página de documentação | ``GET /docs`` ou ``GET /docs/`` | Página simples com link para ``/openapi.json``; não é um console Swagger interativo. |
+| Swagger UI | ``GET /docs`` → ``303`` para ``/docs/``; ``GET /docs/`` → ``200`` | Interface interativa ligada ao OpenAPI gerado do mesmo binário. A UI e seus assets são públicos por GET; chamadas às operações mantêm a autenticação e autorização próprias. |
 | Liveness | ``GET /healthz`` | Confirma que o processo HTTP respondeu. Não consulta PostgreSQL nem mede cobertura. |
 | Readiness de banco | ``GET /api/v1/health`` | Executa ``SELECT 1`` no PostgreSQL. Não mede se há dados ou revisão publicada. |
 
@@ -19,11 +19,11 @@ Todas as rotas de domínio usam o prefixo ``/api/v1/b3``. Prefixos e métodos n�
 
 ## 2. Autenticação e permissões
 
-Rotas protegidas usam ``Authorization: Bearer <token>``. Há duas credenciais distintas, configuradas no servidor: leitura (``TUCANO_B3_READ_TOKEN``) e administração (``TUCANO_B3_ADMIN_TOKEN``). A credencial antiga ``TUCANO_B3_TOKEN`` não concede acesso ao contrato atual. Se as duas credenciais atuais não estiverem configuradas, forem vazias ou forem iguais, uma rota protegida retorna ``503 AUTH_NOT_CONFIGURED``.
+Rotas protegidas usam ``Authorization: Bearer <token>``. Há duas credenciais distintas, configuradas no servidor: leitura (``TUCANO_B3_READ_TOKEN``) e administração (``TUCANO_B3_ADMIN_TOKEN``). O Swagger UI não lê o ``.env``; informe no botão “Authorize” o token correspondente ao papel da operação. ``POST /api/v1/b3/discovery/scan`` exige o valor de ``TUCANO_B3_ADMIN_TOKEN``; um token de leitura retorna ``403 ADMIN_REQUIRED``. A variável antiga ``TUCANO_B3_TOKEN`` não substitui o token administrativo. Se as duas credenciais atuais não estiverem configuradas, forem vazias ou forem iguais, uma rota protegida retorna ``503 AUTH_NOT_CONFIGURED``.
 
 | Nível | Rotas |
 |---|---|
-| Público, somente GET | ``/healthz``, ``/api/v1/health``, ``/openapi.json``, ``/docs``, ``/docs/`` |
+| Público, somente GET | ``/healthz``, ``/api/v1/health``, ``/openapi.json``, ``/docs``, ``/docs/`` e assets sob ``/docs/`` |
 | Leitura | Consultas COTAHIST, cadastro, capacidades e diagnóstico de cobertura descritos neste guia. |
 | Administração | Todos os ``POST`` e as consultas operacionais de jobs, sync-runs, arquivos, members, pendências e revisões. |
 
@@ -112,7 +112,7 @@ Erros da API têm o envelope:
 | ``GET /api/v1/b3/source-files/{id}/members`` | Admin | ``OperationPage<MemberView>`` | Abre o inventário de members de um artefato. |
 | ``GET /api/v1/b3/pending-updates`` | Admin | ``OperationPage<PendingView>`` | Lista referências remotas encontradas pelo scanner. |
 | ``POST /api/v1/b3/pending-updates/{id}/acknowledge`` | Admin | ``PendingAcknowledged`` | Vincula pendência a arquivo já publicado, com justificativa. |
-| ``POST /api/v1/b3/discovery/scan`` | Admin | ``DiscoveryResult`` | Executa checagem leve; não baixa nem ingere. |
+| ``POST /api/v1/b3/discovery/scan`` | Admin | ``DiscoveryResult`` | Checa canais e locais configurados; retorna candidatos COTAHIST por metadados, sem baixar nem ingerir. |
 | ``GET /api/v1/b3/data-revisions/{id}`` | Admin | ``RevisionView`` | Inspeciona a revisão COTAHIST no release; o schema reserva family ``registry`` para evolução. |
 | ``GET /api/v1/b3/data-revisions/{id}/conflicts`` | Admin | ``OperationPage<ConflictView>`` | Lista divergências COTAHIST sem eleger vencedora. |
 | ``GET /api/v1/b3/data-revisions/{id}/quarantine`` | Admin | ``OperationPage<RejectionView>`` | Lista rejeições localizadas da revisão/snapshot. |
@@ -138,7 +138,7 @@ Erros da API têm o envelope:
 
 ### 5.3 Processar uma atualização no console operacional
 
-1. Um administrador executa ``POST /discovery/scan``. A resposta ``200`` informa ``checked_at`` e ``scheduled: false``; a checagem pode criar pendências, mas não cria arquivos nem jobs de ingestão.
+1. Um administrador executa ``POST /discovery/scan``. A resposta ``200`` informa ``checked_at``, locais checados e candidatos por metadados. Canais registrados podem criar pendências; locais extras retornam candidatos separados. O scan não cria arquivos nem jobs de ingestão.
 2. Consulte ``GET /pending-updates``. Uma pendência representa uma possível publicação nova, não alteração confirmada de cotação.
 3. Para adquirir/processar, submeta ``POST /jobs`` com operação ``ingest``, família e intervalo de datas. A API seleciona canais configurados no servidor; o consumidor não envia URL de download. O canal precisa estar habilitado e elegível para aquisição, retenção raw e processamento. ``capabilities.enabled`` descreve elegibilidade REST/terceiros, não a elegibilidade de ingestão.
 4. Guarde ``job_id`` e ``status_url`` do corpo. ``POST /jobs`` também retorna ``Location``. Consulte ``GET /jobs/{id}`` com credencial administrativa até status terminal. Não use a tela de sucesso do ``202`` como confirmação de ingestão.
@@ -437,7 +437,57 @@ As rotas de lista abaixo aceitam somente ``limit`` e ``offset`` e respondem ``Op
 
 ### 7.4 Descoberta e pendências
 
-``POST /api/v1/b3/discovery/scan`` não recebe body. Quando concluído, retorna ``200 { "checked_at": "...Z", "scheduled": false }``. Checa canais habilitados conforme capacidades/elegibilidade, registra resultado e pendências, mas não baixa corpos de datasets, não faz parsing, não publica e não inicia job. Depois, liste ``/pending-updates``.
+``POST /api/v1/b3/discovery/scan`` não recebe body e exige token administrador. ``TUCANO_B3_READ_TOKEN`` ou a variável legada ``TUCANO_B3_TOKEN`` não autorizam esse POST; o Swagger UI não carrega o ``.env`` automaticamente.
+
+O endpoint consulta os canais registrados e percorre os locais configurados em ``B3_DISCOVERY_LOCATIONS``, separados por ponto e vírgula ou vírgula. Prefira ponto e vírgula quando prefixos puderem conter vírgula. Tipos aceitos:
+
+| Tipo | Exemplo | Descoberta |
+|---|---|---|
+| ``folder`` | ``folder:/data/raw/imports`` | Caminho absoluto; percorre subpastas sem seguir links simbólicos e consulta metadados de arquivos. No Compose, ``./data/imports`` é montado como ``/data/raw/imports`` somente leitura. Não configure todo ``/data``, que pode conter os dados do PostgreSQL. |
+| ``b3_url`` | ``b3_url:https://www.b3.com.br/arquivos/COTAHIST_A2025.ZIP`` | URL HTTPS direta para o arquivo `.TXT`/`.ZIP`, com host em ``B3_ALLOWED_HOSTS``; envia HEAD e valida DNS e cada redirecionamento. `host:` é alias aceito. Não aceita página de índice, query, fragmento ou credenciais. |
+| ``object_storage_bucket`` | ``object_storage_bucket:s3://dados/cotahist/`` | Lista somente metadados por AWS S3 `ListObjectsV2`; não envia `GetObject`. O usuário AWS precisa de ``s3:ListBucket`` no bucket/prefixo. |
+
+Exemplo misto em `.env`:
+
+```dotenv
+B3_DISCOVERY_LOCATIONS=folder:/data/raw/imports;b3_url:https://www.b3.com.br/arquivos/COTAHIST_A2025.ZIP;object_storage_bucket:s3://dados/cotahist/
+AWS_REGION=us-east-1
+AWS_ENDPOINT_URL_S3=https://s3.compatible.example
+```
+
+Para S3 compatível, o SDK usa a cadeia padrão de credenciais AWS e força endereçamento por caminho para suportar endpoints compatíveis. Em Compose, as variáveis `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` e `AWS_SESSION_TOKEN` são encaminhadas quando configuradas; o endpoint S3 é opcional e `AWS_REGION` tem padrão `us-east-1`. Prefira credencial somente leitura restrita ao prefixo.
+
+O scanner reconhece ``COTAHIST_A{AAAA}.ZIP|TXT``, ``COTAHIST_M{MMAAAA}.ZIP|TXT`` e ``COTAHIST_D{DDMMAAAA}.ZIP|TXT`` pelo nome. A configuração aceita até 32 locais. Cada pasta ou bucket tem limite de 10.000 entradas e as buscas locais têm profundidade máxima 8. A resposta contém até 1.000 candidatos; ``candidates_truncated`` ou o campo `truncated` do local informa limites atingidos. Locais desconhecidos ou malformados causam erro de configuração; falha individual retorna ``outcome: "failed"`` e os demais locais continuam sendo consultados.
+
+Resposta ``200`` tipada como ``DiscoveryResult``:
+
+```json
+{
+  "checked_at": "2026-11-08T15:00:00Z",
+  "scheduled": false,
+  "locations_scanned": 1,
+  "candidate_count": 1,
+  "candidates_truncated": false,
+  "locations": [
+    { "kind": "folder", "label": "folder-1", "outcome": "available", "candidate_count": 1, "truncated": false }
+  ],
+  "candidates": [
+    {
+      "source_file_type": "COTAHIST_YEARLY",
+      "source_locator": "folder:1/2025/COTAHIST_A2025.ZIP",
+      "byte_size": 12345,
+      "remote_etag": null,
+      "remote_last_modified": "2026-11-08T14:45:00+00:00"
+    }
+  ]
+}
+```
+
+Campos de ``DiscoveryResult``: ``checked_at`` é UTC; ``scheduled`` fica `false` nesta chamada manual; ``locations_scanned`` é o número configurado; ``candidate_count`` é o total encontrado dentro dos limites; ``candidates_truncated`` informa que a lista da resposta ou uma varredura foi limitada; ``locations`` contém tipo, rótulo sem caminho raiz, estado, contagem e truncamento; ``candidates`` lista tipo de arquivo e metadados de até 1.000 itens. `source_locator` de pasta é relativo à raiz e rotulado; ETag não é hash do corpo.
+
+As checagens e candidatos observados são persistidos em ``b3_discovery_location_checks`` e ``b3_discovery_location_candidates``. Encontrar arquivo não cria uma pendência de canal, não prova elegibilidade e não dispara aquisição. Antes de importar, o operador deve registrar um canal oficial e homologar as finalidades de coleta, retenção e exposição. O scan manual não renova o indicador de saúde agendada, não cria arquivo bruto, não faz parsing e não inicia job.
+
+``POST /api/v1/b3/pending-updates/{id}/acknowledge`` continua reservado a uma pendência de canal cujo arquivo já foi publicado no mesmo canal; uma observação de pasta/URL/bucket não é reconhecível por essa operação.
 
 ``POST /api/v1/b3/pending-updates/{id}/acknowledge`` recebe:
 
@@ -466,7 +516,7 @@ As rotas de lista abaixo aceitam somente ``limit`` e ``offset`` e respondem ``Op
 ## 9. Rotas e comportamentos que não são contratos
 
 - Rotas antigas descritas em módulos não montados, como ``/api/v1/b3/price-report/...``, ``/index-report/...``, ``/index-composition/...``, ``/sync``, ``/quarantine`` ou ``/company-data``, não estão registradas no router do release atual. Use apenas o inventário da seção 4.
-- ``/docs`` hoje não oferece “Try it out”; use ``/openapi.json`` como spec.
+- ``/docs`` redireciona com ``303`` para ``/docs/``; a interface Swagger UI nessa URL oferece “Try it out” e carrega o documento por ``/openapi.json``. A interface não concede permissões: operações protegidas exigem o Bearer apropriado, e rotas administrativas continuam exigindo o token administrativo. Use ``/openapi.json`` como documento de contrato legível por máquina.
 - Não há paginação cursor-based, endpoint de autenticação OAuth, filtro arbitrário SQL, transporte HTTP para MCP, atualização em tempo real ou endpoint de upload de arquivo neste contrato.
 - MCP é transporte analítico somente leitura separado do REST; não o trate como rota HTTP.
 - O PRD pode descrever endpoints futuros por família. A existência de schemas/migrations ou de fonte B3 não torna esses endpoints consultáveis.

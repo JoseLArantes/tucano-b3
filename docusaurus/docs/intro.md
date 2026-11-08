@@ -21,7 +21,7 @@ O serviço mantém separados fatos de negociação, fotografias cadastrais e est
 
 ## Estado documentado
 
-A API REST inicial oferece consulta COTAHIST e inspeção/submissão de operações duráveis. Endpoints cadastrais fazem parte do contrato técnico, mas BVBG.028 e Tradable Security List estão `deferred` no `0.0.1`: não é possível importar esses registros até que `from`/`to` possam ser aplicados a uma data interna adequada por registro. A API inclui também endpoints operacionais para arquivos, members, pendências, revisões, conflitos, quarentena, capacidades, diagnósticos e execuções. As fontes e operações permitidas dependem de registro e elegibilidade configurados no banco; a presença de uma rota não significa que haja dados ou autorização para distribuição externa.
+A API REST inicial oferece consulta COTAHIST e inspeção/submissão de operações duráveis. Endpoints cadastrais fazem parte do contrato técnico, mas BVBG.028 e Tradable Security List estão `deferred` no `0.0.1`: não é possível importar esses registros até que `from`/`to` possam ser aplicados a uma data interna adequada por registro. A API inclui também endpoints operacionais para arquivos, members, pendências, revisões, conflitos, quarentena, capacidades, diagnósticos e execuções. `POST /api/v1/b3/discovery/scan` também percorre pastas, URLs diretas oficiais e buckets S3 compatíveis configurados em `B3_DISCOVERY_LOCATIONS`, retornando metadados COTAHIST sem baixar ou ingerir o conteúdo. As fontes e operações permitidas dependem de registro e elegibilidade configurados no banco; a presença de uma rota não significa que haja dados ou autorização para distribuição externa.
 
 O escopo do produto inclui outras publicações oficiais B3, como BVBG.086, BVBG.186, BVBG.087 e composições de índices. Consulte o guia de fontes e o endpoint de capacidades para separar escopo planejado, implementação e disponibilidade real em um ambiente.
 
@@ -48,6 +48,6 @@ O escopo do produto inclui outras publicações oficiais B3, como BVBG.086, BVBG
 | --- | --- |
 | Site Docusaurus | Guias detalhados para consumidores, operadores e pesquisa |
 | /openapi.json | Contrato JSON gerado a partir das operações e schemas Utoipa |
-| /docs da API | Página HTML mínima do serviço com link para /openapi.json |
+| /docs da API | Swagger UI interativa que carrega o OpenAPI do mesmo serviço; chamadas continuam autenticadas conforme cada operação |
 
 Para mudanças de contrato, confira o JSON produzido pelo binário e a página Docusaurus correspondente. O PRD explica o comportamento-alvo; páginas de referência deste site descrevem o comportamento disponível.

@@ -1,7 +1,11 @@
 use super::{release_error::ApiError, AppState};
 use crate::services::{
     query::*,
-    runtime::{discovery::DiscoveryService, RuntimeSettings},
+    runtime::{
+        discovery::DiscoveryService,
+        discovery_locations::{DiscoveryFileType, DiscoveryLocationKind, DiscoveryLocationOutcome},
+        RuntimeSettings,
+    },
 };
 use axum::{
     extract::{rejection::QueryRejection, Path, Query, State},
@@ -72,14 +76,66 @@ pub async fn members(
 #[derive(serde::Serialize, utoipa::ToSchema)]
 pub struct DiscoveryResult {
     /// Momento de referência da checagem, UTC.
+    #[schema(example = "2026-11-08T15:00:00Z")]
     pub checked_at: chrono::DateTime<chrono::Utc>,
     /// Falso para esta checagem manual; não renova saúde agendada.
     pub scheduled: bool,
+    /// Quantidade de locais configurados e checados.
+    #[schema(example = 1)]
+    pub locations_scanned: usize,
+    /// Total de arquivos COTAHIST identificados dentro dos limites de varredura.
+    #[schema(example = 1)]
+    pub candidate_count: usize,
+    /// Indica se a resposta ou a varredura de algum local foi limitada.
+    pub candidates_truncated: bool,
+    /// Resultado agregado por local, sem revelar diretórios raiz configurados.
+    pub locations: Vec<DiscoveryLocationResult>,
+    /// Até 1000 candidatos com metadados. O conteúdo dos arquivos nunca é retornado.
+    pub candidates: Vec<DiscoveryCandidateResult>,
 }
-#[utoipa::path(post,path="/api/v1/b3/discovery/scan",tag="Operação",summary="Executar descoberta leve manual sem ingestão ou publicação",description="Checa os canais oficiais habilitados conforme elegibilidade e capacidades de descoberta.\nRegistra resultados conclusivos/inconclusivos e pendências sem baixar o corpo dos datasets.\nNão executa parsing, rebuild ou promoção e não renova o indicador de descoberta agendada.\nSomente administração pode iniciar a checagem.",responses((status=200,description="Checagem leve registrada",body=DiscoveryResult),(status=400,description="Configuração inválida"),(status=401,description="Não autenticado"),(status=403,description="Administração exigida"),(status=404,description="Não aplicável"),(status=409,description="Conflito de coordenação"),(status=500,description="Falha ao registrar checagem")),security(("bearer_auth"=[])))]
+
+/// Estado de uma fonte configurada para descoberta.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub struct DiscoveryLocationResult {
+    /// Tipo configurado: `folder`, `b3_url` ou `object_storage_bucket`.
+    #[schema(example = "folder")]
+    pub kind: DiscoveryLocationKind,
+    /// Rótulo estável da posição na configuração, sem caminho ou segredo.
+    #[schema(example = "folder-1")]
+    pub label: String,
+    /// Resultado de descoberta: `available`, `absent`, `inconclusive` ou `failed`.
+    #[schema(example = "available")]
+    pub outcome: DiscoveryLocationOutcome,
+    /// Quantidade de candidatos observados neste local.
+    pub candidate_count: usize,
+    /// Indica que o limite de entradas deste local foi atingido.
+    pub truncated: bool,
+}
+
+/// Metadados públicos de um possível arquivo COTAHIST encontrado.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub struct DiscoveryCandidateResult {
+    /// Família COTAHIST inferida pelo padrão oficial do nome do arquivo.
+    #[schema(example = "COTAHIST_YEARLY")]
+    pub source_file_type: DiscoveryFileType,
+    /// Localizador sem credenciais: URL B3, URI S3 ou caminho relativo rotulado.
+    #[schema(example = "folder:1/2025/COTAHIST_A2025.ZIP")]
+    pub source_locator: String,
+    /// Tamanho declarado pelo sistema de arquivos/armazenamento, em bytes.
+    #[schema(example = 12345)]
+    pub byte_size: Option<i64>,
+    /// ETag remoto, quando publicado pelo servidor; não é tratado como SHA-256.
+    #[schema(example = "\"opaque-etag\"")]
+    pub remote_etag: Option<String>,
+    /// Última modificação declarada pela fonte, quando disponível.
+    #[schema(example = "2026-11-08T14:45:00Z")]
+    pub remote_last_modified: Option<String>,
+}
+
+#[utoipa::path(post,path="/api/v1/b3/discovery/scan",tag="Operação",summary="Executar descoberta leve manual sem ingestão ou publicação",description="Checa os canais oficiais habilitados conforme capacidades e elegibilidade e percorre cada entrada de B3_DISCOVERY_LOCATIONS: pastas, URLs HTTPS diretas de arquivos em hosts B3 permitidos e buckets S3 compatíveis com prefixo opcional.\n\nA busca local não segue links simbólicos; listagens locais e S3 têm limite de 10.000 entradas por local e a resposta inclui até 1.000 candidatos. Nomes COTAHIST anual, mensal e diário são classificados pelo nome; o scanner consulta apenas metadados e não lê, baixa, extrai, faz parsing ou ingere corpos. URLs B3 usam HEAD com validação de host, DNS e redirecionamentos. Buckets usam ListObjectsV2 com a cadeia padrão de credenciais AWS e requerem permissão de leitura de listagem; nenhum GetObject é enviado.\n\nAs observações ficam registradas. Um candidato de pasta/URL/bucket não equivale a canal habilitado, evidência de elegibilidade, pendência de canal, aquisição ou publicação; registre e homologue um canal antes de importar. ETag é metadado remoto, não hash de conteúdo.\n\nA configuração desconhecida ou inválida falha explicitamente. Falhas individuais aparecem como outcome=failed e não impedem a checagem dos outros locais. Não renova o indicador de descoberta agendada. Requer TUCANO_B3_ADMIN_TOKEN.",responses((status=200,description="Checagem e candidatos encontrados",body=DiscoveryResult),(status=400,description="Configuração inválida"),(status=401,description="Não autenticado"),(status=403,description="Administração exigida"),(status=404,description="Não aplicável"),(status=409,description="Conflito de coordenação"),(status=500,description="Falha ao registrar checagem")),security(("bearer_auth"=[])))]
 pub async fn scan(State(state): State<Arc<AppState>>) -> Result<Json<DiscoveryResult>, ApiError> {
     let checked_at = chrono::Utc::now();
-    DiscoveryService::new(
+    let report = DiscoveryService::new(
         state.pool.clone(),
         RuntimeSettings::from_settings(&state.settings),
     )
@@ -88,6 +144,31 @@ pub async fn scan(State(state): State<Arc<AppState>>) -> Result<Json<DiscoveryRe
     Ok(Json(DiscoveryResult {
         checked_at,
         scheduled: false,
+        locations_scanned: report.locations.len(),
+        candidate_count: report.candidate_count,
+        candidates_truncated: report.candidates_truncated,
+        locations: report
+            .locations
+            .into_iter()
+            .map(|location| DiscoveryLocationResult {
+                kind: location.location_kind,
+                label: location.location_label,
+                outcome: location.outcome,
+                candidate_count: location.candidate_count,
+                truncated: location.truncated,
+            })
+            .collect(),
+        candidates: report
+            .candidates
+            .into_iter()
+            .map(|candidate| DiscoveryCandidateResult {
+                source_file_type: candidate.source_file_type,
+                source_locator: candidate.source_locator,
+                byte_size: candidate.byte_size,
+                remote_etag: candidate.remote_etag,
+                remote_last_modified: candidate.remote_last_modified,
+            })
+            .collect(),
     }))
 }
 

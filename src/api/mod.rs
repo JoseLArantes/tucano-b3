@@ -16,7 +16,6 @@ use crate::{
 };
 use axum::{
     middleware,
-    response::Html,
     routing::{get, post},
     Json, Router,
 };
@@ -25,6 +24,7 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
 use utoipa::{Modify, OpenApi, ToSchema};
+use utoipa_swagger_ui::SwaggerUi;
 
 pub struct AppState {
     pub pool: PgPool,
@@ -36,13 +36,13 @@ struct SecurityAddon;
 impl Modify for SecurityAddon {
     fn modify(&self, api: &mut utoipa::openapi::OpenApi) {
         if let Some(components) = api.components.as_mut() {
-            components.add_security_scheme("bearer_auth",SecurityScheme::Http(HttpBuilder::new().scheme(HttpAuthScheme::Bearer).description(Some("Credencial distinta de leitura ou administração; operações de escrita exigem administração.")).build()));
+            components.add_security_scheme("bearer_auth",SecurityScheme::Http(HttpBuilder::new().scheme(HttpAuthScheme::Bearer).description(Some("Use TUCANO_B3_READ_TOKEN em operações de leitura e TUCANO_B3_ADMIN_TOKEN em operações administrativas (todos os POST e inspeções operacionais). A variável legada TUCANO_B3_TOKEN não substitui o token administrativo.")).build()));
         }
     }
 }
 
 #[derive(OpenApi)]
-#[openapi(info(title="Tucano B3",version="0.0.1",description="Histórico oficial nominal B3 com precisão, revisão fixada e proveniência. Preços COTAHIST não ajustados por inflação ou eventos corporativos."),modifiers(&SecurityAddon),paths(release::quotes,release::quote_export,release::series,release::instruments,release::instrument,release::instrument_identifiers,release::tradable_securities,release::submit_job,release::job,release::cancel_job,release_ops::source_files,release_ops::pending,release_ops::revision,release_ops::conflicts,release_ops::rejections,release_ops::members,release_ops::scan,release_ops::jobs,release_ops::sync_runs,release_ops::capabilities,healthz,health),components(schemas(QuoteFilters,QuotePage,HistoricalQuote,QuoteProvenance,QuoteIdentity,QuoteInternal,QuoteExportFilters,QuoteExportEvent,Coverage,CoverageStatus,IdentityStatus,InstrumentFilters,InstrumentPage,InstrumentEvidence,InstrumentIdentifierEvidence,InstrumentIdentifierPage,InstrumentIdentifierProvenance,JobView,JobStatus,RevisionView,ConflictView,RejectionView,SourceFileView,MemberView,PendingView,ListFilters,Capability,CapabilityStatus,release::SubmitJob,release::AcceptedJob,release_error::ErrorResponse,Health)),tags((name="COTAHIST",description="Arquivos oficiais COTAHIST anual/mensal/diário; preços nominais sem ajustes"),(name="Cadastro",description="Fotografias oficiais com evidências temporais"),(name="Operação",description="Comandos rastreados, somente para administração"),(name="Saúde",description="Exceções públicas explícitas")))]
+#[openapi(info(title="Tucano B3",version="0.0.1",description="Histórico oficial nominal B3 com precisão, revisão fixada e proveniência. Preços COTAHIST não ajustados por inflação ou eventos corporativos."),modifiers(&SecurityAddon),paths(release::quotes,release::quote_export,release::series,release::instruments,release::instrument,release::instrument_identifiers,release::tradable_securities,release::submit_job,release::job,release::cancel_job,release_ops::source_files,release_ops::pending,release_ops::revision,release_ops::conflicts,release_ops::rejections,release_ops::members,release_ops::scan,release_ops::jobs,release_ops::sync_runs,release_ops::capabilities,healthz,health),components(schemas(QuoteFilters,QuotePage,HistoricalQuote,QuoteProvenance,QuoteIdentity,QuoteInternal,QuoteExportFilters,QuoteExportEvent,Coverage,CoverageStatus,IdentityStatus,InstrumentFilters,InstrumentPage,InstrumentEvidence,InstrumentIdentifierEvidence,InstrumentIdentifierPage,InstrumentIdentifierProvenance,JobView,JobStatus,RevisionView,ConflictView,RejectionView,SourceFileView,MemberView,PendingView,ListFilters,Capability,CapabilityStatus,release_ops::DiscoveryResult,release_ops::DiscoveryLocationResult,release_ops::DiscoveryCandidateResult,crate::services::runtime::discovery_locations::DiscoveryFileType,release::SubmitJob,release::AcceptedJob,release_error::ErrorResponse,Health)),tags((name="COTAHIST",description="Arquivos oficiais COTAHIST anual/mensal/diário; preços nominais sem ajustes"),(name="Cadastro",description="Fotografias oficiais com evidências temporais"),(name="Operação",description="Comandos rastreados, somente para administração"),(name="Saúde",description="Exceções públicas explícitas")))]
 struct BaseDoc;
 
 #[derive(OpenApi)]
@@ -58,7 +58,9 @@ struct BaseDoc;
         DatasetDiagnostics,
         DiagnosticsFilters,
         release_ops::AcknowledgePending,
-        release_ops::PendingAcknowledged
+        release_ops::PendingAcknowledged,
+        crate::services::runtime::discovery_locations::DiscoveryLocationKind,
+        crate::services::runtime::discovery_locations::DiscoveryLocationOutcome
     ))
 )]
 struct AdditionalDoc;
@@ -99,19 +101,11 @@ pub async fn health(
         })?;
     Ok(Json(Health { healthy: true }))
 }
-pub async fn openapi_json() -> Json<utoipa::openapi::OpenApi> {
-    Json(ApiDoc::openapi())
-}
-pub async fn swagger_ui() -> Html<&'static str> {
-    Html("<!doctype html><html lang=\"pt-BR\"><title>Tucano B3</title><h1>Contrato Tucano B3 0.0.1</h1><p>Preços históricos nominais sem ajustes.</p><a href=\"/openapi.json\">OpenAPI 3.1</a></html>")
-}
 pub fn create_router(state: Arc<AppState>) -> Router {
     Router::new()
+        .merge(SwaggerUi::new("/docs").url("/openapi.json", ApiDoc::openapi()))
         .route("/healthz", get(healthz))
         .route("/api/v1/health", get(health))
-        .route("/openapi.json", get(openapi_json))
-        .route("/docs", get(swagger_ui))
-        .route("/docs/", get(swagger_ui))
         .route("/api/v1/b3/cotahist/quotes", get(release::quotes))
         .route(
             "/api/v1/b3/cotahist/quotes/export",

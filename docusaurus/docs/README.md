@@ -5,7 +5,7 @@ O [índice](intro.md) apresenta o produto e orienta a navegação. Para integrar
 ## Referências do contrato
 
 - API em execução: /openapi.json, gerado a partir das rotas e schemas Utoipa do binário.
-- Página curta da API: /docs, com link para o OpenAPI JSON.
+- Swagger UI interativa da API: /docs, ligada ao OpenAPI JSON servido em /openapi.json.
 - Código do projeto e guias fonte: [repositório tucano-b3](https://github.com/JoseLArantes/b3-tucano).
 - Requisitos e comportamento-alvo: [docs/b3_prd.md](https://github.com/JoseLArantes/b3-tucano/blob/main/docs/b3_prd.md).
 - Contrato textual de consumo: [docs/consumer_api.md](https://github.com/JoseLArantes/b3-tucano/blob/main/docs/consumer_api.md).

@@ -44,3 +44,23 @@ ConflictView localiza o fato e as duas versões conflitantes, member, índice e 
 ## Arquivo e member
 
 SourceFileView informa id, tipo, canal, hash, tamanho, versão do parser, estado, quantidade de members e contadores de linhas lidas, inseridas, alteradas, inalteradas, duplicadas e em quarentena. MemberView informa nome lógico, índice determinístico, container pai, hash do conteúdo descomprimido, tamanho, seleção/exclusão, estado, contadores e provenance. Nenhum schema público expõe URL com token ou caminho privado.
+
+## DiscoveryResult
+
+Payload do `POST /api/v1/b3/discovery/scan`. A operação registra a checagem e retorna candidatos encontrados nas pastas, URLs B3 ou buckets S3 configurados. O scanner não obtém corpo nem prova elegibilidade ou publicação.
+
+| Campo | Tipo/formato | Interpretação |
+|---|---|---|
+| `checked_at` | timestamp RFC 3339 UTC | Instante de referência da chamada manual. |
+| `scheduled` | boolean | `false` para a chamada manual; não renova saúde do worker. |
+| `locations_scanned` | inteiro | Número de locais configurados processados. |
+| `candidate_count` | inteiro | Total de arquivos candidatos observados dentro dos limites por local. |
+| `candidates_truncated` | boolean | `true` quando a lista excede 1.000 itens ou algum local atingiu limite. |
+| `locations` | lista fechada de `DiscoveryLocationResult` | Resultado individual, incluindo limites e falhas. |
+| `candidates` | lista fechada de `DiscoveryCandidateResult`, até 1.000 itens | Metadados dos arquivos COTAHIST detectados. |
+
+`DiscoveryLocationResult.kind` é `folder`, `b3_url` ou `object_storage_bucket`; `label` identifica a posição na configuração (por exemplo `folder-1`) sem expor a raiz privada; `outcome` é `available`, `absent`, `inconclusive` ou `failed`; `candidate_count` e `truncated` descrevem a busca naquele local. Uma falha individual não interrompe os demais locais.
+
+`DiscoveryCandidateResult.source_file_type` é `COTAHIST_YEARLY`, `COTAHIST_MONTHLY` ou `COTAHIST_DAILY`, inferido pelo nome; `source_locator` aponta para URL B3, URI S3 ou caminho relativo prefixado por `folder:<índice>/`; `byte_size` é o tamanho declarado em bytes; `remote_etag` e `remote_last_modified` são opcionais. ETag não é checksum. A descoberta não confirma que os bytes correspondem ao nome e não infere data de referência, integridade, precedência ou autorização de redistribuição.
+
+`DiscoveryFileType` é um enum fechado com `COTAHIST_YEARLY`, `COTAHIST_MONTHLY` e `COTAHIST_DAILY`; nenhum outro tipo de fonte é retornado por esse endpoint.

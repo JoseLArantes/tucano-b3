@@ -1,15 +1,19 @@
 //! Discovery records observations; it never downloads or parses a dataset.
-use super::RuntimeSettings;
+use super::{discovery_locations as discovery, RuntimeSettings};
 use crate::{
     db::enums::SourceFileType,
     error::Result,
     services::{
         artifacts::{ArtifactLimits, ArtifactService},
         eligibility::{require_eligible, SourcePurpose},
+        runtime::discovery_locations::{
+            DiscoveredCandidate, DiscoveryLocationKind, DiscoveryLocationOutcome, DiscoveryReport,
+            LocationScan, MAX_RESPONSE_CANDIDATES,
+        },
     },
 };
 use chrono::{DateTime, Utc};
-use sqlx::{PgPool, Row};
+use sqlx::{PgPool, Postgres, QueryBuilder, Row};
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -22,7 +26,12 @@ impl DiscoveryService {
         Self { pool, settings }
     }
 
-    pub async fn scan(&self, worker_id: Uuid, scheduled: bool, now: DateTime<Utc>) -> Result<()> {
+    pub async fn scan(
+        &self,
+        worker_id: Uuid,
+        scheduled: bool,
+        now: DateTime<Utc>,
+    ) -> Result<DiscoveryReport> {
         self.settings.validate()?;
         let market_date = now
             .with_timezone(&chrono_tz::America::Sao_Paulo)
@@ -114,6 +123,7 @@ impl DiscoveryService {
             }
             tx.commit().await?;
         }
+        let report = self.scan_configured_locations(scheduled).await?;
         if scheduled {
             sqlx::query(
                 "UPDATE b3_worker_heartbeats SET last_discovery_at=NOW() WHERE worker_id=$1",
@@ -122,6 +132,119 @@ impl DiscoveryService {
             .execute(&self.pool)
             .await?;
         }
+        Ok(report)
+    }
+
+    async fn scan_configured_locations(&self, scheduled: bool) -> Result<DiscoveryReport> {
+        let locations = discovery::parse_locations(
+            &self.settings.discovery_locations,
+            &self.settings.allowed_hosts,
+        )?;
+        let s3_client = if locations
+            .iter()
+            .any(|location| location.kind() == DiscoveryLocationKind::ObjectStorageBucket)
+        {
+            Some(discovery::build_s3_client().await?)
+        } else {
+            None
+        };
+        let mut location_results = Vec::with_capacity(locations.len());
+        let mut candidates = Vec::new();
+        let mut candidate_count = 0usize;
+        let mut candidates_truncated = false;
+        for (offset, location) in locations.into_iter().enumerate() {
+            let index = offset + 1;
+            let result = match &location {
+                discovery::DiscoveryLocation::Folder(_) => {
+                    let current = location.clone();
+                    tokio::task::spawn_blocking(move || discovery::scan_folder(&current, index))
+                        .await
+                        .unwrap_or_else(|_| {
+                            Err(crate::error::AppError::Internal(
+                                "Tarefa de varredura local interrompida.".into(),
+                            ))
+                        })
+                }
+                discovery::DiscoveryLocation::B3Url { .. } => {
+                    discovery::scan_b3_url(
+                        &location,
+                        index,
+                        self.settings.raw_root.clone(),
+                        self.settings.allowed_hosts.clone(),
+                    )
+                    .await
+                }
+                discovery::DiscoveryLocation::S3Bucket { .. } => {
+                    discovery::scan_s3_bucket(
+                        &location,
+                        index,
+                        s3_client
+                            .as_ref()
+                            .expect("S3 client created for configured bucket"),
+                    )
+                    .await
+                }
+            };
+            let location_result = result.unwrap_or_else(|_| LocationScan {
+                location_kind: location.kind(),
+                location_label: location.label(index),
+                outcome: DiscoveryLocationOutcome::Failed,
+                candidate_count: 0,
+                truncated: false,
+                candidates: Vec::new(),
+            });
+            self.record_location_scan(&location_result, scheduled)
+                .await?;
+            candidate_count = candidate_count.saturating_add(location_result.candidate_count);
+            candidates_truncated |= location_result.truncated;
+            for candidate in &location_result.candidates {
+                if candidates.len() < MAX_RESPONSE_CANDIDATES {
+                    candidates.push(candidate.clone());
+                } else {
+                    candidates_truncated = true;
+                    break;
+                }
+            }
+            location_results.push(location_result);
+        }
+        Ok(DiscoveryReport {
+            locations: location_results,
+            candidate_count,
+            candidates,
+            candidates_truncated,
+        })
+    }
+
+    async fn record_location_scan(&self, scan: &LocationScan, scheduled: bool) -> Result<()> {
+        let id = Uuid::new_v4();
+        let candidate_count = i32::try_from(scan.candidate_count).unwrap_or(i32::MAX);
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("INSERT INTO b3_discovery_location_checks(id,location_kind,location_label,scheduled,outcome,candidate_count,truncated) VALUES($1,$2,$3,$4,$5,$6,$7)")
+            .bind(id)
+            .bind(scan.location_kind.as_str())
+            .bind(&scan.location_label)
+            .bind(scheduled)
+            .bind(scan.outcome.as_str())
+            .bind(candidate_count)
+            .bind(scan.truncated)
+            .execute(&mut *tx)
+            .await?;
+        for batch in scan.candidates.chunks(500) {
+            let mut query = QueryBuilder::<Postgres>::new(
+                "INSERT INTO b3_discovery_location_candidates(check_id,source_file_type,source_locator,remote_etag,remote_last_modified,content_length) ",
+            );
+            query.push_values(batch, |mut values, candidate: &DiscoveredCandidate| {
+                values
+                    .push_bind(id)
+                    .push_bind(candidate.source_file_type.as_str())
+                    .push_bind(&candidate.source_locator)
+                    .push_bind(&candidate.remote_etag)
+                    .push_bind(&candidate.remote_last_modified)
+                    .push_bind(candidate.byte_size);
+            });
+            query.build().execute(&mut *tx).await?;
+        }
+        tx.commit().await?;
         Ok(())
     }
 

@@ -32,6 +32,7 @@ const MAX_TAIL_SECONDS: u64 = 60 * 60;
 
 /// Filtros fechados para exportar todas as ocorrências de um ticker numa revisão COTAHIST.
 #[derive(Debug, Clone, Deserialize, IntoParams, ToSchema)]
+#[into_params(parameter_in = Query)]
 #[serde(deny_unknown_fields)]
 pub struct QuoteExportFilters {
     /// Código de negociação COTAHIST obrigatório; espaços externos são removidos e letras ASCII são normalizadas para maiúsculas. O ticker não é identidade permanente do instrumento.

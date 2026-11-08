@@ -148,7 +148,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Discover => {
             DiscoveryService::new(pool, runtime)
                 .scan(Uuid::new_v4(), false, chrono::Utc::now())
-                .await?
+                .await?;
         }
     }
     Ok(())

@@ -10,10 +10,9 @@ use std::sync::Arc;
 
 pub fn is_public(path: &str, method: &Method) -> bool {
     *method == Method::GET
-        && matches!(
-            path,
-            "/healthz" | "/api/v1/health" | "/docs" | "/docs/" | "/openapi.json"
-        )
+        && (matches!(path, "/healthz" | "/api/v1/health" | "/openapi.json")
+            || path == "/docs"
+            || path.starts_with("/docs/"))
 }
 
 pub async fn require_bearer_token(

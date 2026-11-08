@@ -16,9 +16,9 @@ As rotas protegidas usam o cabeçalho HTTP Authorization com esquema Bearer. O s
 | Token administrativo | Operações de escrita e inspeções operacionais; também pode consultar rotas de leitura |
 | Sem token | Somente exceções públicas explícitas de saúde e documentação |
 
-As variáveis atuais são TUCANO_B3_READ_TOKEN e TUCANO_B3_ADMIN_TOKEN. Configure valores distintos. A antiga TUCANO_B3_TOKEN não substitui essas duas credenciais no contrato inicial.
+As variáveis atuais são TUCANO_B3_READ_TOKEN e TUCANO_B3_ADMIN_TOKEN. Configure valores distintos. A antiga TUCANO_B3_TOKEN não substitui essas duas credenciais no contrato inicial. O Swagger UI não lê o arquivo .env do servidor: o botão “Authorize” guarda somente o valor Bearer que você inserir.
 
-GET /healthz, GET /api/v1/health, GET /docs e GET /openapi.json são exceções públicas. A exceção é por método e caminho GET; uma requisição de escrita para esses caminhos continua protegida.
+GET /healthz, GET /api/v1/health, GET /openapi.json, GET /docs e os assets GET sob /docs/ são exceções públicas para servir a interface Swagger. A exceção é por método e caminho GET; uma requisição de escrita para esses caminhos continua protegida. A UI não autentica chamadas automaticamente: use “Authorize” para informar o Bearer correto. Para POST e inspeções operacionais, use o valor de TUCANO_B3_ADMIN_TOKEN; o token de leitura retorna 403 ADMIN_REQUIRED nessas operações. O OpenAPI exibe essa distinção na descrição de autenticação.
 
 ## Rotas administrativas
 
