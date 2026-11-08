@@ -86,8 +86,11 @@ pub struct QuoteIdentity {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum IdentityStatus {
+    /// Evidência temporal inequívoca relaciona a ocorrência a um instrumento.
     Resolved,
+    /// Nenhuma relação sustentada foi encontrada; o fato de mercado permanece disponível.
     Unresolved,
+    /// Mais de uma relação permanece possível para a data e os qualificadores.
     Ambiguous,
 }
 /// Metadados de interpretação acrescentados mediante include_internal=true.

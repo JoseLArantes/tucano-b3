@@ -183,4 +183,42 @@ async fn openapi_describes_only_supported_release_contracts() {
     assert!(export["responses"].get("304").is_some());
     assert!(export["security"][0].get("bearer_auth").is_some());
     assert!(spec["components"]["schemas"]["QuoteExportFilters"].is_object());
+
+    let description = export["description"].as_str().unwrap();
+    for required_detail in [
+        "publicações oficiais COTAHIST",
+        "Retomada e idempotência",
+        "content_sha256",
+        "third_party_delivery",
+        "500 fatos",
+        "application/x-ndjson",
+    ] {
+        assert!(
+            description.contains(required_detail),
+            "missing OpenAPI detail: {required_detail}"
+        );
+    }
+    let parameters = export["parameters"].as_array().unwrap();
+    for name in [
+        "ticker_symbol",
+        "data_revision",
+        "cursor",
+        "include_internal",
+        "If-None-Match",
+        "Accept-Encoding",
+    ] {
+        let parameter = parameters
+            .iter()
+            .find(|parameter| parameter["name"] == name)
+            .unwrap_or_else(|| panic!("missing OpenAPI parameter: {name}"));
+        assert!(parameter["description"]
+            .as_str()
+            .is_some_and(|text| !text.is_empty()));
+    }
+    let cursor = parameters
+        .iter()
+        .find(|parameter| parameter["name"] == "cursor")
+        .unwrap();
+    assert_eq!(cursor["schema"]["maxLength"], 1024);
+    assert!(cursor["example"].is_string() || cursor["schema"]["example"].is_string());
 }

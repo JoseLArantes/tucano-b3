@@ -14,9 +14,78 @@ Enviar `Authorization: Bearer <credencial-de-leitura>` nas consultas protegidas.
 
 Ticker identifica um código no contexto e período. O mesmo ticker pode ter mercados, distribuições, prazos e instrumentos diferentes. Datas são inclusivas; paginação inválida retorna 400. `limit` padrão 100, máximo 1000; `offset` padrão 0. Filtros adicionais incluem instrumento, ISIN, BDI, distribuição e prazo.
 
-Para transferir o histórico integral de um único ticker, use `GET /api/v1/b3/cotahist/quotes/export?ticker_symbol=EXMP3`. A resposta é NDJSON finito em eventos `meta`, `quote`, `checkpoint` e `complete`; retome após desconexão usando o cursor do checkpoint com o mesmo ticker e a revisão registrada em `meta`. A exportação não usa `limit`/`offset` nem representa mercado ao vivo. Verifique `complete` antes de aceitar ou armazenar o resultado.
+## Exportação integral COTAHIST em NDJSON
 
-A exportação lê lotes keyset de uma revisão publicada e mantém artefatos derivados no volume persistente `B3_PROCESSED_DATA_DIR/quote-exports` por até 30 dias. Cache não é fonte de verdade; elegibilidade e autorização são verificadas em cada chamada. O HTTP cache é privado, com ETag somente depois que o artefato está pronto. Consulte o contrato `/openapi.json` e o [guia de eventos NDJSON](../docusaurus/docs/schemas/cotahist.md).
+Use `GET /api/v1/b3/cotahist/quotes/export` para transferir todas as ocorrências de um ticker em uma revisão COTAHIST publicada. É uma transferência histórica finita, não um feed ao vivo. Ao contrário de `/cotahist/quotes`, não recebe intervalo de datas, `limit` ou `offset`, e não está sujeito ao máximo de 1.000 itens da paginação.
+
+### Solicitação e seleção
+
+Envie `Authorization: Bearer <credencial-de-leitura>`. Os parâmetros aceitos são:
+
+| Parâmetro | Tipo | Obrigatório/default | Regra e efeito |
+|---|---|---|---|
+| `ticker_symbol` | string | Obrigatório | De 1 a 64 caracteres. Remove espaços externos e normaliza letras ASCII para maiúsculas. Filtra o código publicado; não identifica sozinho um instrumento permanente. |
+| `data_revision` | UUID | Opcional | Fixa uma revisão publicada. Sem cursor, a revisão ativa é selecionada uma vez no começo e devolvida em `meta`. Com cursor, omita para usar a revisão dele ou envie o mesmo UUID. Revisão divergente retorna `400`. |
+| `cursor` | string | Opcional | Valor opaco URL-safe emitido por `checkpoint`, com até 1.024 caracteres. Retoma exclusivamente após `(trade_date, id)` e está ligado ao ticker, à revisão e à versão do schema. Não o construa, edite ou use como credencial. |
+| `include_internal` | boolean | `false` | Quando `true`, inclui `internal.version_id` e `internal.business_hash` em cada `HistoricalQuote`. Não amplia autorização. |
+
+O filtro de ticker abrange as ocorrências daquele código na revisão, mesmo que os qualificadores `market_type`, `bdi_code`, `distribution_number` ou `term_days` sejam diferentes. Cada linha mantém esses qualificadores; não os colapse para formar uma observação diária única. A ordem é crescente por `trade_date` e UUID `id`, que desempata fatos da mesma data. Uma revisão publicada durante a chamada não altera o conjunto já selecionado.
+
+Exemplo:
+
+```http
+GET /api/v1/b3/cotahist/quotes/export?ticker_symbol=EXMP3&data_revision=00000000-0000-4000-8000-000000000001
+Authorization: Bearer <credencial-de-leitura>
+Accept: application/x-ndjson
+Accept-Encoding: gzip
+```
+
+`Accept` não escolhe outra representação: o endpoint responde `application/x-ndjson; charset=utf-8`. `Accept-Encoding: gzip` permite gzip quando o artefato comprimido está pronto; uma geração inicial pode ser enviada sem compressão.
+
+### Protocolo de eventos
+
+O corpo é NDJSON UTF-8: cada objeto é serializado como uma linha terminada por LF (`\n`). Limites dos chunks HTTP não correspondem necessariamente a limites de linha; acumule bytes até LF antes de interpretar JSON. A ordem lógica é:
+
+| Evento | Campos e significado |
+|---|---|
+| `meta` | Primeira linha. Contém `schema_version`, `ticker_symbol`, `data_revision`, `resumed_after` (`null` na primeira chamada) e `disclaimer` nominal. |
+| `quote` | Uma ocorrência em `data`, conforme o schema `HistoricalQuote`; preserva decimais textuais, `identity` e `provenance`. |
+| `checkpoint` | Emitido ao final de cada página interna de até 500 fatos. `cursor` retoma após o último fato da página. `records_sent` é o total acumulado de eventos `quote` nesta resposta, começando novamente do zero em cada retomada. |
+| `complete` | Confirma o fim do segmento. `record_count` conta somente `quote` nesta resposta; `last_cursor` pode ser nulo quando não há cursor final; `content_sha256` cobre os bytes UTF-8 das linhas anteriores, incluindo LF, e exclui a linha `complete`. |
+| `error` | Erro seguro após o envio dos headers. Contém `code`, `message` e `request_id`. Uma resposta com `error` não é concluída, mesmo se o processo receber o fim do corpo. |
+
+O exemplo abaixo é estrutural e usa IDs/checksum sintéticos; o `cursor` ilustra o formato de um cursor válido para os campos exibidos:
+
+```ndjson
+{"type":"meta","schema_version":1,"ticker_symbol":"EXMP3","data_revision":"00000000-0000-4000-8000-000000000001","resumed_after":null,"disclaimer":"Preços históricos nominais brutos, na moeda e forma de cotação da época, sem ajustes retroativos por inflação ou eventos corporativos."}
+{"type":"quote","data":{"id":"00000000-0000-4000-8000-000000000010","trade_date":"2025-01-02","ticker_symbol":"EXMP3","market_type":"010","bdi_code":null,"distribution_number":null,"term_days":null,"issuer_short_name":null,"paper_specification":null,"currency":"BRL","open_price":"30.20","high_price":"30.20","low_price":"30.20","average_price":"30.20","last_price":"30.20","best_bid_price":null,"best_ask_price":null,"trades_count":1,"traded_quantity":"1","traded_volume":"30.20","option_exercise_price":null,"price_correction_indicator":null,"maturity_date":null,"quotation_factor":1,"exercise_price_points":null,"isin":null,"identity":{"instrument_id":null,"status":"unresolved"},"provenance":{"source_file_id":"00000000-0000-4000-8000-000000000011","source_file_type":"COTAHIST_YEARLY","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","source_member_id":"00000000-0000-4000-8000-000000000012","source_member_name":"COTAHIST.2025.TXT","record_index":42}}}
+{"type":"checkpoint","cursor":"eyJzY2hlbWFfdmVyc2lvbiI6MSwidGlja2VyX3N5bWJvbCI6IkVYTVAzIiwiZGF0YV9yZXZpc2lvbiI6IjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMDEiLCJ0cmFkZV9kYXRlIjoiMjAyNS0wMS0wMiIsInF1b3RlX2lkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDEwIn0","records_sent":1}
+{"type":"complete","record_count":1,"last_cursor":"eyJzY2hlbWFfdmVyc2lvbiI6MSwidGlja2VyX3N5bWJvbCI6IkVYTVAzIiwiZGF0YV9yZXZpc2lvbiI6IjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMDEiLCJ0cmFkZV9kYXRlIjoiMjAyNS0wMS0wMiIsInF1b3RlX2lkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDEwIn0","content_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+```
+
+### Retomada, integridade e repetição
+
+Persista o checkpoint mais recente somente depois de armazenar de forma durável todos os eventos `quote` anteriores a ele. Se a conexão cair antes do próximo checkpoint, solicite novamente usando o cursor anterior; a chave exclusiva `(trade_date,id)` impede repetir os fatos já confirmados. Envie o mesmo ticker e cursor. Se `data_revision` for explícito, deve ser igual ao UUID embutido no cursor. A resposta retomada começa com um novo `meta`, conta os próprios eventos `quote` a partir de zero e possui seu próprio `content_sha256`; some `record_count` entre os segmentos concluídos para obter a contagem total da exportação.
+
+Finalize an incremental SHA-256 digest with the exact uncompressed bytes of every line before `complete`, preserving each LF. Compare the lowercase hexadecimal digest to `complete.content_sha256`. Do not hash decoded objects or reserialized JSON: key ordering and whitespace are part of the byte representation. Stage output as provisional until `complete` is received and the digest matches. If an `error` event arrives, the body ends early, JSON parsing fails, or the digest differs, keep the last confirmed cursor and retry from it.
+
+For a fixed revision, ticker, `include_internal` projection, and cursor, repeating the request returns the same NDJSON segment. The service reuses or joins generation of the derived artifact; no `Idempotency-Key` header is required for this read-only operation.
+
+### HTTP headers, cache and failures
+
+| Header/status | Comportamento |
+|---|---|
+| `Content-Type` | `application/x-ndjson; charset=utf-8`. |
+| `Content-Encoding` | `gzip` somente quando a representação gzip pronta for selecionada; ausente para identidade. |
+| `Cache-Control` | `private, max-age=0, must-revalidate`; respostas autenticadas não devem ir para cache/CDN público. |
+| `Vary` | `Authorization, Accept-Encoding`, pois autorização e compressão variam a representação/resposta. |
+| `ETag` | ETag forte de bytes da representação pronta (gzip ou NDJSON). Não é emitido enquanto a representação está sendo construída. |
+| `Content-Length` | Presente somente para artefato pronto; fluxo em geração não declara tamanho final. |
+| `If-None-Match` | `304` sem corpo somente se a representação escolhida já estiver pronta e o ETag coincidir. Em cache miss/geração, a chamada segue como `200` em fluxo. |
+
+Antes dos headers, o envelope comum da API cobre `400` (filtro, cursor ou revisão inválida), `401` (Bearer inválido), `403` (fonte/revisão sem elegibilidade REST e `third_party_delivery`), `404` (ticker sem fatos na revisão), `500` (falha interna) e `503` (credenciais, revisão, PostgreSQL ou storage indisponível). Depois dos headers, o status HTTP não pode mudar: leia eventos `error` e exija `complete`. `200` sem `complete` não confirma sucesso; uma falha de rede também pode encerrar o corpo sem evento `error`.
+
+O cache é interno, derivado e reconstruível; uma entrada pronta dura até 30 dias. Mesmo em cache hit, cada chamada resolve/revalida revisão e elegibilidade e executa uma consulta indexada de existência do ticker; não relê nem serializa todo o histórico do PostgreSQL. A implementação usa o filesystem em `B3_PROCESSED_DATA_DIR/quote-exports` e páginas keyset limitadas a 500 fatos ao gerar um artefato. Instâncias que compartilham artefatos precisam compartilhar esse filesystem. Isso não é garantia de latência: a meta inferior a um segundo para a primeira cotação ainda depende de benchmark representativo e não é um SLA publicado. Consulte o contrato máquina-legível em `GET /openapi.json`, o [guia detalhado de consumo](consumers_guides.md), os [endpoints COTAHIST](../docusaurus/docs/api-endpoints/cotahist.md) e o [schema dos eventos](../docusaurus/docs/schemas/cotahist.md).
 
 ## Precisão, revisão e cobertura
 

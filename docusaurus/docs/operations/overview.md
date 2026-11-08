@@ -24,9 +24,25 @@ Uma revisão com rejeições ou conflitos não é publicada automaticamente e te
 
 ## Cache de exportação COTAHIST
 
-`GET /api/v1/b3/cotahist/quotes/export` usa o PostgreSQL para gerar lotes keyset de uma revisão publicada e grava uma cópia derivada em `B3_PROCESSED_DATA_DIR/quote-exports`. O manifesto PostgreSQL coordena uma geração por chave, registra lease/checksum/tamanho e aplica expiração de 30 dias. A perda de um arquivo invalida a entrada e permite reconstruí-la; não remova o schema ou a revisão para limpar a cache.
+`GET /api/v1/b3/cotahist/quotes/export` usa PostgreSQL como fonte de verdade e mantém uma cópia derivada em `B3_PROCESSED_DATA_DIR/quote-exports`. A chave de cache é derivada de revisão, ticker, versão do schema, projeção `include_internal` e cursor. Assim, um segmento retomado não colide com o arquivo integral nem com outra projeção.
 
-O volume de exportações não contém fonte oficial nem é necessário para backup/restore do histórico. A aplicação pode montá-lo em storage persistente compartilhado quando tiver várias instâncias no mesmo deployment; a configuração Compose local não oferece filesystem multi-host ou object storage. Autorização e elegibilidade externa são verificadas antes de usar cada artefato. Como o endpoint é finito, o evento `complete` valida término; uma conexão encerrada antes dele é incompleta.
+### Caminho de uma chamada
+
+1. A API autentica a credencial Bearer e resolve uma revisão publicada. Mesmo em cache hit, revalida elegibilidade REST e `third_party_delivery` e faz uma consulta indexada de existência do ticker na revisão. Isso não lê e serializa o histórico inteiro.
+2. Para um artefato pronto, consulta o manifesto PostgreSQL e transmite o arquivo completo (gzip se essa representação estiver pronta e for aceita). A autorização e elegibilidade são novamente aplicadas em cada requisição.
+3. Em cache miss, uma linha de manifesto e lease no PostgreSQL elege um builder por chave. Consumidores simultâneos da mesma chave acompanham o arquivo parcial que o builder grava; uma instância que perdeu o lease não pode sobrescrever o arquivo temporário de outra geração porque cada geração usa caminho associado ao seu token de lease.
+4. O builder consulta a revisão em páginas keyset de até 500 cotações, em ordem `(trade_date,id)`. Cada página é serializada como eventos NDJSON, gravada e liberada para leitura enquanto a consulta continua. Checkpoints permitem ao consumidor retomar depois da última página confirmada.
+5. Ao terminar, o processo grava `complete`, calcula e confirma os digests, sincroniza o arquivo, renomeia o temporário para o artefato final e atualiza o manifesto. A representação gzip é derivada depois; enquanto ela não está pronta, o consumidor recebe NDJSON sem compressão.
+
+O manifesto mantém status, lease, checksum, tamanho, contagem e expiração de 30 dias. Uma falha ou ausência do arquivo invalida a entrada pronta e permite reconstruí-la. A expiração remove artefatos derivados; não remova tabelas, fatos ou revisões PostgreSQL para limpar cache. O volume de exportações não contém fonte oficial e não é necessário para restaurar o histórico.
+
+### Topologia e limites de escala
+
+Todas as instâncias que compartilham o manifesto também precisam ler e gravar o mesmo filesystem persistente montado em `B3_PROCESSED_DATA_DIR`. O Compose de desenvolvimento usa um volume local e não fornece storage multi-host nem integração com object storage. Portanto, uma implantação horizontal em vários hosts precisa fornecer filesystem compartilhado compatível; um serviço de objeto ainda não está implementado. PostgreSQL mantém a coordenação durável por lease; Redis ou uma fila em memória não participam do protocolo.
+
+Cache hits não eliminam todas as consultas ao banco: revisão, elegibilidade, existência indexada e estado do manifesto continuam validados. O caminho de cache evita reler e reconstruir todas as cotações. Misses consultam o banco em páginas limitadas e compartilham a mesma geração entre consumidores da mesma chave. Não há SLA de latência publicado. A meta de primeira cotação inferior a um segundo para 50 consumidores só pode ser anunciada após benchmark reproduzível em corpus, hardware, topologia e padrões de cache representativos.
+
+Como o endpoint é finito, consumidores só confirmam uma extração quando recebem `complete` e validam `content_sha256`. Evento `error`, falha de transporte ou término sem `complete` significa corpo parcial; use o último `checkpoint` persistido para retomar.
 
 ## Segurança e autorização
 

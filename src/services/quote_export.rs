@@ -34,17 +34,20 @@ const MAX_TAIL_SECONDS: u64 = 60 * 60;
 #[derive(Debug, Clone, Deserialize, IntoParams, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct QuoteExportFilters {
-    /// Código B3 publicado para negociação; não é uma identidade permanente.
+    /// Código de negociação COTAHIST obrigatório; espaços externos são removidos e letras ASCII são normalizadas para maiúsculas. O ticker não é identidade permanente do instrumento.
     #[param(min_length = 1, max_length = 64, example = "PETR4")]
     pub ticker_symbol: String,
-    /// Revisão publicada a fixar; omitida, usa a revisão ativa no início da exportação.
+    /// UUID de revisão publicada. Se omitido sem cursor, a revisão ativa é escolhida uma vez no início; com cursor, usa-se a revisão contida nele. Se informado junto a um cursor, deve coincidir.
     #[param(example = "00000000-0000-4000-8000-000000000001")]
     pub data_revision: Option<Uuid>,
-    /// Cursor devolvido em eventos `checkpoint`; retoma após o último fato daquele cursor.
-    #[param(max_length = 1024)]
+    /// Token opaco URL-safe sem padding, devolvido em `checkpoint`; retoma exclusivamente após a chave `(trade_date, id)` e permanece vinculado ao ticker, à revisão e à versão do schema.
+    #[param(
+        max_length = 1024,
+        example = "eyJzY2hlbWFfdmVyc2lvbiI6MSwidGlja2VyX3N5bWJvbCI6IkVYTVAzIiwiZGF0YV9yZXZpc2lvbiI6IjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMDEiLCJ0cmFkZV9kYXRlIjoiMjAyNS0wMS0wMiIsInF1b3RlX2lkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDEwIn0"
+    )]
     pub cursor: Option<String>,
-    /// Inclui `internal` em cada registro; não concede autorização adicional.
-    #[param(default = false)]
+    /// Inclui `internal.version_id` e `internal.business_hash` em cada cotação; não concede autorização adicional.
+    #[param(default = false, example = false)]
     pub include_internal: Option<bool>,
 }
 
@@ -70,7 +73,7 @@ pub enum QuoteExportEvent {
         ticker_symbol: String,
         /// Revisão imutável que fixa o conjunto exportado.
         data_revision: Uuid,
-        /// Cursor recebido, quando a resposta é uma retomada.
+        /// Cursor recebido, quando a resposta é uma retomada; `null` na primeira chamada.
         resumed_after: Option<String>,
         /// Aviso obrigatório de preços nominais sem ajuste retroativo.
         disclaimer: String,
@@ -84,7 +87,7 @@ pub enum QuoteExportEvent {
     Checkpoint {
         /// Cursor opaco a enviar novamente junto à mesma revisão e ticker.
         cursor: String,
-        /// Quantidade de fatos enviados até este checkpoint nesta resposta.
+        /// Quantidade acumulada de eventos `quote` nesta resposta até este checkpoint; uma retomada começa a contar novamente do zero.
         records_sent: u64,
     },
     /// Marcador de término verificável; seu checksum cobre as linhas anteriores.
@@ -93,14 +96,14 @@ pub enum QuoteExportEvent {
         record_count: u64,
         /// Cursor final para continuar uma extração em chamadas posteriores.
         last_cursor: Option<String>,
-        /// SHA-256 das linhas NDJSON anteriores a este evento, incluindo metadados.
+        /// SHA-256 dos bytes UTF-8 das linhas NDJSON anteriores a este evento, incluindo cada LF final e excluindo a linha `complete`.
         content_sha256: String,
     },
     /// Erro depois do início do corpo; a ausência de `complete` também indica truncamento.
     Error {
         /// Código estável da falha de geração.
         code: String,
-        /// Mensagem segura sem SQL, caminhos privados ou credenciais.
+        /// Mensagem segura sem SQL, caminhos privados ou credenciais. O evento é emitido somente após o início da resposta HTTP.
         message: String,
         /// Identificador para correlacionar o erro no log da API.
         request_id: Uuid,

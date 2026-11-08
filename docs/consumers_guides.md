@@ -244,37 +244,76 @@ O exemplo é sintético e abreviado; uma resposta real pode incluir ``null`` em 
 
 ### 6.2 COTAHIST: exportação integral em NDJSON
 
-Use ``GET /api/v1/b3/cotahist/quotes/export`` quando o consumidor precisa transferir todo o histórico de um ticker, sem paginação ``offset`` e sem o teto de 1.000 linhas da consulta de lista. A resposta é finita, ordenada por ``trade_date`` e ``id``, e não representa cotações ao vivo.
+Use ``GET /api/v1/b3/cotahist/quotes/export`` quando o consumidor precisa transferir todas as ocorrências de um ticker em uma revisão publicada, sem paginação ``offset`` e sem o teto de 1.000 itens da consulta de lista. A resposta é finita e não representa cotações ao vivo. O filtro de ticker inclui ocorrências com diferentes mercados, BDI, distribuições e prazos; mantenha os qualificadores presentes em cada ``HistoricalQuote`` em vez de colapsá-los para uma única linha por dia.
 
 | Query/header | Tipo | Semântica |
 |---|---|---|
-| ``ticker_symbol`` | string | Obrigatório; 1–64 caracteres; o servidor remove espaços externos e normaliza para maiúsculas. |
-| ``data_revision`` | UUID | Opcional; fixa revisão publicada. Se ausente, a revisão ativa é escolhida uma vez e aparece em ``meta``. |
-| ``cursor`` | string URL-safe | Opcional; retoma exclusivamente depois de ``(trade_date, id)``. O token é ligado ao ticker, revisão e versão do schema. |
-| ``include_internal`` | boolean | Default ``false``; ``true`` acrescenta ``internal.version_id`` e ``internal.business_hash`` por cotação. |
-| ``If-None-Match`` | header | Opcional; ETag de artefato pronto. Correspondência retorna ``304`` sem corpo. |
-| ``Accept-Encoding`` | header | Clientes podem aceitar ``gzip``. A primeira geração pode chegar sem compressão; chamadas posteriores podem usar gzip. |
+| ``ticker_symbol`` | string | Obrigatório; 1–64 caracteres. Remove espaços externos e normaliza letras ASCII para maiúsculas. Ticker não é identidade permanente. |
+| ``data_revision`` | UUID | Opcional. Sem cursor, fixa uma revisão publicada; se omitida, a revisão ativa é selecionada uma vez no início e aparece em ``meta``. Com cursor, pode ser omitida ou deve coincidir com a revisão do cursor. |
+| ``cursor`` | string URL-safe | Opcional, máximo 1.024 caracteres. Valor opaco emitido por ``checkpoint`` e vinculado ao ticker, revisão, versão do schema e última chave ``(trade_date, id)``. |
+| ``include_internal`` | boolean | Default ``false``. ``true`` acrescenta ``internal.version_id`` e ``internal.business_hash``. Não amplia autorização. |
+| ``If-None-Match`` | header | Opcional. ETag forte da mesma representação pronta (gzip ou NDJSON). Retorna ``304`` sem corpo somente quando ela já está pronta e coincide. |
+| ``Accept-Encoding`` | header | ``gzip`` permite compressão se a representação gzip estiver pronta. O fluxo da primeira geração pode chegar sem compressão. |
+
+Não envie ``limit``, ``offset``, filtros de mercado ou intervalo de datas: são parâmetros desconhecidos para esta rota e resultam em ``400``. Os fatos são ordenados crescentemente por ``trade_date`` e UUID ``id`` como desempate estável. O conjunto fica preso na revisão selecionada mesmo se outra revisão for publicada durante a resposta.
+
+Exemplo de chamada:
+
+```http
+GET /api/v1/b3/cotahist/quotes/export?ticker_symbol=EXMP3
+Authorization: Bearer <credencial-de-leitura>
+Accept: application/x-ndjson
+Accept-Encoding: gzip
+```
 
 Cada linha é um objeto JSON UTF-8 encerrado por LF, com o discriminador ``type``:
 
 | Evento | Uso |
 |---|---|
-| ``meta`` | Primeira linha; schema, ticker, revisão, cursor de retomada e aviso de preço nominal. |
-| ``quote`` | Uma instância de ``HistoricalQuote`` em ``data``. Conserva strings decimais, ``identity`` e ``provenance``. |
-| ``checkpoint`` | Cursor opaco emitido após um lote. Persista o cursor mais recente para retomada depois de uma desconexão. |
-| ``complete`` | Confirma que o segmento terminou; contém contagem desta resposta, cursor final e SHA-256 das linhas anteriores. |
-| ``error`` | Falha segura depois do início do corpo. Ausência de ``complete`` sempre significa que não há confirmação de sucesso. |
+| ``meta`` | Primeira linha. Contém versão do schema, ticker normalizado, revisão imutável, cursor da chamada anterior (ou ``null``) e aviso de preço nominal. |
+| ``quote`` | Uma instância completa de ``HistoricalQuote`` em ``data``. Conserva strings decimais, data ISO, ``identity`` e ``provenance``. Quando ``include_internal=false``, a propriedade ``internal`` é omitida; quando verdadeiro, contém ``version_id`` e ``business_hash``. |
+| ``checkpoint`` | Emitido após cada página interna de até 500 fatos. ``records_sent`` é a contagem acumulada de eventos ``quote`` nesta resposta até aquele ponto; reinicia em zero na chamada retomada. |
+| ``complete`` | Confirma que o segmento terminou. ``record_count`` conta apenas os eventos ``quote`` desta resposta; ``last_cursor`` é o cursor final; ``content_sha256`` cobre bytes UTF-8 de todas as linhas anteriores, com LF, excluindo esta linha ``complete``. |
+| ``error`` | Falha segura depois do início do corpo; inclui código, mensagem e ``request_id``. Não indica conclusão e não vem seguida por ``complete``. |
 
 Exemplo de linhas abreviadas:
 
 ```ndjson
 {"type":"meta","schema_version":1,"ticker_symbol":"EXMP3","data_revision":"00000000-0000-4000-8000-000000000001","resumed_after":null,"disclaimer":"Preços históricos nominais brutos, na moeda e forma de cotação da época, sem ajustes retroativos por inflação ou eventos corporativos."}
-{"type":"quote","data":{"id":"00000000-0000-4000-8000-000000000010","trade_date":"2025-01-02","ticker_symbol":"EXMP3","open_price":"30.10","identity":{"instrument_id":null,"status":"unresolved"},"provenance":{"source_file_id":"00000000-0000-4000-8000-000000000011","source_file_type":"COTAHIST_YEARLY","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","source_member_id":"00000000-0000-4000-8000-000000000012","source_member_name":"COTAHIST.2025.TXT","record_index":42}}}
-{"type":"checkpoint","cursor":"eyJzY2hlbWFfdmVyc2lvbiI6MX0","records_sent":1}
-{"type":"complete","record_count":1,"last_cursor":"eyJzY2hlbWFfdmVyc2lvbiI6MX0","content_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+{"type":"quote","data":{"id":"00000000-0000-4000-8000-000000000010","trade_date":"2025-01-02","ticker_symbol":"EXMP3","open_price":"30.20","last_price":"30.20","identity":{"instrument_id":null,"status":"unresolved"},"provenance":{"source_file_id":"00000000-0000-4000-8000-000000000011","source_file_type":"COTAHIST_YEARLY","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","source_member_id":"00000000-0000-4000-8000-000000000012","source_member_name":"COTAHIST.2025.TXT","record_index":42}}}
+{"type":"checkpoint","cursor":"eyJzY2hlbWFfdmVyc2lvbiI6MSwidGlja2VyX3N5bWJvbCI6IkVYTVAzIiwiZGF0YV9yZXZpc2lvbiI6IjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMDEiLCJ0cmFkZV9kYXRlIjoiMjAyNS0wMS0wMiIsInF1b3RlX2lkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDEwIn0","records_sent":1}
+{"type":"complete","record_count":1,"last_cursor":"eyJzY2hlbWFfdmVyc2lvbiI6MSwidGlja2VyX3N5bWJvbCI6IkVYTVAzIiwiZGF0YV9yZXZpc2lvbiI6IjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMDEiLCJ0cmFkZV9kYXRlIjoiMjAyNS0wMS0wMiIsInF1b3RlX2lkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDEwIn0","content_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
 ```
 
-Para continuar, envie ``ticker_symbol`` e o cursor do último checkpoint. O cursor conserva a revisão, mesmo se a revisão ativa mudar; se enviar ``data_revision`` explicitamente, ela deve coincidir. ``record_count`` é o número emitido nesta resposta, então some as contagens de segmentos para totalizar uma exportação retomada. Respostas cacheadas são reconstruíveis e privadas. A autorização e a elegibilidade REST/``third_party_delivery`` são revalidadas antes de usar cache; o cliente não deve encaminhar respostas autenticadas a CDN/cache público.
+As linhas são abreviadas e os IDs/checksum são sintéticos; o cursor de exemplo contém os campos de uma chave válida para o ticker, revisão, data e UUID mostrados. Para o DTO fechado completo, consulte [schema COTAHIST](../docusaurus/docs/schemas/cotahist.md).
+
+### Consumo robusto e retomada
+
+1. Leia o corpo como bytes em fluxo e acumule até LF antes de parsear JSON. Um chunk TCP/HTTP pode terminar no meio de uma linha ou conter várias linhas.
+2. Exija ``meta`` como primeira linha e registre ``data_revision`` para rastreabilidade. Valide ``schema_version`` antes de interpretar eventos.
+3. Para cada ``quote``, persista o objeto e mantenha uma SHA-256 incremental dos bytes exatos da linha, incluindo seu LF. Não serialize o objeto novamente para gerar o checksum: espaços e ordem das chaves alterariam os bytes.
+4. Ao receber ``checkpoint``, só persista o cursor depois de confirmar duravelmente todos os eventos ``quote`` anteriores. Se cair antes do checkpoint, solicite novamente com o cursor anterior.
+5. Ao receber ``complete``, finalize o checksum incremental e compare com ``content_sha256``. Só então marque aquele segmento como concluído. ``record_count`` é por resposta; some contagens dos segmentos concluídos para obter o total retomado.
+6. Se receber ``error``, ocorrer falha de transporte/JSON, faltar ``complete`` ou o checksum divergir, descarte a conclusão do segmento e retome pelo último checkpoint confirmado.
+
+Para retomar, envie o mesmo ``ticker_symbol`` e o cursor do último checkpoint. O cursor exclusivo continua após ``(trade_date, id)`` e conserva a revisão mesmo que a ativa mude. Se enviar ``data_revision``, ela deve coincidir; ticker, cursor ou revisão inconsistentes retornam ``400``. A resposta retomada tem seu próprio ``meta``, contagem e checksum. O cursor não é Bearer nem credencial.
+
+### HTTP, cache e falhas
+
+| Elemento | Comportamento |
+|---|---|
+| ``Content-Type`` | ``application/x-ndjson; charset=utf-8``. |
+| ``Content-Encoding`` | ``gzip`` para artefato gzip pronto e solicitado; ausente para NDJSON sem compressão. |
+| ``Cache-Control`` | ``private, max-age=0, must-revalidate``; não encaminhe para CDN/cache público compartilhado. |
+| ``Vary`` | ``Authorization, Accept-Encoding``. |
+| ``ETag`` / ``Content-Length`` | Só para representação pronta; ETag corresponde aos bytes da variante gzip ou NDJSON selecionada. |
+| ``If-None-Match`` | Retorna ``304`` sem corpo se houver correspondência com representação pronta. Durante geração, a resposta é ``200`` em fluxo. |
+
+Antes dos headers, erros usam o envelope JSON comum: ``400`` filtros/parâmetros/cursor incompatíveis, ``401`` Bearer inválido, ``403`` fonte ou revisão sem elegibilidade para REST/``third_party_delivery``, ``404`` ticker sem fatos na revisão, ``500`` falha interna e ``503`` credenciais/dependência/storage indisponível. Após o início do corpo, HTTP não troca o status; um ``200`` precisa conter ``complete`` sem ``error`` e com checksum válido para ser aceito. Respostas repetidas com a mesma revisão, ticker, projeção ``include_internal`` e cursor produzem o mesmo segmento; não é necessário ``Idempotency-Key``.
+
+O artefato de cache é interno, reconstruível, armazenado por até 30 dias e não substitui a revisão PostgreSQL. Mesmo em cache hit, cada chamada resolve a revisão, revalida elegibilidade e faz uma consulta indexada de existência do ticker; o cache evita reler e serializar todo o histórico. Na implementação atual, uma geração lê páginas keyset limitadas a 500 fatos do PostgreSQL e as transmite enquanto constrói o artefato; consumidores simultâneos para a mesma chave compartilham a geração. Instâncias da API que pretendem compartilhar esses artefatos precisam usar o mesmo filesystem persistente. Essa arquitetura não constitui SLA de latência; a meta inferior a um segundo sob 50 consumidores depende de benchmark representativo ainda não publicado.
+
+Veja também [endpoints COTAHIST](../docusaurus/docs/api-endpoints/cotahist.md), [schemas COTAHIST](../docusaurus/docs/schemas/cotahist.md) e o contrato em ``GET /openapi.json``.
 
 Antes dos headers, a API retorna o envelope comum e status ``400``, ``401``, ``403``, ``404``, ``500`` ou ``503``. Depois que o corpo começou, HTTP não pode trocar o status: examine ``error`` e sempre exija o evento ``complete``. A revisão, schema e aviso COTAHIST continuam obrigatórios também neste transporte. Veja [endpoints COTAHIST](../docusaurus/docs/api-endpoints/cotahist.md) e [schemas COTAHIST](../docusaurus/docs/schemas/cotahist.md).
 
