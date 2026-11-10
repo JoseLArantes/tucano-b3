@@ -1,3 +1,5 @@
+#[path = "api/cotahist_dates.rs"]
+mod cotahist_dates;
 #[path = "api/cotahist_latest.rs"]
 mod cotahist_latest;
 #[path = "api/cotahist_quotes.rs"]

@@ -70,6 +70,20 @@ impl CotahistService {
                 ticker: upper.clone(),
             })?;
 
+        if !query_service.has_table("cotahist") {
+            return Ok(TickerDetailResponse {
+                ticker: info.ticker,
+                isin: info.isin,
+                company_name: info.company_name,
+                first_seen: info.first_seen,
+                last_seen: info.last_seen,
+                is_active: info.is_active,
+                total_trading_days: None,
+                latest_price: None,
+                latest_date: None,
+            });
+        }
+
         // Query latest price and trading days count
         let sql = format!(
             "SELECT COUNT(DISTINCT date) as trading_days, \
@@ -128,6 +142,10 @@ impl CotahistService {
             if d > a {
                 return Err(AppError::DateRangeInvalid);
             }
+        }
+
+        if !query_service.has_table("cotahist") {
+            return Ok((Vec::new(), 0));
         }
 
         // Build base condition
@@ -200,6 +218,10 @@ impl CotahistService {
             return Err(AppError::TickerNotFound { ticker: upper });
         }
 
+        if !query_service.has_table("cotahist") {
+            return Err(AppError::NoDataInRange);
+        }
+
         let sql = format!(
             "SELECT ticker, date, pre_abr, pre_max, pre_min, pre_med, pre_ult, \
                     pre_ofe_compra, pre_ofe_venda, tot_neg, quat_tot, vol_tot \
@@ -266,6 +288,10 @@ impl CotahistService {
         pagination: &PaginationParams,
     ) -> AppResult<(Vec<QuoteResponse>, usize)> {
         Self::validate_date(date)?;
+
+        if !query_service.has_table("cotahist") {
+            return Err(AppError::NoDataInRange);
+        }
 
         let count_sql = format!("SELECT COUNT(*) FROM cotahist WHERE date = '{date}'");
         let count_batches = query_service

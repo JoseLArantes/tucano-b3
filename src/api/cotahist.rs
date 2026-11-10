@@ -184,6 +184,35 @@ async fn get_latest_handler(
     Ok(Json(ApiResponse::new(latest, elapsed)))
 }
 
+/// GET /api/v1/cotahist/dates/{date}/quotes
+///
+/// Retorna todas as cotações de uma data específica.
+async fn get_date_quotes_handler(
+    State(state): State<Arc<AppState>>,
+    Path(date): Path<String>,
+    Query(params): Query<PaginationParams>,
+) -> AppResult<Json<ApiResponse<DateQuotesResponse>>> {
+    let start = Instant::now();
+
+    let query_service = state.data_loader.get_query_service().await;
+
+    let pagination = params.validated();
+
+    let (quotes, total) =
+        CotahistService::get_quotes_by_date(&query_service, &date, &pagination).await?;
+
+    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+
+    Ok(Json(ApiResponse::new(
+        DateQuotesResponse {
+            date,
+            quotes,
+            paginacao: PaginationMeta::new(total, pagination.pagina, pagination.por_pagina),
+        },
+        elapsed,
+    )))
+}
+
 /// Build COTAHIST routes.
 pub fn routes(state: Arc<AppState>) -> Router {
     Router::new()
@@ -191,5 +220,6 @@ pub fn routes(state: Arc<AppState>) -> Router {
         .route("/cotahist/tickers/:ticker", get(get_ticker_handler))
         .route("/cotahist/tickers/:ticker/quotes", get(get_quotes_handler))
         .route("/cotahist/tickers/:ticker/latest", get(get_latest_handler))
+        .route("/cotahist/dates/:date/quotes", get(get_date_quotes_handler))
         .with_state(state)
 }
