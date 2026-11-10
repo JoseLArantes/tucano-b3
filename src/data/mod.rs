@@ -4,5 +4,6 @@
 
 pub mod query_service;
 pub mod reader;
+pub mod reload;
 pub mod schema;
 pub mod ticker_registry;

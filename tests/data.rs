@@ -2,6 +2,8 @@
 mod query_service;
 #[path = "data/reader.rs"]
 mod reader;
+#[path = "data/reload.rs"]
+mod reload;
 #[path = "data/schema.rs"]
 mod schema;
 #[path = "data/ticker_registry.rs"]
