@@ -2,5 +2,6 @@
 //!
 //! Provides Parquet reading, DataFusion querying, and schema validation.
 
+pub mod query_service;
 pub mod reader;
 pub mod schema;
