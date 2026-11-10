@@ -5,6 +5,9 @@
 #[path = "integration/data_layer.rs"]
 mod data_layer;
 
+#[path = "integration/cotahist_endpoints.rs"]
+mod cotahist_endpoints;
+
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tucano_b3::config::AppConfig;
