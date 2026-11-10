@@ -2,6 +2,9 @@
 //!
 //! These tests start a real HTTP server and make actual HTTP requests.
 
+#[path = "integration/data_layer.rs"]
+mod data_layer;
+
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tucano_b3::config::AppConfig;

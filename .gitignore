@@ -35,6 +35,8 @@ Cargo.lock.bak
 /data/
 *.db
 *.sqlite3
+!tests/fixtures/**/*.db
+!tests/fixtures/**/*.sqlite3
 
 # Docusaurus generated files
 docusaurus/node_modules/
