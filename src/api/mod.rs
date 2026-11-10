@@ -18,5 +18,6 @@ pub fn routes(data_loader: Arc<DataLoader>) -> Router {
     Router::new()
         .merge(health::routes(state.data_loader.clone()))
         .merge(info::routes(state.data_loader.clone()))
-        .merge(cotahist::routes(state))
+        .merge(cotahist::routes(state.clone()))
+        .merge(ibov::routes(state))
 }

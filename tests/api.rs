@@ -8,3 +8,5 @@ mod cotahist_quotes;
 mod cotahist_tickers;
 #[path = "api/health.rs"]
 mod health;
+#[path = "api/ibov_history.rs"]
+mod ibov_history;
