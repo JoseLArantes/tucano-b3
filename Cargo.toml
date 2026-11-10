@@ -1,0 +1,70 @@
+[package]
+name = "tucano-b3"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+description = "High-performance REST API for B3 market data"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/tucano-b3/tucano-b3"
+
+[dependencies]
+# Web framework
+axum = { version = "0.7", features = ["macros"] }
+tower = { version = "0.5", features = ["full"] }
+tower-http = { version = "0.6", features = ["compression-full", "cors", "trace", "request-id", "timeout"] }
+hyper = { version = "1.0", features = ["full"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Data layer (will be used in M1+, included now to avoid dependency churn)
+datafusion = "42"
+arrow = "53"
+parquet = "53"
+rusqlite = { version = "0.32", features = ["bundled", "chrono"] }
+
+# Cache (will be used in M4+)
+dashmap = "6"
+lru = "0.12"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# OpenAPI (will be used in M6+)
+utoipa = { version = "4", features = ["axum_extras"] }
+utoipa-swagger-ui = { version = "7", features = ["axum"] }
+
+# Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+prometheus = "0.13"
+
+# Config
+config = "0.14"
+toml = "0.8"
+
+# Utilities
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
+uuid = { version = "1", features = ["v4"] }
+thiserror = "1"
+anyhow = "1"
+blake3 = "1"
+
+[dev-dependencies]
+reqwest = { version = "0.12", features = ["json"] }
+tempfile = "3"
+assert_cmd = "2"
+predicates = "3"
+criterion = "0.5"
+tokio-test = "0.4"
+hyper-util = { version = "0.1", features = ["full"] }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = true
+panic = "abort"
+
