@@ -5,31 +5,19 @@ WORKDIR /build
 
 # Pre-build dependencies for caching
 COPY Cargo.toml Cargo.lock ./
-RUN mkdir -p src/api src/cache src/config src/locale src/middleware src/models src/server src/services && \
-    echo 'pub mod api; pub mod cache; pub mod config; pub mod error; pub mod locale; pub mod middleware; pub mod models; pub mod server; pub mod services;' > src/lib.rs && \
-    echo 'pub mod pt_br;' > src/locale/mod.rs && \
-    echo '// pt_br' > src/locale/pt_br.rs && \
-    echo 'pub mod health; pub mod info; pub mod cotahist; pub mod ibov; use axum::Router; pub fn routes() -> Router { Router::new() }' > src/api/mod.rs && \
-    echo 'pub struct AppState;' > src/api/health.rs && \
-    echo '// info' > src/api/info.rs && \
-    echo '// cotahist' > src/api/cotahist.rs && \
-    echo '// ibov' > src/api/ibov.rs && \
-    echo '// cache' > src/cache/mod.rs && \
-    echo '// config' > src/config/mod.rs && \
-    echo '// middleware' > src/middleware/mod.rs && \
-    echo '// models' > src/models/mod.rs && \
-    echo '// server' > src/server/mod.rs && \
-    echo '// services' > src/services/mod.rs && \
-    echo 'pub enum AppError {}' > src/error.rs && \
+RUN mkdir -p src benches && \
+    echo 'fn main() {}' > benches/data_layer.rs && \
+    touch src/lib.rs && \
     echo 'fn main() {}' > src/main.rs && \
-    cargo build --release || true && \
-    rm -rf src
+    cargo build --release --bin tucano-b3 && \
+    rm -rf src benches
 
 # Copy real source code
 COPY src/ ./src/
+COPY benches/ ./benches/
 
-# Rebuild application code
-RUN touch src/main.rs src/lib.rs && cargo build --release
+# Rebuild application binary
+RUN touch src/main.rs src/lib.rs && cargo build --release --bin tucano-b3
 
 # Runtime stage
 FROM debian:bookworm-slim
