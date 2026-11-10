@@ -13,7 +13,7 @@ use crate::api::health::AppState;
 use crate::error::AppResult;
 use crate::models::cotahist::*;
 use crate::models::envelope::ApiResponse;
-use crate::models::pagination::PaginationMeta;
+use crate::models::pagination::{PaginationMeta, PaginationParams};
 use crate::services::cotahist::CotahistService;
 
 /// Query parameters for GET /tickers
@@ -94,10 +94,78 @@ async fn get_ticker_handler(
     Ok(Json(ApiResponse::new(detail, elapsed)))
 }
 
+/// Query parameters for GET /tickers/{ticker}/quotes
+#[derive(Debug, Deserialize)]
+pub struct QuoteHistoryParams {
+    /// Start date (YYYY-MM-DD)
+    pub desde: Option<String>,
+    /// End date (YYYY-MM-DD)
+    pub ate: Option<String>,
+    /// Last N trading days
+    pub dias: Option<u32>,
+    /// Sort order: asc or desc (default: desc)
+    #[serde(default = "default_order")]
+    pub ordem: String,
+    #[serde(default = "default_page")]
+    pub pagina: u32,
+    #[serde(default = "default_per_page_quotes")]
+    pub por_pagina: u32,
+}
+
+fn default_order() -> String {
+    "desc".to_string()
+}
+fn default_per_page_quotes() -> u32 {
+    252
+}
+
+/// GET /api/v1/cotahist/tickers/{ticker}/quotes
+///
+/// Retorna histórico de cotações de um ticker com filtros de data e paginação.
+async fn get_quotes_handler(
+    State(state): State<Arc<AppState>>,
+    Path(ticker): Path<String>,
+    Query(params): Query<QuoteHistoryParams>,
+) -> AppResult<Json<ApiResponse<QuoteListResponse>>> {
+    let start = Instant::now();
+
+    let query_service = state.data_loader.get_query_service().await;
+
+    let pagination = PaginationParams {
+        pagina: params.pagina,
+        por_pagina: params.por_pagina,
+    }
+    .validated();
+
+    let (quotes, total) = CotahistService::get_quotes(
+        &query_service,
+        &state.data_loader.ticker_registry,
+        &ticker,
+        params.desde.as_deref(),
+        params.ate.as_deref(),
+        params.dias,
+        &params.ordem,
+        &pagination,
+    )
+    .await?;
+
+    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+
+    Ok(Json(ApiResponse::new(
+        QuoteListResponse {
+            ticker: ticker.to_uppercase(),
+            quotes,
+            paginacao: PaginationMeta::new(total, pagination.pagina, pagination.por_pagina),
+        },
+        elapsed,
+    )))
+}
+
 /// Build COTAHIST routes.
 pub fn routes(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/cotahist/tickers", get(list_tickers_handler))
         .route("/cotahist/tickers/:ticker", get(get_ticker_handler))
+        .route("/cotahist/tickers/:ticker/quotes", get(get_quotes_handler))
         .with_state(state)
 }
