@@ -21,7 +21,12 @@ use tucano_b3::server::build_router;
 async fn start_test_server() -> SocketAddr {
     let config = AppConfig::default();
     let data_loader = Arc::new(DataLoader::new(&config.data).unwrap());
-    let router = build_router(&config, data_loader);
+    let api_keys = Arc::new(tucano_b3::middleware::ApiKeyRegistry::empty());
+    let rate_limit_state = Arc::new(tucano_b3::middleware::RateLimitState::new(
+        api_keys,
+        config.rate_limit.clone(),
+    ));
+    let router = build_router(&config, data_loader, rate_limit_state);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

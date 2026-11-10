@@ -55,14 +55,29 @@ async fn main() -> anyhow::Result<()> {
         DataLoader::new(&config.data).map_err(|e| anyhow::anyhow!("Failed to load data: {}", e))?,
     );
 
+    // Initialize API key registry
+    let api_keys_path = Path::new("api_keys.toml");
+    let api_keys = Arc::new(
+        tucano_b3::middleware::ApiKeyRegistry::load(api_keys_path).unwrap_or_else(|e| {
+            tracing::warn!("Failed to load API keys: {}", e);
+            tucano_b3::middleware::ApiKeyRegistry::empty()
+        }),
+    );
+
+    // Initialize rate limit state
+    let rate_limit_state = Arc::new(tucano_b3::middleware::RateLimitState::new(
+        api_keys,
+        config.rate_limit.clone(),
+    ));
+
     tracing::info!(
         version = env!("CARGO_PKG_VERSION"),
         port = config.server.port,
         "tucano-b3 iniciando"
     );
 
-    // Run server with data loader
-    server::run(config, data_loader).await?;
+    // Run server with data loader and rate limit state
+    server::run(config, data_loader, rate_limit_state).await?;
 
     Ok(())
 }

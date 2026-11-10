@@ -6,7 +6,7 @@
 use crate::config::AppConfig;
 use crate::data::reload::DataLoader;
 use crate::error::AppError;
-use crate::middleware::RequestIdLayer;
+use crate::middleware::{RateLimitLayer, RateLimitState, RequestIdLayer};
 use axum::Router;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -19,11 +19,16 @@ use tower_http::timeout::TimeoutLayer;
 /// Build the axum Router with all routes and middleware.
 ///
 /// This function is called once at startup and returns a fully-configured router.
-pub fn build_router(config: &AppConfig, data_loader: Arc<DataLoader>) -> Router {
+pub fn build_router(
+    config: &AppConfig,
+    data_loader: Arc<DataLoader>,
+    rate_limit_state: Arc<RateLimitState>,
+) -> Router {
     let api_routes = crate::api::routes(data_loader);
 
     Router::new()
         .nest("/api/v1", api_routes)
+        .layer(RateLimitLayer::new(rate_limit_state))
         .layer(CompressionLayer::new())
         .layer(CorsLayer::permissive())
         .layer(RequestIdLayer::new())
@@ -37,8 +42,12 @@ pub fn build_router(config: &AppConfig, data_loader: Arc<DataLoader>) -> Router 
 ///
 /// Handles SIGTERM and SIGINT for graceful shutdown.
 /// All in-flight requests are completed before the process exits.
-pub async fn run(config: AppConfig, data_loader: Arc<DataLoader>) -> Result<(), AppError> {
-    let router = build_router(&config, data_loader);
+pub async fn run(
+    config: AppConfig,
+    data_loader: Arc<DataLoader>,
+    rate_limit_state: Arc<RateLimitState>,
+) -> Result<(), AppError> {
+    let router = build_router(&config, data_loader, rate_limit_state);
 
     let addr: SocketAddr = format!("{}:{}", config.server.host, config.server.port)
         .parse()

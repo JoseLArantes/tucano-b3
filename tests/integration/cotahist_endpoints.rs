@@ -23,8 +23,17 @@ fn test_app_with_fixtures() -> Option<axum::Router> {
 
     let data_loader =
         std::sync::Arc::new(tucano_b3::data::reload::DataLoader::new(&config.data).ok()?);
+    let api_keys = std::sync::Arc::new(tucano_b3::middleware::ApiKeyRegistry::empty());
+    let rate_limit_state = std::sync::Arc::new(tucano_b3::middleware::RateLimitState::new(
+        api_keys,
+        config.rate_limit.clone(),
+    ));
 
-    Some(tucano_b3::server::build_router(&config, data_loader))
+    Some(tucano_b3::server::build_router(
+        &config,
+        data_loader,
+        rate_limit_state,
+    ))
 }
 
 #[tokio::test]

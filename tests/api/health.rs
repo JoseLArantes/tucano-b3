@@ -9,7 +9,12 @@ use tucano_b3::server::build_router;
 fn test_app() -> axum::Router {
     let config = AppConfig::default();
     let data_loader = Arc::new(DataLoader::new(&config.data).unwrap());
-    build_router(&config, data_loader)
+    let api_keys = Arc::new(tucano_b3::middleware::ApiKeyRegistry::empty());
+    let rate_limit_state = Arc::new(tucano_b3::middleware::RateLimitState::new(
+        api_keys,
+        config.rate_limit.clone(),
+    ));
+    build_router(&config, data_loader, rate_limit_state)
 }
 
 #[tokio::test]

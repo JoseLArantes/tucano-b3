@@ -6,19 +6,26 @@ use tucano_b3::config::AppConfig;
 use tucano_b3::data::reload::DataLoader;
 use tucano_b3::server::build_router;
 
-#[tokio::test]
-async fn test_build_router_succeeds() {
+fn test_router() -> axum::Router {
     let config = AppConfig::default();
     let data_loader = Arc::new(DataLoader::new(&config.data).unwrap());
-    let router = build_router(&config, data_loader);
+    let api_keys = Arc::new(tucano_b3::middleware::ApiKeyRegistry::empty());
+    let rate_limit_state = Arc::new(tucano_b3::middleware::RateLimitState::new(
+        api_keys,
+        config.rate_limit.clone(),
+    ));
+    build_router(&config, data_loader, rate_limit_state)
+}
+
+#[tokio::test]
+async fn test_build_router_succeeds() {
+    let router = test_router();
     drop(router);
 }
 
 #[tokio::test]
 async fn test_cotahist_and_ibov_routes_registered() {
-    let config = AppConfig::default();
-    let data_loader = Arc::new(DataLoader::new(&config.data).unwrap());
-    let router = build_router(&config, data_loader);
+    let router = test_router();
 
     let test_routes = vec![
         ("/api/v1/cotahist/tickers", StatusCode::OK),
@@ -65,9 +72,7 @@ async fn test_cotahist_and_ibov_routes_registered() {
 
 #[tokio::test]
 async fn test_method_not_allowed() {
-    let config = AppConfig::default();
-    let data_loader = Arc::new(DataLoader::new(&config.data).unwrap());
-    let router = build_router(&config, data_loader);
+    let router = test_router();
 
     for path in ["/api/v1/cotahist/tickers", "/api/v1/ibov/history"] {
         let app = router.clone();
