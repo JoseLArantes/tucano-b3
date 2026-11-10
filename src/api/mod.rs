@@ -13,7 +13,10 @@ use std::sync::Arc;
 
 /// Build all API routes.
 pub fn routes(data_loader: Arc<DataLoader>) -> Router {
+    let state = Arc::new(health::AppState::new(data_loader));
+
     Router::new()
-        .merge(health::routes(data_loader.clone()))
-        .merge(info::routes(data_loader))
+        .merge(health::routes(state.data_loader.clone()))
+        .merge(info::routes(state.data_loader.clone()))
+        .merge(cotahist::routes(state))
 }
