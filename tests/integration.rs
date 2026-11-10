@@ -3,13 +3,16 @@
 //! These tests start a real HTTP server and make actual HTTP requests.
 
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tucano_b3::config::AppConfig;
+use tucano_b3::data::reload::DataLoader;
 use tucano_b3::server::build_router;
 
 /// Helper: start a test server on a random port.
 async fn start_test_server() -> SocketAddr {
     let config = AppConfig::default();
-    let router = build_router(&config);
+    let data_loader = Arc::new(DataLoader::new(&config.data).unwrap());
+    let router = build_router(&config, data_loader);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -33,6 +36,8 @@ async fn test_health_endpoint_integration() {
     assert_eq!(json["status"], "healthy");
     assert!(json["version"].is_string());
     assert!(json["uptime_seconds"].is_number());
+    assert!(json["data_files_loaded"].is_number());
+    assert!(json["tickers_count"].is_number());
 }
 
 #[tokio::test]

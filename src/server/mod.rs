@@ -4,10 +4,12 @@
 //! Supports graceful shutdown via SIGTERM/SIGINT.
 
 use crate::config::AppConfig;
+use crate::data::reload::DataLoader;
 use crate::error::AppError;
 use crate::middleware::RequestIdLayer;
 use axum::Router;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::signal;
 use tower_http::compression::CompressionLayer;
@@ -17,8 +19,8 @@ use tower_http::timeout::TimeoutLayer;
 /// Build the axum Router with all routes and middleware.
 ///
 /// This function is called once at startup and returns a fully-configured router.
-pub fn build_router(config: &AppConfig) -> Router {
-    let api_routes = crate::api::routes();
+pub fn build_router(config: &AppConfig, data_loader: Arc<DataLoader>) -> Router {
+    let api_routes = crate::api::routes(data_loader);
 
     Router::new()
         .nest("/api/v1", api_routes)
@@ -35,8 +37,8 @@ pub fn build_router(config: &AppConfig) -> Router {
 ///
 /// Handles SIGTERM and SIGINT for graceful shutdown.
 /// All in-flight requests are completed before the process exits.
-pub async fn run(config: AppConfig) -> Result<(), AppError> {
-    let router = build_router(&config);
+pub async fn run(config: AppConfig, data_loader: Arc<DataLoader>) -> Result<(), AppError> {
+    let router = build_router(&config, data_loader);
 
     let addr: SocketAddr = format!("{}:{}", config.server.host, config.server.port)
         .parse()

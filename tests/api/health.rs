@@ -1,12 +1,15 @@
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
+use std::sync::Arc;
 use tower::ServiceExt;
 use tucano_b3::config::AppConfig;
+use tucano_b3::data::reload::DataLoader;
 use tucano_b3::server::build_router;
 
 fn test_app() -> axum::Router {
     let config = AppConfig::default();
-    build_router(&config)
+    let data_loader = Arc::new(DataLoader::new(&config.data).unwrap());
+    build_router(&config, data_loader)
 }
 
 #[tokio::test]
@@ -66,6 +69,32 @@ async fn test_health_response_structure() {
     assert_eq!(json["status"], "healthy");
     assert!(json["version"].is_string());
     assert!(json["uptime_seconds"].is_number());
+    assert!(json["data_files_loaded"].is_number());
+    assert!(json["tickers_count"].is_number());
+}
+
+#[tokio::test]
+async fn test_health_response_includes_data_info() {
+    let app = test_app();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+    assert_eq!(json["status"], "healthy");
+    assert!(json["data_files_loaded"].is_number());
+    assert!(json["tickers_count"].is_number());
 }
 
 #[tokio::test]

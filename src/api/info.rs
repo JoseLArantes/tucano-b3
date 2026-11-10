@@ -12,6 +12,7 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 use super::health::AppState;
+use crate::data::reload::DataLoader;
 
 /// Service info response.
 #[derive(Debug, Serialize, ToSchema)]
@@ -33,8 +34,8 @@ async fn info_handler(State(state): State<Arc<AppState>>) -> Json<InfoResponse> 
 }
 
 /// Build info routes.
-pub fn routes() -> Router {
-    let state = Arc::new(AppState::new());
+pub fn routes(data_loader: Arc<DataLoader>) -> Router {
+    let state = Arc::new(AppState::new(data_loader));
 
     Router::new()
         .route("/info", get(info_handler))

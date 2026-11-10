@@ -3,7 +3,9 @@
 //! Loads configuration, initializes logging, and starts the HTTP server.
 
 use std::path::Path;
+use std::sync::Arc;
 use tucano_b3::config::AppConfig;
+use tucano_b3::data::reload::DataLoader;
 use tucano_b3::server;
 
 #[tokio::main]
@@ -48,14 +50,19 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    // Initialize data layer
+    let data_loader = Arc::new(
+        DataLoader::new(&config.data).map_err(|e| anyhow::anyhow!("Failed to load data: {}", e))?,
+    );
+
     tracing::info!(
         version = env!("CARGO_PKG_VERSION"),
         port = config.server.port,
         "tucano-b3 iniciando"
     );
 
-    // Run server
-    server::run(config).await?;
+    // Run server with data loader
+    server::run(config, data_loader).await?;
 
     Ok(())
 }
