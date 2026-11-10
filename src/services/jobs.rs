@@ -17,6 +17,10 @@ pub enum JobCommand {
     Ingest {
         /// Official B3 source with a supported record-level date field; no consumer upload is accepted.
         source: SourceFileType,
+        /// Optional server-registered channel chosen from a local discovery candidate.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[schema(example = "local-89abc0123456789abcdef012")]
+        channel_id: Option<String>,
         /// Inclusive cut on the business date inside each COTAHIST detail record.
         #[schema(example = "2025-01-02")]
         from: NaiveDate,
@@ -54,14 +58,26 @@ pub enum JobCommand {
 impl JobCommand {
     fn scope(&self) -> Result<String> {
         match self {
-            Self::Ingest { source, from, to } => {
+            Self::Ingest {
+                source,
+                channel_id,
+                from,
+                to,
+            } => {
                 validate_dates(*from, *to)?;
                 if !source.supports_record_date_cuts() {
                     return Err(AppError::Validation(
                         "Esta família ainda não pode aplicar cortes às datas internas dos registros.".into(),
                     ));
                 }
-                Ok(format!("ingest:{source}:{from}:{to}"))
+                if let Some(channel_id) = channel_id {
+                    if channel_id.trim().is_empty() || channel_id.len() > 128 {
+                        return Err(AppError::Validation("Canal de importação inválido.".into()));
+                    }
+                    Ok(format!("ingest:{source}:{from}:{to}:channel:{channel_id}"))
+                } else {
+                    Ok(format!("ingest:{source}:{from}:{to}"))
+                }
             }
             Self::Reparse { source_file_id } | Self::ReplayQuarantine { source_file_id } => {
                 Ok(format!("artifact:{source_file_id}"))

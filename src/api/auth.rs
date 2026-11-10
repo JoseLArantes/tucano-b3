@@ -55,6 +55,7 @@ pub async fn require_bearer_token(
             .path()
             .starts_with("/api/v1/b3/pending-updates");
     let admin_only = admin_only
+        || request.uri().path().starts_with("/api/v1/b3/internal/")
         || request
             .uri()
             .path()

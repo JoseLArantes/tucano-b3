@@ -10,6 +10,8 @@ Para um inventário detalhado do contrato HTTP implementado, fluxos de frontend,
 
 Enviar `Authorization: Bearer <credencial-de-leitura>` nas consultas protegidas. Operações administrativas, incluindo `POST /api/v1/b3/discovery/scan`, exigem `TUCANO_B3_ADMIN_TOKEN`; o valor configurado como `TUCANO_B3_TOKEN` não substitui essa credencial. A janela “Authorize” do Swagger UI não lê o `.env`: cole nela o token correspondente ao papel exigido. Credencial administrativa é separada e não deve ser distribuída a consumidores. `include_internal=true` não amplia permissões nem revela tokens/caminhos privados.
 
+O console de análise local usa `GET /api/v1/b3/internal/diagnostics/coverage`, `/internal/cotahist/quotes`, `/internal/cotahist/series` e `/internal/cotahist/quotes/export`, todos sob o prefixo `/api/v1/b3`. Exigem `TUCANO_B3_ADMIN_TOKEN` e que cada fonte da revisão esteja elegível para `processing` e `raw_retention`. Essas rotas destinam-se apenas ao uso administrativo interno; não substituem as rotas para consumidores nem habilitam REST, MCP ou entrega a terceiros. Para consumo autorizado, use as rotas `/api/v1/b3/cotahist/...` com o token de leitura.
+
 `GET /api/v1/b3/cotahist/quotes?ticker_symbol=EXMP3&market_type=010&trade_date_from=2025-01-01&trade_date_to=2025-12-31&limit=100&offset=0`
 
 Ticker identifica um código no contexto e período. O mesmo ticker pode ter mercados, distribuições, prazos e instrumentos diferentes. Datas são inclusivas; paginação inválida retorna 400. `limit` padrão 100, máximo 1000; `offset` padrão 0. Filtros adicionais incluem instrumento, ISIN, BDI, distribuição e prazo.
@@ -28,7 +30,19 @@ AWS_ENDPOINT_URL_S3=https://s3.compatible.example
 
 A resposta `DiscoveryResult` retorna `checked_at`, `scheduled`, `locations_scanned`, `candidate_count`, `candidates_truncated`, `locations` (tipo, rótulo sem raiz privada, resultado e truncamento) e até 1.000 `candidates`. Cada candidato tem `source_file_type`, `source_locator`, `byte_size`, `remote_etag` e `remote_last_modified`. O tipo vem do nome `COTAHIST_A{AAAA}`, `COTAHIST_M{MMAAAA}` ou `COTAHIST_D{DDMMAAAA}`; isso não valida o conteúdo, não define data de referência nem escolhe uma revisão. ETag não é SHA-256. As observações são gravadas em `b3_discovery_location_checks` e `b3_discovery_location_candidates`. Um achado ainda precisa ser registrado como canal e passar pelas regras de elegibilidade antes de aquisição ou ingestão.
 
-Consulte o [guia detalhado de descoberta](../docusaurus/docs/operations/discovery.md) para a resposta completa, limites, statuses e operação. A resposta manual não renova saúde agendada; falha de um local é mostrada como `failed` e os demais são consultados.
+Para importar um candidato da pasta local pelo console de gestão, envie o locador selecionado e uma attestation explícita:
+
+```http
+POST /api/v1/b3/discovery/candidates/register-local
+Authorization: Bearer <TUCANO_B3_ADMIN_TOKEN>
+Content-Type: application/json
+
+{"source_locator":"folder:1/2026/COTAHIST_A2026.ZIP","authorize_internal_development":true}
+```
+
+A operação só aceita candidatos da última varredura manual, com até 24 horas, dentro de `B3_RAW_DATA_DIR/imports`, sem links simbólicos e sem mudança de tamanho. O nome determina a família e o período; o servidor registra um canal local e elegibilidade para aquisição manual, retenção bruta e processamento de desenvolvimento interno. REST, MCP e entrega a terceiros permanecem sem elegibilidade. Arquivos descobertos em URLs B3 ou S3 não podem ser registrados por esta rota.
+
+O retorno `RegisteredLocalCandidate` inclui `channel_id`, família, locador sanitizado, período inclusivo e `internal_development_only=true`. Envie esse `channel_id` no objeto `command` do `POST /api/v1/b3/jobs` junto com `operation=ingest`, `source`, `from` e `to` para o job adquirir exatamente o arquivo escolhido. O campo é opcional para manter a seleção server-side dos canais configurados em chamadas existentes. Consulte o [guia detalhado de descoberta](../docusaurus/docs/operations/discovery.md) para limites, erros e operação.
 
 ## Exportação integral COTAHIST em NDJSON
 
@@ -129,7 +143,7 @@ Operações pesadas são comandos em `POST /jobs`; 202 significa intenção pers
 
 ## Importação e retirada administrativa
 
-Somente um administrador inicia ingestão de uma família/canal oficial já configurado. Não existe upload de arquivos por consumidores. Importação local é restrita a operação controlada de artefatos oficiais, com origem e proveniência preservadas.
+Somente um administrador inicia ingestão de uma família/canal oficial já configurado ou registra explicitamente um candidato local para desenvolvimento interno. Não existe upload de arquivos por consumidores. Importação local preserva origem e proveniência, e sua elegibilidade não habilita entrega a terceiros.
 
 Todo comando `ingest` requer `from` e `to`, inclusivos. No `0.0.1`, só as granularidades COTAHIST são aceitas: o worker decide quais detalhes pertencem ao import pela `DATA DO PREGÃO` dentro de cada registro, ainda que adquira um arquivo anual. Nome, ano, header ou data de geração do arquivo só ajudam a localizar/identificar a publicação. Importar o ano inteiro exige enviar o intervalo completo explicitamente. Uma seleção que exige vários arquivos COTAHIST é consolidada numa revisão. BVBG.028/TSL são rejeitadas até que seu corte possa se basear numa data interna adequada de cada registro.
 

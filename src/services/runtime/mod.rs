@@ -2,6 +2,7 @@
 pub mod discovery;
 pub mod discovery_locations;
 pub mod executor;
+pub mod local_channels;
 mod registry;
 
 use std::path::PathBuf;

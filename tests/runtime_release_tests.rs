@@ -117,6 +117,7 @@ async fn two_worker_processes_ingest_once_and_publish_a_clean_candidate_automati
             "ingest",
             JobCommand::Ingest {
                 source: SourceFileType::CotahistYearly,
+                channel_id: None,
                 from: NaiveDate::from_ymd_opt(2025, 1, 2).unwrap(),
                 to: NaiveDate::from_ymd_opt(2025, 1, 2).unwrap(),
             },
@@ -258,6 +259,7 @@ async fn two_worker_processes_ingest_once_and_publish_a_clean_candidate_automati
             "broken",
             JobCommand::Ingest {
                 source: SourceFileType::CotahistYearly,
+                channel_id: None,
                 from: NaiveDate::from_ymd_opt(2025, 1, 1).unwrap(),
                 to: NaiveDate::from_ymd_opt(2025, 12, 31).unwrap(),
             },
@@ -406,6 +408,7 @@ async fn a_date_cut_batches_overlapping_files_and_withdrawal_is_reversible() {
             "window-import",
             JobCommand::Ingest {
                 source: SourceFileType::CotahistYearly,
+                channel_id: None,
                 from: NaiveDate::from_ymd_opt(2025, 1, 2).unwrap(),
                 to: NaiveDate::from_ymd_opt(2025, 1, 2).unwrap(),
             },
@@ -506,6 +509,7 @@ async fn a_date_cut_batches_overlapping_files_and_withdrawal_is_reversible() {
             "reimport-window",
             JobCommand::Ingest {
                 source: SourceFileType::CotahistYearly,
+                channel_id: None,
                 from: NaiveDate::from_ymd_opt(2025, 1, 2).unwrap(),
                 to: NaiveDate::from_ymd_opt(2025, 1, 2).unwrap(),
             },
@@ -628,6 +632,7 @@ async fn registry_import_is_rejected_until_records_support_internal_date_cuts() 
                 &format!("deferred-{source}"),
                 JobCommand::Ingest {
                     source,
+                    channel_id: None,
                     from,
                     to: from,
                 },

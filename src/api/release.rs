@@ -195,6 +195,26 @@ pub async fn quotes(
     ))
 }
 
+/// Private workstation query for locally retained and processed history.
+#[utoipa::path(get,path="/api/v1/b3/internal/cotahist/quotes",tag="Operação",summary="Consultar cotações COTAHIST para uso interno",description="Consulta uma revisão publicada somente em contexto administrativo interno. Exige elegibilidade de processamento e retenção bruta para todas as fontes da revisão; não habilita REST, MCP nem entrega a terceiros. Use as rotas públicas /cotahist/quotes somente quando REST e third_party_delivery também estiverem elegíveis.",params(QuoteFilters),responses((status=200,description="Página interna na revisão selecionada",body=QuotePage),(status=400,description="Filtros inválidos"),(status=401,description="Bearer ausente/inválido"),(status=403,description="Acesso administrativo ou elegibilidade interna exigidos"),(status=404,description="Revisão inexistente"),(status=409,description="Conflito de seleção"),(status=500,description="Falha de dependência"),(status=503,description="Nenhuma revisão disponível")),security(("bearer_auth"=[])))]
+pub async fn internal_quotes(
+    State(state): State<Arc<AppState>>,
+    filters: Result<Query<QuoteFilters>, QueryRejection>,
+) -> Result<Json<QuotePage>, ApiError> {
+    let Query(filters) = filters.map_err(|_| {
+        ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "INVALID_FILTER",
+            "Parâmetros de consulta inválidos.",
+        )
+    })?;
+    Ok(Json(
+        QueryService::new(state.pool.clone())
+            .quotes(filters, QueryPurpose::Internal, false)
+            .await?,
+    ))
+}
+
 #[utoipa::path(
     get,
     path = "/api/v1/b3/cotahist/quotes/export",
@@ -230,6 +250,32 @@ pub async fn quote_export(
             "Parâmetros de exportação inválidos.",
         )
     })?;
+    quote_export_for_purpose(state, filters, headers, QueryPurpose::Rest).await
+}
+
+/// Private workstation export. Authorization is enforced before this handler runs.
+#[utoipa::path(get,path="/api/v1/b3/internal/cotahist/quotes/export",tag="Operação",summary="Exportar COTAHIST em NDJSON para uso interno",description="Mesmo contrato verificável de NDJSON da exportação pública, disponível somente com credencial administrativa e elegibilidade de processamento/retenção bruta. Não habilita REST, MCP ou entrega a terceiros. A cache de artefatos é revalidada contra essa finalidade antes de cada leitura.",params(QuoteExportFilters,("If-None-Match"=Option<String>,Header,description="ETag forte da mesma representação recebida anteriormente."),("Accept-Encoding"=Option<String>,Header,description="Informe gzip para aceitar compressão quando disponível.")),responses((status=200,description="Fluxo NDJSON verificável",content_type="application/x-ndjson",body=QuoteExportEvent),(status=304,description="Representação pronta inalterada"),(status=400,description="Filtro ou cursor inválido",body=super::release_error::ErrorResponse),(status=401,description="Bearer administrativo ausente ou inválido",body=super::release_error::ErrorResponse),(status=403,description="Acesso administrativo ou elegibilidade interna exigidos",body=super::release_error::ErrorResponse),(status=404,description="Ticker sem fatos na revisão selecionada",body=super::release_error::ErrorResponse),(status=500,description="Falha interna",body=super::release_error::ErrorResponse),(status=503,description="Exportação indisponível",body=super::release_error::ErrorResponse)),security(("bearer_auth"=[])))]
+pub async fn internal_quote_export(
+    State(state): State<Arc<AppState>>,
+    filters: Result<Query<QuoteExportFilters>, QueryRejection>,
+    headers: HeaderMap,
+) -> Result<Response<Body>, ApiError> {
+    let Query(filters) = filters.map_err(|_| {
+        ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "INVALID_FILTER",
+            "Parâmetros de exportação inválidos.",
+        )
+    })?;
+    quote_export_for_purpose(state, filters, headers, QueryPurpose::Internal).await
+}
+
+async fn quote_export_for_purpose(
+    state: Arc<AppState>,
+    filters: QuoteExportFilters,
+    headers: HeaderMap,
+    purpose: QueryPurpose,
+) -> Result<Response<Body>, ApiError> {
     let query = QueryService::new(state.pool.clone());
     let service =
         QuoteExportService::new(state.pool.clone(), &state.settings.b3_processed_data_dir)
@@ -241,7 +287,7 @@ pub async fn quote_export(
                 )
             })?;
     let prepared = service
-        .prepare(&query, filters)
+        .prepare(&query, filters, purpose)
         .await
         .map_err(map_export_error)?;
 
@@ -379,6 +425,26 @@ pub async fn series(
     Ok(Json(
         QueryService::new(state.pool.clone())
             .quotes(filters, QueryPurpose::Rest, true)
+            .await?,
+    ))
+}
+
+/// Single-observation-per-session internal series query.
+#[utoipa::path(get,path="/api/v1/b3/internal/cotahist/series",tag="Operação",summary="Consultar série COTAHIST para uso interno",description="Seleciona uma observação inequívoca por pregão em uma revisão publicada. Exige credencial administrativa e elegibilidade interna de processamento e retenção bruta; não habilita entrega externa.",params(QuoteFilters),responses((status=200,description="Página interna da série selecionada",body=QuotePage),(status=400,description="Filtros inválidos"),(status=401,description="Não autenticado"),(status=403,description="Acesso administrativo ou elegibilidade interna exigidos"),(status=404,description="Revisão inexistente"),(status=409,description="Série ambígua"),(status=500,description="Falha de dependência"),(status=503,description="Revisão indisponível")),security(("bearer_auth"=[])))]
+pub async fn internal_series(
+    State(state): State<Arc<AppState>>,
+    filters: Result<Query<QuoteFilters>, QueryRejection>,
+) -> Result<Json<QuotePage>, ApiError> {
+    let Query(filters) = filters.map_err(|_| {
+        ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "INVALID_FILTER",
+            "Parâmetros de consulta inválidos.",
+        )
+    })?;
+    Ok(Json(
+        QueryService::new(state.pool.clone())
+            .quotes(filters, QueryPurpose::Internal, true)
             .await?,
     ))
 }

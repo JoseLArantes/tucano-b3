@@ -9,9 +9,9 @@ services:
     ports:
       - "5433:5432"
     volumes:
-      - ./data/postgres_data:/var/lib/postgresql/data
+      - tucano_b3_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d tucano_b3"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d tucano_b3" ]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -19,12 +19,14 @@ services:
   b3_api:
     build: .
     container_name: b3_api
-    command: ["tucano-b3", "serve"]
+    command: [ "tucano-b3", "serve" ]
     ports:
       - "8010:8000"
     environment:
       DATABASE_URL: ${B3_API_DATABASE_URL:-postgres://postgres:postgres@b3_postgres:5432/tucano_b3}
       B3_DB_MAX_CONNECTIONS: ${B3_DB_MAX_CONNECTIONS:-8}
+      B3_DB_ACQUIRE_TIMEOUT_SECONDS: ${B3_API_DB_ACQUIRE_TIMEOUT_SECONDS:-5}
+      B3_DB_STATEMENT_TIMEOUT_SECONDS: ${B3_API_DB_STATEMENT_TIMEOUT_SECONDS:-30}
       B3_ALLOWED_HOSTS: ${B3_ALLOWED_HOSTS:-www.b3.com.br,b3.com.br,bvmf.bmfbovespa.com.br,arquivos.b3.com.br,sistemaswebb3-listados.b3.com.br}
       B3_RAW_DATA_DIR: /data/raw
       B3_PROCESSED_DATA_DIR: /data/processed
@@ -47,7 +49,7 @@ services:
       b3_migrate:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/v1/health" ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -55,17 +57,19 @@ services:
   b3_worker:
     build: .
     container_name: b3_worker
-    command: ["tucano-b3", "worker"]
+    command: [ "tucano-b3", "worker" ]
     environment:
       DATABASE_URL: ${B3_WORKER_DATABASE_URL:-postgres://postgres:postgres@b3_postgres:5432/tucano_b3}
-      B3_DB_MAX_CONNECTIONS: ${B3_DB_MAX_CONNECTIONS:-8}
+      B3_DB_MAX_CONNECTIONS: ${B3_WORKER_DB_MAX_CONNECTIONS:-16}
+      B3_DB_ACQUIRE_TIMEOUT_SECONDS: ${B3_WORKER_DB_ACQUIRE_TIMEOUT_SECONDS:-30}
+      B3_DB_STATEMENT_TIMEOUT_SECONDS: ${B3_WORKER_DB_STATEMENT_TIMEOUT_SECONDS:-600}
       B3_DISCOVERY_ENABLED: ${B3_DISCOVERY_ENABLED:-false}
       B3_DISCOVERY_LOCATIONS: ${B3_DISCOVERY_LOCATIONS:-folder:/data/raw/imports}
       B3_ALLOWED_HOSTS: ${B3_ALLOWED_HOSTS:-www.b3.com.br,b3.com.br,bvmf.bmfbovespa.com.br,arquivos.b3.com.br,sistemaswebb3-listados.b3.com.br}
       B3_RAW_DATA_DIR: /data/raw
       B3_BATCH_RECORDS: ${B3_BATCH_RECORDS:-500}
       B3_BATCH_BYTES: ${B3_BATCH_BYTES:-4194304}
-      B3_LEASE_SECONDS: ${B3_LEASE_SECONDS:-120}
+      B3_LEASE_SECONDS: ${B3_WORKER_LEASE_SECONDS:-1800}
       AWS_REGION: ${AWS_REGION:-us-east-1}
       AWS_ENDPOINT_URL_S3: ${AWS_ENDPOINT_URL_S3:-}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
@@ -80,9 +84,10 @@ services:
         condition: service_healthy
       b3_migrate:
         condition: service_completed_successfully
+    restart: on-failure
 
   cargo:
-    profiles: [tools]
+    profiles: [ tools ]
     build:
       context: .
       dockerfile: Dockerfile.dev
@@ -100,7 +105,7 @@ services:
 
   b3_migrate:
     build: .
-    command: ["tucano-b3", "migrate"]
+    command: [ "tucano-b3", "migrate" ]
     environment:
       DATABASE_URL: ${B3_MIGRATION_DATABASE_URL:-postgres://postgres:postgres@b3_postgres:5432/tucano_b3}
     depends_on:
@@ -108,7 +113,8 @@ services:
         condition: service_healthy
 
 volumes:
-  postgres_data:
+  tucano_b3_pgdata:
+    name: tucano_b3_pgdata
   b3_raw_files:
   b3_processed_files:
   cargo_target:

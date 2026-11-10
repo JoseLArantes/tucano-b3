@@ -79,6 +79,26 @@ pub async fn diagnostics(
             .await?,
     ))
 }
+
+#[utoipa::path(get,path="/api/v1/b3/internal/diagnostics/coverage",tag="Operação",summary="Consultar cobertura COTAHIST para uso administrativo interno",description="Retorna limites observados da revisão publicada após validar elegibilidade interna de processamento e retenção bruta. Esta rota requer credencial administrativa e não habilita REST, MCP ou entrega a terceiros.",params(DiagnosticsFilters),responses((status=200,description="Cobertura interna demonstrada",body=DatasetDiagnostics),(status=400,description="Revisão inválida"),(status=401,description="Bearer administrativo ausente ou inválido"),(status=403,description="Acesso administrativo ou elegibilidade interna exigidos"),(status=404,description="Revisão inexistente"),(status=500,description="Falha de dependência"),(status=503,description="Nenhuma revisão publicada")),security(("bearer_auth"=[])))]
+pub async fn internal_diagnostics(
+    State(state): State<Arc<AppState>>,
+    filters: Result<Query<DiagnosticsFilters>, QueryRejection>,
+) -> Result<Json<DatasetDiagnostics>, ApiError> {
+    let Query(filters) = filters.map_err(|_| {
+        ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "INVALID_FILTER",
+            "Filtro de diagnóstico inválido.",
+        )
+    })?;
+    Ok(Json(
+        QueryService::new(state.pool.clone())
+            .diagnostics(filters, QueryPurpose::Internal)
+            .await?,
+    ))
+}
+
 #[utoipa::path(get,path="/api/v1/b3/sync-runs/{id}",tag="Operação",summary="Consultar execução administrativa por identificador durável",description="Projeção tipada do mesmo job compartilhado por API, CLI e worker.\nExpõe fase, tentativas, heartbeat, cancelamento, outputs e código seguro de falha.\nNão transforma consulta de estado em execução de trabalho.\nRequer administração; idempotência de leitura não muda o estado do job.",params(("id"=Uuid,Path,description="UUID do trabalho")),responses((status=200,description="Estado durável",body=JobView),(status=400,description="ID inválido"),(status=401,description="Não autenticado"),(status=403,description="Administração exigida"),(status=404,description="Execução inexistente"),(status=409,description="Não aplicável à leitura"),(status=500,description="Falha de persistência")),security(("bearer_auth"=[])))]
 pub async fn sync_run(
     state: State<Arc<AppState>>,

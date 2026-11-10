@@ -122,6 +122,7 @@ async fn main() -> anyhow::Result<()> {
             let date = chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d")?;
             let command = JobCommand::Ingest {
                 source: SourceFileType::from_str(&source_type).map_err(anyhow::Error::msg)?,
+                channel_id: None,
                 from: date,
                 to: date,
             };

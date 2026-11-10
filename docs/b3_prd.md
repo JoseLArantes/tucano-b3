@@ -120,6 +120,7 @@ A publicação de uma revisão ativa seleciona internamente um conjunto imutáve
 
 1. **Aquisição e finalidade confirmadas sem cobrança:** habilitar o canal correspondente, respeitando suas condições.
 2. **Download manual permitido, automação não confirmada:** pode existir importação local de arquivo oficial licitamente obtido, dentro da finalidade permitida. Isso não libera redistribuição nem serve para contornar restrições de coleta.
+   - Para desenvolvimento interno, o mantenedor pode aprovar explicitamente um candidato da pasta local por `POST /api/v1/b3/discovery/candidates/register-local`; a elegibilidade fica limitada ao canal e às finalidades de aquisição manual, retenção raw e processamento. Essa ação não habilita automação nem entrega externa.
 3. **Redistribuição não confirmada:** continuar desenvolvimento com fixtures sintéticas ou autorizadas. A plataforma pode ser lançada sem canais externos habilitados; não expor dados de um canal como se a licença estivesse resolvida.
 4. **Licença obrigatória paga:** excluir o canal da configuração gratuita ou rever explicitamente a restrição econômica. Não ocultar esse custo nem inserir um fornecedor intermediário.
 5. **Nenhum caminho compatível com todas as restrições:** registrar inviabilidade da modalidade desejada. A alternativa é reduzir a finalidade ou o escopo, ou obter permissão específica; não prometer uma solução técnica para uma permissão ausente.

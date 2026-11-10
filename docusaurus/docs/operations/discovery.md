@@ -32,7 +32,20 @@ A resposta `DiscoveryResult` contém `checked_at` UTC, `scheduled`, totais, resu
 
 Se a configuração tiver mais candidatos que o limite de resposta, `candidates_truncated=true`; se um limite por local for atingido, o próprio local também marca `truncated=true`. Falha em um diretório, URL ou bucket aparece como `failed` e não impede tentativas nos outros locais. Falha ao persistir a observação, ao contrário, falha a chamada. As checagens e seus candidatos ficam em `b3_discovery_location_checks` e `b3_discovery_location_candidates`.
 
-Um candidato encontrado em pasta, URL ou bucket **não** cria uma pendência de canal nem comprova elegibilidade, autorização de coleta, retenção ou redistribuição. O operador ainda precisa registrar e homologar um canal oficial apropriado antes de submetê-lo a ingestão. O scanner não calcula hash de conteúdo e não transforma observação de localização em arquivo bruto.
+Um candidato encontrado em pasta, URL ou bucket **não** cria canal, pendência ou elegibilidade. Para importar um arquivo local, o operador usa `POST /api/v1/b3/discovery/candidates/register-local` após selecionar o candidato na tela `/gestao/jobs`. A rota exige attestation administrativa explícita e aceita somente um candidato da última varredura manual (até 24 horas), dentro de `B3_RAW_DATA_DIR/imports`, sem links simbólicos e sem alteração de tamanho.
+
+Exemplo de corpo fechado:
+
+```json
+{
+  "source_locator": "folder:1/2026/COTAHIST_A2026.ZIP",
+  "authorize_internal_development": true
+}
+```
+
+O nome define o período inclusivo e a família. O canal habilitado recebe elegibilidade somente para aquisição manual, retenção bruta e processamento interno. REST, MCP e entrega a terceiros continuam bloqueados. O endpoint retorna um `channel_id`; inclua-o no comando `ingest` para que o worker use exatamente o arquivo selecionado. Candidatos de URL B3 e S3 permanecem apenas como metadados neste fluxo. O scanner não calcula hash de conteúdo e não transforma observação de localização em arquivo bruto.
+
+Erros comuns: `400` para attestation ausente, caminho fora da pasta de importação, link simbólico ou nome/período inválido; `404` se o candidato não estiver na última varredura manual; `409` se o arquivo mudou desde a observação. Execute um novo scan para atualizar o candidato e tente novamente.
 
 Exemplo de resposta:
 

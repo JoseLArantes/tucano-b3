@@ -320,12 +320,21 @@ impl QueryService {
             .iter()
             .map(|row| historical_quote_from_row(row, filters.include_internal.unwrap_or(false)))
             .collect();
-        let mut coverage = self.coverage(revision, purpose).await?;
-        coverage.requested_from = filters.trade_date_from;
-        coverage.requested_to = filters.trade_date_to;
-        coverage.first_observed = summary.get("first");
-        coverage.last_observed = summary.get("last");
-        coverage.unresolved = summary.get("unresolved");
+        let rejected: i64 =
+            sqlx::query_scalar("SELECT rejected FROM b3_history_revisions WHERE id=$1")
+                .bind(revision)
+                .fetch_one(&self.pool)
+                .await?;
+        let coverage = Coverage {
+            requested_from: filters.trade_date_from,
+            requested_to: filters.trade_date_to,
+            status: CoverageStatus::Partial,
+            first_observed: summary.get("first"),
+            last_observed: summary.get("last"),
+            rejected,
+            unresolved: summary.get("unresolved"),
+            calendar_status: "unknown".into(),
+        };
         Ok(QuotePage {
             items,
             total,

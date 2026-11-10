@@ -97,6 +97,19 @@ Erros da API têm o envelope:
 | ``GET /api/v1/b3/instruments/{id}/identifiers`` | Leitura | ``InstrumentIdentifierPage`` | Rota cadastral sem evidência publicada neste release. |
 | ``GET /api/v1/b3/tradable-securities`` | Leitura | ``InstrumentPage`` | Rota TSL sem dados disponíveis; nunca usa BVBG.028 como fallback. |
 
+### Console interno de cotações (somente admin)
+
+O console local usa rotas internas autenticadas com ``TUCANO_B3_ADMIN_TOKEN`` para consultar revisões publicadas cujas fontes têm elegibilidade ``processing`` e ``raw_retention``. Essas rotas existem para análise interna e não concedem elegibilidade REST, MCP ou entrega a terceiros. Consumidores devem continuar usando as rotas de leitura acima; elas exigem finalidade REST e entrega a terceiros.
+
+| Método e caminho | Papel | Resposta de sucesso | Relação principal |
+|---|---|---|---|
+| ``GET /api/v1/b3/internal/diagnostics/coverage`` | Admin | ``DatasetDiagnostics`` | Cobertura da revisão ativa ou fixada, para o console. |
+| ``GET /api/v1/b3/internal/cotahist/quotes`` | Admin | ``QuotePage`` | Fatos paginados, com precisão e proveniência. |
+| ``GET /api/v1/b3/internal/cotahist/series`` | Admin | ``QuotePage`` | Série inequívoca; mantém conflitos de seleção explícitos. |
+| ``GET /api/v1/b3/internal/cotahist/quotes/export`` | Admin | ``application/x-ndjson`` | Exportação integral verificável e retomável para o console. |
+
+Todas as fontes referenciadas pela revisão precisam permanecer elegíveis para processamento e retenção bruta. Uma resposta ``403 SOURCE_NOT_ELIGIBLE`` indica que essa condição interna não foi comprovada; não é um erro de credencial administrativa. As rotas públicas continuam verificando REST e ``third_party_delivery`` separadamente.
+
 ### Operação e inspeção administrativa
 
 | Método e caminho | Papel | Resposta de sucesso | Relação principal |
@@ -113,6 +126,7 @@ Erros da API têm o envelope:
 | ``GET /api/v1/b3/pending-updates`` | Admin | ``OperationPage<PendingView>`` | Lista referências remotas encontradas pelo scanner. |
 | ``POST /api/v1/b3/pending-updates/{id}/acknowledge`` | Admin | ``PendingAcknowledged`` | Vincula pendência a arquivo já publicado, com justificativa. |
 | ``POST /api/v1/b3/discovery/scan`` | Admin | ``DiscoveryResult`` | Checa canais e locais configurados; retorna candidatos COTAHIST por metadados, sem baixar nem ingerir. |
+| ``POST /api/v1/b3/discovery/candidates/register-local`` | Admin | ``RegisteredLocalCandidate`` | Registra, mediante attestation explícita, um candidato da última varredura local para desenvolvimento interno. |
 | ``GET /api/v1/b3/data-revisions/{id}`` | Admin | ``RevisionView`` | Inspeciona a revisão COTAHIST no release; o schema reserva family ``registry`` para evolução. |
 | ``GET /api/v1/b3/data-revisions/{id}/conflicts`` | Admin | ``OperationPage<ConflictView>`` | Lista divergências COTAHIST sem eleger vencedora. |
 | ``GET /api/v1/b3/data-revisions/{id}/quarantine`` | Admin | ``OperationPage<RejectionView>`` | Lista rejeições localizadas da revisão/snapshot. |
@@ -139,12 +153,13 @@ Erros da API têm o envelope:
 ### 5.3 Processar uma atualização no console operacional
 
 1. Um administrador executa ``POST /discovery/scan``. A resposta ``200`` informa ``checked_at``, locais checados e candidatos por metadados. Canais registrados podem criar pendências; locais extras retornam candidatos separados. O scan não cria arquivos nem jobs de ingestão.
-2. Consulte ``GET /pending-updates``. Uma pendência representa uma possível publicação nova, não alteração confirmada de cotação.
-3. Para adquirir/processar, submeta ``POST /jobs`` com operação ``ingest``, família e intervalo de datas. A API seleciona canais configurados no servidor; o consumidor não envia URL de download. O canal precisa estar habilitado e elegível para aquisição, retenção raw e processamento. ``capabilities.enabled`` descreve elegibilidade REST/terceiros, não a elegibilidade de ingestão.
-4. Guarde ``job_id`` e ``status_url`` do corpo. ``POST /jobs`` também retorna ``Location``. Consulte ``GET /jobs/{id}`` com credencial administrativa até status terminal. Não use a tela de sucesso do ``202`` como confirmação de ingestão.
-5. Examine ``outputs``. ``source_file`` aponta para um artefato visível em ``/source-files``; abra seus members em ``/source-files/{id}/members``. ``revision`` aponta para ``/data-revisions/{id}``; inspecione rejeições e conflitos.
-6. Uma importação sem rejeições ou conflitos publica automaticamente após os gates de qualidade e elegibilidade para processamento e retenção dos artefatos brutos. Uma candidata com rejeições pode ser publicada somente por um job ``publish_revision`` com ``acknowledge_issues=true``; conflitos continuam bloqueando a publicação. A elegibilidade de publicação interna não concede permissão para REST, MCP ou entrega a terceiros.
-7. Se a fonte também estiver elegível para o transporte e finalidade do consumidor, use o novo ``data_revision`` em ``/diagnostics/coverage`` e ``/cotahist/quotes``. A revisão retornada na primeira consulta pode mudar entre telas se o consumidor omitir o ID.
+2. Para canal já registrado, consulte ``GET /pending-updates``; uma pendência representa possível publicação nova, não alteração confirmada de cotação. Candidatos de pasta seguem ao próximo passo.
+3. Para importar um arquivo de pasta no console de gestão, selecione o candidato em ``/gestao/jobs`` e registre-o por ``POST /discovery/candidates/register-local``. O operador confirma que aquele arquivo local pode ser adquirido manualmente, retido e processado somente para desenvolvimento interno. A rota exige candidato da última varredura manual (máximo 24 horas), em ``B3_RAW_DATA_DIR/imports``, sem links simbólicos e com tamanho ainda igual ao observado. Não habilita REST, MCP ou entrega a terceiros. Candidatos B3/S3 continuam metadata-only nesta rota.
+4. Submeta ``POST /jobs`` com operação ``ingest``, família e intervalo de datas. Para fixar o arquivo selecionado, inclua o ``channel_id`` retornado pelo registro local; sem ele, a API mantém a seleção server-side dos canais habilitados no período. O canal precisa estar habilitado e elegível para aquisição, retenção raw e processamento. ``capabilities.enabled`` descreve elegibilidade REST/terceiros, não a elegibilidade de ingestão.
+5. Guarde ``job_id`` e ``status_url`` do corpo. ``POST /jobs`` também retorna ``Location``. Consulte ``GET /jobs/{id}`` com credencial administrativa até status terminal. Não use a tela de sucesso do ``202`` como confirmação de ingestão.
+6. Examine ``outputs``. ``source_file`` aponta para um artefato visível em ``/source-files``; abra seus members em ``/source-files/{id}/members``. ``revision`` aponta para ``/data-revisions/{id}``; inspecione rejeições e conflitos.
+7. Uma importação sem rejeições ou conflitos publica automaticamente após os gates de qualidade e elegibilidade para processamento e retenção dos artefatos brutos. Uma candidata com rejeições pode ser publicada somente por um job ``publish_revision`` com ``acknowledge_issues=true``; conflitos continuam bloqueando a publicação. A elegibilidade de publicação interna não concede permissão para REST, MCP ou entrega a terceiros.
+8. Se a fonte também estiver elegível para o transporte e finalidade do consumidor, use o novo ``data_revision`` em ``/diagnostics/coverage`` e ``/cotahist/quotes``. A revisão retornada na primeira consulta pode mudar entre telas se o consumidor omitir o ID.
 
 ### 5.4 Cancelar, repetir ou reconhecer trabalho
 
@@ -156,7 +171,7 @@ Erros da API têm o envelope:
 
 ### 6.1 COTAHIST: filtros e paginação fixada
 
-Rotas: ``GET /api/v1/b3/cotahist/quotes`` e ``GET /api/v1/b3/cotahist/series``.
+Rotas de consumidor: ``GET /api/v1/b3/cotahist/quotes`` e ``GET /api/v1/b3/cotahist/series``. O console local usa os equivalentes em ``/api/v1/b3/internal/cotahist`` com credencial administrativa e elegibilidade interna.
 
 | Query | Tipo | Semântica |
 |---|---|---|
@@ -362,6 +377,7 @@ Cada ``InstrumentEvidence`` contém ``instrument_id`` nullable, ``snapshot_id``,
   "command": {
     "operation": "ingest",
     "source": "COTAHIST_YEARLY",
+    "channel_id": "local-89abc0123456789abcdef012",
     "from": "2025-01-01",
     "to": "2025-12-31"
   },
@@ -382,7 +398,7 @@ Comandos aceitos no schema:
 
 | ``command.operation`` | Campos de ``command`` | Efeito solicitado |
 |---|---|---|
-| ``ingest`` | ``source`` (COTAHIST no ``0.0.1``), ``from``, ``to`` | Adquire/processa canais COTAHIST habilitados e corta por ``DATA DO PREGÃO``; família sem data interna suportada retorna ``400``. A URL é definida pela configuração do canal no servidor. |
+| ``ingest`` | ``source`` (COTAHIST no ``0.0.1``), ``from``, ``to``, ``channel_id`` (opcional) | Adquire/processa canais COTAHIST habilitados e corta por ``DATA DO PREGÃO``; família sem data interna suportada retorna ``400``. ``channel_id`` fixa o canal selecionado; sem ele, o worker encontra canais elegíveis pelo período. A URL ou caminho local vêm da configuração do servidor. |
 | ``reparse`` | ``source_file_id`` (UUID) | Reprocessa artefato bruto já preservado com parser atual. |
 | ``replay_quarantine`` | ``source_file_id`` (UUID) | Reinterpreta evidências de arquivo preservado para recuperar rejeições, mantendo histórico. |
 | ``rebuild_identity`` | ``from``, ``to`` | Reconstrói relações temporais de identidade no período. |

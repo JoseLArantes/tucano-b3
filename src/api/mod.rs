@@ -36,13 +36,13 @@ struct SecurityAddon;
 impl Modify for SecurityAddon {
     fn modify(&self, api: &mut utoipa::openapi::OpenApi) {
         if let Some(components) = api.components.as_mut() {
-            components.add_security_scheme("bearer_auth",SecurityScheme::Http(HttpBuilder::new().scheme(HttpAuthScheme::Bearer).description(Some("Use TUCANO_B3_READ_TOKEN em operações de leitura e TUCANO_B3_ADMIN_TOKEN em operações administrativas (todos os POST e inspeções operacionais). A variável legada TUCANO_B3_TOKEN não substitui o token administrativo.")).build()));
+            components.add_security_scheme("bearer_auth",SecurityScheme::Http(HttpBuilder::new().scheme(HttpAuthScheme::Bearer).description(Some("Use TUCANO_B3_READ_TOKEN em operações públicas de leitura. Use TUCANO_B3_ADMIN_TOKEN em operações administrativas, inspeções operacionais e rotas internas /api/v1/b3/internal. A variável legada TUCANO_B3_TOKEN não substitui o token administrativo.")).build()));
         }
     }
 }
 
 #[derive(OpenApi)]
-#[openapi(info(title="Tucano B3",version="0.0.1",description="Histórico oficial nominal B3 com precisão, revisão fixada e proveniência. Preços COTAHIST não ajustados por inflação ou eventos corporativos."),modifiers(&SecurityAddon),paths(release::quotes,release::quote_export,release::series,release::instruments,release::instrument,release::instrument_identifiers,release::tradable_securities,release::submit_job,release::job,release::cancel_job,release_ops::source_files,release_ops::pending,release_ops::revision,release_ops::conflicts,release_ops::rejections,release_ops::members,release_ops::scan,release_ops::jobs,release_ops::sync_runs,release_ops::capabilities,healthz,health),components(schemas(QuoteFilters,QuotePage,HistoricalQuote,QuoteProvenance,QuoteIdentity,QuoteInternal,QuoteExportFilters,QuoteExportEvent,Coverage,CoverageStatus,IdentityStatus,InstrumentFilters,InstrumentPage,InstrumentEvidence,InstrumentIdentifierEvidence,InstrumentIdentifierPage,InstrumentIdentifierProvenance,JobView,JobStatus,RevisionView,ConflictView,RejectionView,SourceFileView,MemberView,PendingView,ListFilters,Capability,CapabilityStatus,release_ops::DiscoveryResult,release_ops::DiscoveryLocationResult,release_ops::DiscoveryCandidateResult,crate::services::runtime::discovery_locations::DiscoveryFileType,release::SubmitJob,release::AcceptedJob,release_error::ErrorResponse,Health)),tags((name="COTAHIST",description="Arquivos oficiais COTAHIST anual/mensal/diário; preços nominais sem ajustes"),(name="Cadastro",description="Fotografias oficiais com evidências temporais"),(name="Operação",description="Comandos rastreados, somente para administração"),(name="Saúde",description="Exceções públicas explícitas")))]
+#[openapi(info(title="Tucano B3",version="0.0.1",description="Histórico oficial nominal B3 com precisão, revisão fixada e proveniência. Preços COTAHIST não ajustados por inflação ou eventos corporativos."),modifiers(&SecurityAddon),paths(release::quotes,release::quote_export,release::series,release::internal_quotes,release::internal_quote_export,release::internal_series,release::instruments,release::instrument,release::instrument_identifiers,release::tradable_securities,release::submit_job,release::job,release::cancel_job,release_ops::source_files,release_ops::pending,release_ops::revision,release_ops::conflicts,release_ops::rejections,release_ops::members,release_ops::scan,release_ops::jobs,release_ops::sync_runs,release_ops::capabilities,healthz,health),components(schemas(QuoteFilters,QuotePage,HistoricalQuote,QuoteProvenance,QuoteIdentity,QuoteInternal,QuoteExportFilters,QuoteExportEvent,Coverage,CoverageStatus,IdentityStatus,InstrumentFilters,InstrumentPage,InstrumentEvidence,InstrumentIdentifierEvidence,InstrumentIdentifierPage,InstrumentIdentifierProvenance,JobView,JobStatus,RevisionView,ConflictView,RejectionView,SourceFileView,MemberView,PendingView,ListFilters,Capability,CapabilityStatus,release_ops::DiscoveryResult,release_ops::DiscoveryLocationResult,release_ops::DiscoveryCandidateResult,crate::services::runtime::discovery_locations::DiscoveryFileType,release::SubmitJob,release::AcceptedJob,release_error::ErrorResponse,Health)),tags((name="COTAHIST",description="Arquivos oficiais COTAHIST anual/mensal/diário; preços nominais sem ajustes"),(name="Cadastro",description="Fotografias oficiais com evidências temporais"),(name="Operação",description="Comandos rastreados, somente para administração"),(name="Saúde",description="Exceções públicas explícitas")))]
 struct BaseDoc;
 
 #[derive(OpenApi)]
@@ -50,8 +50,10 @@ struct BaseDoc;
     paths(
         release_extra::retry,
         release_extra::diagnostics,
+        release_extra::internal_diagnostics,
         release_extra::sync_run,
-        release_ops::acknowledge_pending
+        release_ops::acknowledge_pending,
+        release_ops::register_local_candidate
     ),
     components(schemas(
         release_extra::RetryRequest,
@@ -59,6 +61,8 @@ struct BaseDoc;
         DiagnosticsFilters,
         release_ops::AcknowledgePending,
         release_ops::PendingAcknowledged,
+        release_ops::RegisterLocalCandidate,
+        release_ops::RegisteredLocalCandidate,
         crate::services::runtime::discovery_locations::DiscoveryLocationKind,
         crate::services::runtime::discovery_locations::DiscoveryLocationOutcome
     ))
@@ -108,6 +112,22 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/v1/health", get(health))
         .route("/api/v1/b3/cotahist/quotes", get(release::quotes))
         .route(
+            "/api/v1/b3/internal/cotahist/quotes",
+            get(release::internal_quotes),
+        )
+        .route(
+            "/api/v1/b3/internal/cotahist/quotes/export",
+            get(release::internal_quote_export),
+        )
+        .route(
+            "/api/v1/b3/internal/cotahist/series",
+            get(release::internal_series),
+        )
+        .route(
+            "/api/v1/b3/internal/diagnostics/coverage",
+            get(release_extra::internal_diagnostics),
+        )
+        .route(
             "/api/v1/b3/cotahist/quotes/export",
             get(release::quote_export),
         )
@@ -146,6 +166,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(release_ops::rejections),
         )
         .route("/api/v1/b3/discovery/scan", post(release_ops::scan))
+        .route(
+            "/api/v1/b3/discovery/candidates/register-local",
+            post(release_ops::register_local_candidate),
+        )
         .route("/api/v1/b3/jobs/{id}/retry", post(release_extra::retry))
         .route(
             "/api/v1/b3/diagnostics/coverage",

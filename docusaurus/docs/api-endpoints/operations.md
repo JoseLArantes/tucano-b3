@@ -18,7 +18,7 @@ Operações usam os mesmos jobs e estados PostgreSQL compartilhados entre API, C
 | GET /api/v1/b3/sync-runs | Admin | Lista execuções refletidas no registro operacional |
 | GET /api/v1/b3/sync-runs/&#123;id&#125; | Admin | Consulta a execução durável por identificador |
 
-POST /jobs recebe idempotency_key, command, priority e max_attempts opcional. max_attempts padrão 3, faixa de 1 a 100. Commands são ingest, reparse, replay_quarantine, rebuild_identity, publish_revision, rollback_revision ou withdraw_window. Reuso da chave com comando idêntico retorna o mesmo job; uso incompatível retorna 409. O POST não faz download ou parsing dentro da requisição.
+POST /jobs recebe idempotency_key, command, priority e max_attempts opcional. max_attempts padrão 3, faixa de 1 a 100. Commands são ingest, reparse, replay_quarantine, rebuild_identity, publish_revision, rollback_revision ou withdraw_window. Em `command.ingest`, `channel_id` é opcional; quando presente, fixa o worker ao canal selecionado na descoberta. Reuso da chave com comando idêntico retorna o mesmo job; uso incompatível retorna 409. O POST não faz download ou parsing dentro da requisição.
 
 No Swagger UI, informe o valor configurado em `TUCANO_B3_ADMIN_TOKEN` no botão “Authorize” antes de usar estas operações. O valor de `TUCANO_B3_READ_TOKEN` não é suficiente; por exemplo, `POST /api/v1/b3/discovery/scan` retorna `403 ADMIN_REQUIRED` para credenciais de leitura. A UI não carrega variáveis do `.env` automaticamente.
 
@@ -26,7 +26,7 @@ Um import limpo publica automaticamente após elegibilidade para processamento e
 
 `ingest` exige uma família B3 oficial configurada e `from`/`to` inclusivos sobre a data de negócio. No `0.0.1`, somente COTAHIST diário, mensal ou anual é aceito: o worker seleciona cada fato pela `DATA DO PREGÃO`; o período declarado do arquivo só localiza possíveis publicações. O administrador envia o ano inteiro explicitamente se esse for o corte desejado. Publicações COTAHIST múltiplas selecionadas no mesmo job são consolidadas em uma revisão atômica. BVBG.028 e Tradable Security List permanecem `deferred` e são rejeitadas no comando de ingestão.
 
-Não há endpoint de upload. Importação local é configuração administrativa controlada para artefato oficial rastreável, não uma forma de consumidores enviarem dados. Os canais/finalidades sem elegibilidade permanecem desabilitados.
+Não há endpoint de upload. `POST /api/v1/b3/discovery/candidates/register-local` é uma ação administrativa separada que registra um arquivo da última descoberta manual somente quando o mantenedor atesta uso de desenvolvimento interno. Ela aceita apenas arquivo local dentro da pasta de imports, sem links simbólicos e com metadados inalterados, e cria elegibilidade somente para aquisição manual, retenção bruta e processamento. REST, MCP e entrega a terceiros continuam desabilitados.
 
 Um import limpo publica automaticamente após os gates estruturais, de rejeição, conflito e elegibilidade. Falhas de qualidade deixam a candidata não ativa e o job `succeeded_with_issues`. `withdraw_window` publica uma nova visão sem as datas inclusivas solicitadas; raw, fatos, versões, ocorrências e revisões anteriores não são apagados e rollback pode restaurar a visão anterior.
 
@@ -35,12 +35,15 @@ Um import limpo publica automaticamente após os gates estruturais, de rejeiçã
 | Método e rota | Acesso | Efeito |
 | --- | --- | --- |
 | POST /api/v1/b3/discovery/scan | Admin | Checa canais e locais configurados; responde com metadados de candidatos COTAHIST |
+| POST /api/v1/b3/discovery/candidates/register-local | Admin | Registra um candidato local para processamento interno mediante attestation explícita |
 | GET /api/v1/b3/pending-updates | Admin | Lista publicações pendentes conhecidas |
 | POST /api/v1/b3/pending-updates/&#123;id&#125;/acknowledge | Admin | Registra reconhecimento administrativo da pendência |
 
 `POST /api/v1/b3/discovery/scan` não recebe corpo e retorna `DiscoveryResult`: momento UTC, contagem de locais, candidatos, status/truncamento por local e até 1.000 candidatos com `source_file_type`, `source_locator`, tamanho, ETag e última modificação. A configuração `B3_DISCOVERY_LOCATIONS` aceita `folder:`, `b3_url:` e `object_storage_bucket:`; veja [Descoberta e pendências](../operations/discovery.md) para sintaxe, limites, montagem dos volumes, permissão de bucket e significado de cada resultado.
 
 Um local configurado é um endereço de descoberta, não um canal habilitado. Candidatos não são baixados, não criam pendências de canal nem jobs e não comprovam elegibilidade para aquisição, retenção ou distribuição. Registre e homologue um canal antes de importar. Acknowledgement também não inicia processamento.
+
+O registro local é separado da varredura. Ele exige candidato da última descoberta manual, limita-se a `B3_RAW_DATA_DIR/imports`, recusa links simbólicos e compara o tamanho atual ao metadado observado. O retorno inclui um `channel_id` opcionalmente enviado no `command.ingest` para selecionar exatamente o arquivo. O registro autoriza somente aquisição manual, retenção bruta e processamento interno daquele canal.
 
 ## Arquivos e revisões
 

@@ -43,6 +43,7 @@ async fn cleanup(pool: PgPool, admin: PgPool, name: String) {
 fn command() -> JobCommand {
     JobCommand::Ingest {
         source: SourceFileType::CotahistYearly,
+        channel_id: None,
         from: NaiveDate::from_ymd_opt(2025, 1, 1).unwrap(),
         to: NaiveDate::from_ymd_opt(2025, 12, 31).unwrap(),
     }

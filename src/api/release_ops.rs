@@ -4,6 +4,7 @@ use crate::services::{
     runtime::{
         discovery::DiscoveryService,
         discovery_locations::{DiscoveryFileType, DiscoveryLocationKind, DiscoveryLocationOutcome},
+        local_channels::{self, LocalChannelRegistration},
         RuntimeSettings,
     },
 };
@@ -170,6 +171,101 @@ pub async fn scan(State(state): State<Arc<AppState>>) -> Result<Json<DiscoveryRe
             })
             .collect(),
     }))
+}
+
+/// Attestation to use one discovered local corpus for internal development only.
+#[derive(serde::Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RegisterLocalCandidate {
+    /// Relative locator returned by the most recent manual folder discovery scan.
+    #[schema(example = "folder:1/COTAHIST_A2026.ZIP")]
+    pub source_locator: String,
+    /// Operator attestation limited to manual acquisition, raw retention, and processing.
+    /// REST, MCP, and third-party delivery remain ineligible.
+    #[schema(example = true)]
+    pub authorize_internal_development: bool,
+}
+
+/// Registered channel identity and inclusive business-date window inferred from its filename.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub struct RegisteredLocalCandidate {
+    /// Stable channel ID to pass with the ingest job command.
+    #[schema(example = "local-89abc0123456789abcdef012")]
+    pub channel_id: String,
+    /// COTAHIST family inferred from the candidate name.
+    #[schema(example = "COTAHIST_YEARLY")]
+    pub source_file_type: String,
+    /// Sanitized local locator; no absolute filesystem path.
+    #[schema(example = "folder:1/COTAHIST_A2026.ZIP")]
+    pub source_locator: String,
+    /// First date covered by the named publication.
+    #[schema(example = "2026-01-01")]
+    pub period_start: chrono::NaiveDate,
+    /// Last date covered by the named publication.
+    #[schema(example = "2026-12-31")]
+    pub period_end: chrono::NaiveDate,
+    /// True when this channel was already present before this request.
+    pub already_registered: bool,
+    /// This channel is enabled for internal development only.
+    pub internal_development_only: bool,
+}
+
+impl From<LocalChannelRegistration> for RegisteredLocalCandidate {
+    fn from(value: LocalChannelRegistration) -> Self {
+        Self {
+            channel_id: value.channel_id,
+            source_file_type: value.source_file_type,
+            source_locator: value.source_locator,
+            period_start: value.period_start,
+            period_end: value.period_end,
+            already_registered: value.already_registered,
+            internal_development_only: true,
+        }
+    }
+}
+
+#[utoipa::path(post,path="/api/v1/b3/discovery/candidates/register-local",tag="Operação",summary="Habilitar candidato local para importação interna autorizada",description="Registra explicitamente um COTAHIST encontrado na pasta local configurada como canal de aquisição manual.\nExige attestation do operador mantenedor para aquisição, retenção bruta e processamento exclusivamente internos; REST, MCP e entrega a terceiros continuam sem elegibilidade.\nAceita somente candidato da última descoberta manual, com até 24 horas, localizado em B3_RAW_DATA_DIR/imports e sem links simbólicos.\nA família e o período vêm do nome COTAHIST; tamanho atual precisa corresponder à observação. A operação é idempotente por família e localizador.\nRequer credencial administrativa.",request_body=RegisterLocalCandidate,responses((status=200,description="Canal local preparado para importação interna",body=RegisteredLocalCandidate),(status=400,description="Attestation, localizador, caminho ou período inválido"),(status=401,description="Não autenticado"),(status=403,description="Administração exigida"),(status=404,description="Candidato ausente na última descoberta manual"),(status=409,description="Arquivo alterado desde a descoberta ou canal incompatível"),(status=500,description="Falha de persistência")),security(("bearer_auth"=[])))]
+pub async fn register_local_candidate(
+    State(state): State<Arc<AppState>>,
+    payload: Result<Json<RegisterLocalCandidate>, axum::extract::rejection::JsonRejection>,
+) -> Result<Json<RegisteredLocalCandidate>, ApiError> {
+    let Json(payload) = payload.map_err(|_| {
+        ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "INVALID_REQUEST",
+            "Pedido de registro local inválido.",
+        )
+    })?;
+    if !payload.authorize_internal_development {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "ATTESTATION_REQUIRED",
+            "Confirme a autorização limitada ao desenvolvimento interno.",
+        ));
+    }
+    let result = local_channels::register_candidate(
+        &state.pool,
+        &RuntimeSettings::from_settings(&state.settings),
+        &payload.source_locator,
+    )
+    .await;
+    let registered = result.map_err(|error| match error {
+        crate::error::AppError::Validation(message) => {
+            ApiError::new(StatusCode::BAD_REQUEST, "LOCAL_CHANNEL_INVALID", &message)
+        }
+        crate::error::AppError::NotFound(message) => ApiError::new(
+            StatusCode::NOT_FOUND,
+            "DISCOVERED_CANDIDATE_NOT_FOUND",
+            &message,
+        ),
+        crate::error::AppError::LockConflict(message) => ApiError::new(
+            StatusCode::CONFLICT,
+            "DISCOVERED_CANDIDATE_CHANGED",
+            &message,
+        ),
+        other => ApiError::from(other),
+    })?;
+    Ok(Json(registered.into()))
 }
 
 /// Reconhecimento de publicação já preservada sem reingestão fictícia.

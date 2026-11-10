@@ -1,5 +1,12 @@
 # Alterações da API para consumidores
 
+## 08/11/2026 — Importação de candidato local descoberto
+
+- Adiciona `POST /api/v1/b3/discovery/candidates/register-local`, que exige attestation administrativa e registra um candidato de pasta local para desenvolvimento interno, somente com aquisição manual, retenção bruta e processamento.
+- `POST /api/v1/b3/jobs`: `command.ingest.channel_id` opcional fixa o job ao canal local selecionado; comandos sem esse campo mantêm a seleção server-side anterior.
+- A rota aceita somente um candidato da última varredura manual (até 24 horas), em `B3_RAW_DATA_DIR/imports`, sem link simbólico e com tamanho ainda igual ao observado. O registro não habilita REST, MCP nem entrega a terceiros.
+- Compatibilidade: aditiva. Clientes podem omitir `channel_id`; clientes que selecionam candidatos podem registrá-los e enviar o ID para ingestão exata.
+
 ## 08/11/2026 — Descoberta configurável de fontes COTAHIST
 
 - Amplia `POST /api/v1/b3/discovery/scan` para percorrer `B3_DISCOVERY_LOCATIONS`: pastas, URLs HTTPS diretas de arquivos em hosts oficiais B3 e buckets AWS S3 compatíveis com prefixo.

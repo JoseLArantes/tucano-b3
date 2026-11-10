@@ -42,6 +42,7 @@ async fn fixture() -> (PgPool, PgPool, String, String, Uuid) {
             "synthetic-fixture",
             tucano_b3::services::jobs::JobCommand::Ingest {
                 source: tucano_b3::db::enums::SourceFileType::CotahistYearly,
+                channel_id: None,
                 from: "2025-01-01".parse().unwrap(),
                 to: "2025-12-31".parse().unwrap(),
             },
@@ -429,6 +430,138 @@ async fn admin_commands_return_202_and_keep_execution_out_of_request() {
         .await
         .unwrap();
     assert_eq!(status, "queued");
+    cleanup(pool, admin, name).await;
+}
+
+#[tokio::test]
+async fn local_discovery_registration_is_scoped_and_selected_by_ingest_job() {
+    let (pool, admin, name, _, _) = fixture().await;
+    let root = tempfile::tempdir().unwrap();
+    let imports = root.path().join("imports");
+    std::fs::create_dir(&imports).unwrap();
+    std::fs::write(
+        imports.join("COTAHIST_A2026.ZIP"),
+        b"synthetic local archive",
+    )
+    .unwrap();
+    let settings = Arc::new(B3Settings {
+        tucano_b3_read_token: "fixture-read".into(),
+        tucano_b3_admin_token: "fixture-admin".into(),
+        b3_raw_data_dir: root.path().display().to_string(),
+        b3_discovery_locations: format!("folder:{}", imports.display()),
+        ..Default::default()
+    });
+    let app = create_router(Arc::new(AppState {
+        pool: pool.clone(),
+        settings: settings.clone(),
+        sync_service: Arc::new(B3SyncService::new(pool.clone(), (*settings).clone())),
+    }));
+    let scan = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/b3/discovery/scan")
+                .header("Authorization", "Bearer fixture-admin")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(scan.status(), StatusCode::OK);
+    let scan_body: Value =
+        serde_json::from_slice(&axum::body::to_bytes(scan.into_body(), 65536).await.unwrap())
+            .unwrap();
+    let source_locator = scan_body["candidates"][0]["source_locator"]
+        .as_str()
+        .unwrap();
+    assert_eq!(source_locator, "folder:1/COTAHIST_A2026.ZIP");
+
+    let registered = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/b3/discovery/candidates/register-local")
+                .header("Authorization", "Bearer fixture-admin")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "source_locator": source_locator,
+                        "authorize_internal_development": true
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(registered.status(), StatusCode::OK);
+    let registered: Value = serde_json::from_slice(
+        &axum::body::to_bytes(registered.into_body(), 65536)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(registered["period_start"], "2026-01-01");
+    assert_eq!(registered["period_end"], "2026-12-31");
+    assert_eq!(registered["internal_development_only"], true);
+    let channel_id = registered["channel_id"].as_str().unwrap();
+    let purposes: Vec<String> = sqlx::query_scalar(
+        "SELECT purpose FROM b3_source_eligibility WHERE channel=$1 ORDER BY purpose",
+    )
+    .bind(channel_id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(purposes, ["acquisition", "processing", "raw_retention"]);
+
+    let submitted = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/b3/jobs")
+                .header("Authorization", "Bearer fixture-admin")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "idempotency_key": "local-cotahist-2026",
+                        "command": {
+                            "operation": "ingest",
+                            "source": "COTAHIST_YEARLY",
+                            "channel_id": channel_id,
+                            "from": "2026-01-01",
+                            "to": "2026-12-31"
+                        },
+                        "priority": "backfill"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(submitted.status(), StatusCode::ACCEPTED);
+    let job: Value = serde_json::from_slice(
+        &axum::body::to_bytes(submitted.into_body(), 65536)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let stored_command: Value = sqlx::query_scalar("SELECT command FROM b3_jobs WHERE id=$1")
+        .bind(job["job_id"].as_str().unwrap().parse::<Uuid>().unwrap())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(stored_command["channel_id"], channel_id);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM b3_source_eligibility WHERE channel=$1 AND purpose IN ('rest','mcp','third_party_delivery')")
+            .bind(channel_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        0
+    );
     cleanup(pool, admin, name).await;
 }
 

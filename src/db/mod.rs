@@ -21,13 +21,19 @@ pub async fn create_pool(database_url: &str) -> Result<PgPool> {
             })?,
         Err(_) => 8,
     };
+    let acquire_timeout_seconds = configured_seconds("B3_DB_ACQUIRE_TIMEOUT_SECONDS", 5, 120)?;
+    let statement_timeout_seconds =
+        configured_seconds("B3_DB_STATEMENT_TIMEOUT_SECONDS", 30, 3600)?;
+    let statement_timeout = format!("{statement_timeout_seconds}s");
     let pool = PgPoolOptions::new()
         .max_connections(max_connections)
-        .acquire_timeout(std::time::Duration::from_secs(5))
-        .after_connect(|connection, _| {
+        .acquire_timeout(std::time::Duration::from_secs(acquire_timeout_seconds))
+        .after_connect(move |connection, _| {
+            let statement_timeout = statement_timeout.clone();
             Box::pin(async move {
-                sqlx::query("SET statement_timeout='30s'")
-                    .execute(connection)
+                sqlx::query_scalar::<_, String>("SELECT set_config('statement_timeout',$1,false)")
+                    .bind(statement_timeout)
+                    .fetch_one(connection)
                     .await?;
                 Ok(())
             })
@@ -35,6 +41,21 @@ pub async fn create_pool(database_url: &str) -> Result<PgPool> {
         .connect(database_url)
         .await?;
     Ok(pool)
+}
+
+fn configured_seconds(name: &str, default: u64, maximum: u64) -> Result<u64> {
+    match std::env::var(name) {
+        Ok(value) => value
+            .parse::<u64>()
+            .ok()
+            .filter(|seconds| (1..=maximum).contains(seconds))
+            .ok_or_else(|| {
+                crate::error::AppError::Validation(format!(
+                    "{name} deve estar entre 1 e {maximum} segundos."
+                ))
+            }),
+        Err(_) => Ok(default),
+    }
 }
 
 pub async fn run_migrations(pool: &PgPool) -> Result<()> {

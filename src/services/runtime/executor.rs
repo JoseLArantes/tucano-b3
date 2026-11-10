@@ -35,16 +35,25 @@ impl ReleaseExecutor {
         let history = HistoryRepository::new(self.pool.clone());
         let jobs = JobService::new(self.pool.clone());
         match &claim.command {
-            JobCommand::Ingest { source, from, to } => {
+            JobCommand::Ingest {
+                source,
+                channel_id,
+                from,
+                to,
+            } => {
                 if !source.supports_record_date_cuts() {
                     return Err(invalid(
                         "Esta família ainda não pode aplicar cortes às datas internas dos registros.",
                     ));
                 }
-                let channels = sqlx::query("SELECT * FROM b3_source_channels WHERE enabled AND source_file_type=$1 AND period_start<=$3 AND period_end>=$2 ORDER BY period_start,id")
-                    .bind(source.as_str()).bind(from).bind(to).fetch_all(&self.pool).await?;
+                let channels = sqlx::query("SELECT * FROM b3_source_channels WHERE enabled AND source_file_type=$1 AND period_start<=$3 AND period_end>=$2 AND ($4::text IS NULL OR id=$4) ORDER BY period_start,id")
+                    .bind(source.as_str()).bind(from).bind(to).bind(channel_id).fetch_all(&self.pool).await?;
                 if channels.is_empty() {
-                    return Err(invalid("Nenhum canal habilitado para o período."));
+                    return Err(invalid(if channel_id.is_some() {
+                        "O canal selecionado não está habilitado para o período."
+                    } else {
+                        "Nenhum canal habilitado para o período."
+                    }));
                 }
                 let mut history_revision = None;
                 let mut registry_snapshots = Vec::new();

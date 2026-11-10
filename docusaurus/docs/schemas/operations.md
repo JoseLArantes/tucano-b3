@@ -17,7 +17,7 @@ POST /api/v1/b3/jobs aceita objeto fechado com:
 
 Os comandos têm discriminador operation e não aceitam propriedades extras:
 
-- ingest: source, from, to;
+- ingest: source, from, to, channel_id opcional;
 - reparse: source_file_id;
 - replay_quarantine: source_file_id;
 - rebuild_identity: from, to;
@@ -26,6 +26,8 @@ Os comandos têm discriminador operation e não aceitam propriedades extras:
 - withdraw_window: from, to inclusivos, sem remoção física.
 
 `ingest.from`/`to` são cortes inclusivos na data de negócio dos registros. No `0.0.1`, somente COTAHIST é aceito e usa `DATA DO PREGÃO`; metadados de publicação ajudam a selecionar artefatos, mas não substituem esse filtro. BVBG.028 e Tradable Security List são rejeitadas até que os registros tenham uma referência interna adequada. Upload de arquivo por consumidor não é suportado.
+
+`ingest.channel_id` fixa a execução ao canal previamente registrado, permitindo ao console selecionar um candidato específico. Quando ausente, o executor mantém o comportamento compatível e seleciona os canais ativos que cobrem o período. Para candidatos locais, `POST /api/v1/b3/discovery/candidates/register-local` retorna o `channel_id` após attestation explícita de uso interno. O campo não pode habilitar REST, MCP ou entrega a terceiros.
 
 ## JobView
 
@@ -64,3 +66,14 @@ Payload do `POST /api/v1/b3/discovery/scan`. A operação registra a checagem e 
 `DiscoveryCandidateResult.source_file_type` é `COTAHIST_YEARLY`, `COTAHIST_MONTHLY` ou `COTAHIST_DAILY`, inferido pelo nome; `source_locator` aponta para URL B3, URI S3 ou caminho relativo prefixado por `folder:<índice>/`; `byte_size` é o tamanho declarado em bytes; `remote_etag` e `remote_last_modified` são opcionais. ETag não é checksum. A descoberta não confirma que os bytes correspondem ao nome e não infere data de referência, integridade, precedência ou autorização de redistribuição.
 
 `DiscoveryFileType` é um enum fechado com `COTAHIST_YEARLY`, `COTAHIST_MONTHLY` e `COTAHIST_DAILY`; nenhum outro tipo de fonte é retornado por esse endpoint.
+
+## Registro de candidato local
+
+`POST /api/v1/b3/discovery/candidates/register-local` recebe `RegisterLocalCandidate`, um objeto fechado:
+
+| Campo | Tipo | Obrigatório | Interpretação |
+|---|---|---|---|
+| `source_locator` | string | Sim | Localizador `folder:<índice>/<caminho-relativo>` de um candidato da última varredura manual. |
+| `authorize_internal_development` | boolean | Sim, precisa ser `true` | Attestation do mantenedor para aquisição manual, retenção bruta e processamento somente internos. |
+
+`RegisteredLocalCandidate` retorna `channel_id`, `source_file_type`, `source_locator`, `period_start`, `period_end`, `already_registered` e `internal_development_only`. O endpoint não retorna caminho absoluto. O período é inferido do padrão de nome COTAHIST. O servidor recusa candidatos com mais de 24 horas, fora de `B3_RAW_DATA_DIR/imports`, com symlink ou com tamanho diferente do observado. `400` indica attestation/locador/período inválido, `404` candidato não incluído na última varredura manual e `409` arquivo alterado ou canal incompatível.

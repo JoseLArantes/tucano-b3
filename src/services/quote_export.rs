@@ -188,6 +188,7 @@ impl QuoteExportService {
         &self,
         query: &QueryService,
         filters: QuoteExportFilters,
+        purpose: QueryPurpose,
     ) -> Result<PreparedQuoteExport, ExportError> {
         let filters = filters.normalize()?;
         let ticker = filters.ticker_symbol.clone();
@@ -203,9 +204,7 @@ impl QuoteExportService {
         let selected_revision = filters
             .data_revision
             .or_else(|| cursor.as_ref().map(|value| value.data_revision));
-        let revision = query
-            .resolve_revision(selected_revision, QueryPurpose::Rest)
-            .await?;
+        let revision = query.resolve_revision(selected_revision, purpose).await?;
         if cursor
             .as_ref()
             .is_some_and(|value| value.data_revision != revision)

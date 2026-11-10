@@ -38,13 +38,22 @@ impl B3Worker {
             ));
             loop {
                 timer.tick().await;
-                jobs.heartbeat(&claim, self.settings.lease_seconds).await?;
-                sqlx::query(
+                match jobs.heartbeat(&claim, self.settings.lease_seconds).await {
+                    Ok(()) => {}
+                    Err(error @ crate::error::AppError::LockConflict(_)) => return Err(error),
+                    Err(error) => {
+                        warn!(job_id=%claim.id,run_id=%claim.owner_id,generation=claim.generation,lane=lane_name,error=%error,"Heartbeat temporariamente indisponível; a execução continua e tentará novamente");
+                    }
+                }
+                if let Err(error) = sqlx::query(
                     "UPDATE b3_worker_heartbeats SET heartbeat_at=NOW() WHERE worker_id=$1",
                 )
                 .bind(owner)
                 .execute(&self.pool)
-                .await?;
+                .await
+                {
+                    warn!(job_id=%claim.id,run_id=%claim.owner_id,generation=claim.generation,lane=lane_name,error=%error,"Heartbeat do worker indisponível; será atualizado na próxima tentativa");
+                }
             }
             #[allow(unreachable_code)]
             Ok::<(), crate::error::AppError>(())
@@ -107,16 +116,26 @@ impl B3Worker {
         let heavy = Uuid::new_v4();
         let maintenance = async {
             loop {
-                self.run_once(ExecutionLane::Maintenance, regular).await?;
-                tokio::time::sleep(Duration::from_secs(1)).await;
+                match self.run_once(ExecutionLane::Maintenance, regular).await {
+                    Ok(_) => tokio::time::sleep(Duration::from_secs(1)).await,
+                    Err(error) => {
+                        warn!(lane="maintenance",error=%error,"Worker indisponível temporariamente; nova tentativa em cinco segundos");
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                    }
+                }
             }
             #[allow(unreachable_code)]
             Ok::<(), crate::error::AppError>(())
         };
         let heavy_work = async {
             loop {
-                self.run_once(ExecutionLane::Heavy, heavy).await?;
-                tokio::time::sleep(Duration::from_secs(1)).await;
+                match self.run_once(ExecutionLane::Heavy, heavy).await {
+                    Ok(_) => tokio::time::sleep(Duration::from_secs(1)).await,
+                    Err(error) => {
+                        warn!(lane="heavy",error=%error,"Worker indisponível temporariamente; nova tentativa em cinco segundos");
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                    }
+                }
             }
             #[allow(unreachable_code)]
             Ok::<(), crate::error::AppError>(())
@@ -125,7 +144,9 @@ impl B3Worker {
             let scanner = DiscoveryService::new(self.pool.clone(), self.settings.clone());
             loop {
                 if std::env::var("B3_DISCOVERY_ENABLED").as_deref() == Ok("true") {
-                    scanner.scan(regular, true, chrono::Utc::now()).await?;
+                    if let Err(error) = scanner.scan(regular, true, chrono::Utc::now()).await {
+                        warn!(error=%error,"Varredura agendada falhou temporariamente; será repetida no próximo ciclo");
+                    }
                 }
                 tokio::time::sleep(Duration::from_secs(60)).await;
             }

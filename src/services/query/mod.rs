@@ -33,12 +33,23 @@ pub enum QueryError {
 pub enum QueryPurpose {
     Rest,
     Mcp,
+    /// Private workstation reads, available only on admin-authenticated routes.
+    Internal,
 }
 impl QueryPurpose {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Rest => "rest",
             Self::Mcp => "mcp",
+            Self::Internal => "processing",
+        }
+    }
+
+    fn eligibility_purposes(self) -> Vec<&'static str> {
+        match self {
+            Self::Rest => vec!["rest", "third_party_delivery"],
+            Self::Mcp => vec!["mcp", "third_party_delivery"],
+            Self::Internal => vec!["processing", "raw_retention"],
         }
     }
 }
@@ -90,9 +101,12 @@ impl QueryService {
             .flatten()
             .ok_or(QueryError::Unavailable)?,
         };
-        // Every selected market and identity source must permit this transport and third parties.
-        let eligible: bool = sqlx::query_scalar("WITH files AS (SELECT source_file_id FROM b3_history_revisions WHERE id=$1 UNION SELECT source_file_id FROM b3_history_revision_sources WHERE revision_id=$1 UNION SELECT m.source_file_id FROM b3_history_revision_members rm JOIN b3_source_file_members m ON m.id=rm.source_member_id WHERE rm.revision_id=$1 UNION SELECT i.source_file_id FROM b3_history_revision_quotes q JOIN b3_instruments i ON i.id=q.instrument_id WHERE q.revision_id=$1 AND q.instrument_id IS NOT NULL) SELECT NOT EXISTS(SELECT 1 FROM files JOIN b3_source_files sf ON sf.id=files.source_file_id CROSS JOIN unnest(ARRAY[$2::text,'third_party_delivery']) p(purpose) WHERE NOT EXISTS(SELECT 1 FROM b3_source_eligibility e WHERE e.source_file_type=sf.source_file_type AND e.channel=sf.acquisition_channel AND e.purpose=p.purpose AND e.status='eligible' AND e.zero_cost AND length(trim(e.evidence_reference))>0 AND e.verified_at IS NOT NULL))")
-            .bind(id).bind(purpose.as_str()).fetch_one(&self.pool).await?;
+        // External transports require their own purpose plus third-party delivery.
+        // Internal workstation reads require processing and raw-retention eligibility,
+        // without granting REST, MCP, or third-party distribution.
+        let required_purposes = purpose.eligibility_purposes();
+        let eligible: bool = sqlx::query_scalar("WITH files AS (SELECT source_file_id FROM b3_history_revisions WHERE id=$1 UNION SELECT source_file_id FROM b3_history_revision_sources WHERE revision_id=$1 UNION SELECT m.source_file_id FROM b3_history_revision_members rm JOIN b3_source_file_members m ON m.id=rm.source_member_id WHERE rm.revision_id=$1 UNION SELECT i.source_file_id FROM b3_history_revision_quotes q JOIN b3_instruments i ON i.id=q.instrument_id WHERE q.revision_id=$1 AND q.instrument_id IS NOT NULL) SELECT NOT EXISTS(SELECT 1 FROM files JOIN b3_source_files sf ON sf.id=files.source_file_id CROSS JOIN unnest($2::text[]) p(purpose) WHERE NOT EXISTS(SELECT 1 FROM b3_source_eligibility e WHERE e.source_file_type=sf.source_file_type AND e.channel=sf.acquisition_channel AND e.purpose=p.purpose AND e.status='eligible' AND e.zero_cost AND length(trim(e.evidence_reference))>0 AND e.verified_at IS NOT NULL))")
+            .bind(id).bind(required_purposes).fetch_one(&self.pool).await?;
         if !eligible {
             return Err(QueryError::Forbidden);
         }
