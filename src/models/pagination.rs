@@ -50,7 +50,7 @@ impl PaginationParams {
 }
 
 /// Pagination metadata included in list responses.
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PaginationMeta {
     pub total: usize,
     pub pagina: u32,

@@ -2,4 +2,5 @@
 
 pub mod cotahist;
 pub mod envelope;
+pub mod ibov;
 pub mod pagination;
