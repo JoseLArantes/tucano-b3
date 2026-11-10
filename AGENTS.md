@@ -113,3 +113,4 @@ Do not document planned capabilities as delivered or copy Python/Celery/Redis in
 4. Run formatting, Clippy, and tests; confirm required integration tests actually used PostgreSQL.
 5. Update OpenAPI, consumer/operational documentation, and the changelog when applicable.
 6. Build Docusaurus when affected, then validate builds and execution of affected components; report results and remaining gaps without confusing intent with implementation.
+7. Commit the changes by tasks, milestones or feature. Use conventional commits.
