@@ -15,7 +15,7 @@ async fn test_build_router_succeeds() {
 }
 
 #[tokio::test]
-async fn test_cotahist_routes_registered() {
+async fn test_cotahist_and_ibov_routes_registered() {
     let config = AppConfig::default();
     let data_loader = Arc::new(DataLoader::new(&config.data).unwrap());
     let router = build_router(&config, data_loader);
@@ -35,6 +35,8 @@ async fn test_cotahist_routes_registered() {
             "/api/v1/cotahist/dates/2026-01-01/quotes",
             StatusCode::NOT_FOUND,
         ),
+        ("/api/v1/ibov/history", StatusCode::NOT_FOUND),
+        ("/api/v1/ibov/latest", StatusCode::NOT_FOUND),
     ];
 
     for (path, expected_status) in test_routes {
@@ -62,21 +64,29 @@ async fn test_cotahist_routes_registered() {
 }
 
 #[tokio::test]
-async fn test_cotahist_method_not_allowed() {
+async fn test_method_not_allowed() {
     let config = AppConfig::default();
     let data_loader = Arc::new(DataLoader::new(&config.data).unwrap());
     let router = build_router(&config, data_loader);
 
-    let response = router
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/v1/cotahist/tickers")
-                .body(Body::empty())
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
+    for path in ["/api/v1/cotahist/tickers", "/api/v1/ibov/history"] {
+        let app = router.clone();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(path)
+                    .body(Body::empty())
+                    .expect("failed to build request"),
+            )
+            .await
+            .expect("request failed");
 
-    assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+        assert_eq!(
+            response.status(),
+            StatusCode::METHOD_NOT_ALLOWED,
+            "Route {} should reject POST with 405",
+            path
+        );
+    }
 }
