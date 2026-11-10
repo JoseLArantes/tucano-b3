@@ -4,3 +4,5 @@ mod query_service;
 mod reader;
 #[path = "data/schema.rs"]
 mod schema;
+#[path = "data/ticker_registry.rs"]
+mod ticker_registry;
