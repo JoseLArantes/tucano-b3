@@ -8,6 +8,9 @@ mod data_layer;
 #[path = "integration/cotahist_endpoints.rs"]
 mod cotahist_endpoints;
 
+#[path = "integration/ibov_endpoints.rs"]
+mod ibov_endpoints;
+
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tucano_b3::config::AppConfig;
