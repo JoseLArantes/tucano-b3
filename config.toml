@@ -1,0 +1,27 @@
+[server]
+host = "0.0.0.0"
+port = 8080
+workers = 0
+request_timeout_seconds = 30
+
+[data]
+dir = "./data"
+reload_interval_seconds = 0
+
+[cache]
+enabled = true
+ttl_seconds = 300
+max_entries = 10000
+
+[rate_limit]
+enabled = true
+default_requests_per_minute = 100
+api_key_requests_per_minute = 1000
+
+[logging]
+level = "info"
+format = "json"
+
+[metrics]
+enabled = true
+
