@@ -1,4 +1,6 @@
 #[path = "middleware/rate_limit/bucket.rs"]
 mod rate_limit_bucket;
+#[path = "middleware/rate_limit/keys.rs"]
+mod rate_limit_keys;
 #[path = "middleware/request_id.rs"]
 mod request_id;

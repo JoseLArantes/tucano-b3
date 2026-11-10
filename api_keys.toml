@@ -1,0 +1,12 @@
+# API keys for tucano-b3
+# Each key gets its own rate limit bucket.
+
+[[keys]]
+key = "tucano-dev-key-001"
+name = "Development"
+rate_limit = 1000
+
+[[keys]]
+key = "tucano-test-key-002"
+name = "Test Suite"
+rate_limit = 500

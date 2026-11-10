@@ -5,5 +5,6 @@
 pub mod rate_limit;
 pub mod request_id;
 
+pub use rate_limit::ApiKeyRegistry;
 pub use rate_limit::TokenBucket;
 pub use request_id::RequestIdLayer;
