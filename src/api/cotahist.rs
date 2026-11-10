@@ -161,11 +161,35 @@ async fn get_quotes_handler(
     )))
 }
 
+/// GET /api/v1/cotahist/tickers/{ticker}/latest
+///
+/// Retorna a cotação mais recente de um ticker.
+async fn get_latest_handler(
+    State(state): State<Arc<AppState>>,
+    Path(ticker): Path<String>,
+) -> AppResult<Json<ApiResponse<LatestQuoteResponse>>> {
+    let start = Instant::now();
+
+    let query_service = state.data_loader.get_query_service().await;
+
+    let latest = CotahistService::get_latest_quote(
+        &query_service,
+        &state.data_loader.ticker_registry,
+        &ticker,
+    )
+    .await?;
+
+    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+
+    Ok(Json(ApiResponse::new(latest, elapsed)))
+}
+
 /// Build COTAHIST routes.
 pub fn routes(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/cotahist/tickers", get(list_tickers_handler))
         .route("/cotahist/tickers/:ticker", get(get_ticker_handler))
         .route("/cotahist/tickers/:ticker/quotes", get(get_quotes_handler))
+        .route("/cotahist/tickers/:ticker/latest", get(get_latest_handler))
         .with_state(state)
 }
