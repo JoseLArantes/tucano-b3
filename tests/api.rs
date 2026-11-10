@@ -10,3 +10,5 @@ mod cotahist_tickers;
 mod health;
 #[path = "api/ibov_history.rs"]
 mod ibov_history;
+#[path = "api/ibov_latest.rs"]
+mod ibov_latest;

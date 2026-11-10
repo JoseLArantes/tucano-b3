@@ -94,9 +94,27 @@ async fn history_handler(
     )))
 }
 
+/// GET /api/v1/ibov/latest
+///
+/// Retorna o dado mais recente do IBOVESPA.
+async fn latest_handler(
+    State(state): State<Arc<AppState>>,
+) -> AppResult<Json<ApiResponse<IbovLatestResponse>>> {
+    let start = Instant::now();
+
+    let query_service = state.data_loader.get_query_service().await;
+
+    let latest = IbovService::get_latest(&query_service).await?;
+
+    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+
+    Ok(Json(ApiResponse::new(latest, elapsed)))
+}
+
 /// Build IBOV routes.
 pub fn routes(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/ibov/history", get(history_handler))
+        .route("/ibov/latest", get(latest_handler))
         .with_state(state)
 }
