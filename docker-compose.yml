@@ -1,10 +1,26 @@
-version: '3.8'
-
 services:
+  b3_postgres:
+    image: postgres:16-alpine
+    container_name: b3_postgres
+    environment:
+      POSTGRES_DB: tucano_b3
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - tucano_b3_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tucano_b3"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   api:
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: tucano_b3_api
     ports:
       - "8080:8080"
     volumes:
@@ -12,33 +28,64 @@ services:
     environment:
       - TUCANO_LOG_LEVEL=info
       - TUCANO_LOG_FORMAT=json
+      - DATABASE_URL=${B3_API_DATABASE_URL:-postgres://postgres:postgres@b3_postgres:5432/tucano_b3}
     restart: unless-stopped
+    depends_on:
+      b3_postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/health"]
-      interval: 30s
+      interval: 10s
       timeout: 3s
       retries: 3
 
-  # Development service with hot reload
   dev:
+    profiles: [ dev ]
     build:
       context: .
       dockerfile: Dockerfile.dev
+    container_name: tucano_b3_dev
     ports:
       - "8080:8080"
     volumes:
       - .:/workspace
-      - cargo-cache:/usr/local/cargo/registry
-      - target-cache:/workspace/target
+      - cargo_target:/workspace/target
+      - cargo_registry:/usr/local/cargo/registry
+      - cargo_git:/usr/local/cargo/git
     environment:
       - CARGO_HOME=/usr/local/cargo
       - CARGO_TARGET_DIR=/workspace/target
       - TUCANO_LOG_LEVEL=debug
       - TUCANO_LOG_FORMAT=pretty
+      - DATABASE_URL=postgres://postgres:postgres@b3_postgres:5432/tucano_b3
     working_dir: /workspace
     command: cargo watch -x run
+    depends_on:
+      b3_postgres:
+        condition: service_healthy
+
+  cargo:
+    profiles: [ tools, dev ]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - .:/workspace
+      - cargo_target:/workspace/target
+      - cargo_registry:/usr/local/cargo/registry
+      - cargo_git:/usr/local/cargo/git
+    working_dir: /workspace
+    environment:
+      - CARGO_HOME=/usr/local/cargo
+      - CARGO_TARGET_DIR=/workspace/target
+      - DATABASE_URL=${B3_TEST_DATABASE_URL:-postgres://postgres:postgres@b3_postgres:5432/tucano_b3}
+    depends_on:
+      b3_postgres:
+        condition: service_healthy
 
 volumes:
-  cargo-cache:
-  target-cache:
-
+  tucano_b3_pgdata:
+    name: tucano_b3_pgdata
+  cargo_target:
+  cargo_registry:
+  cargo_git:
