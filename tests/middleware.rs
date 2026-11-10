@@ -2,5 +2,7 @@
 mod rate_limit_bucket;
 #[path = "middleware/rate_limit/keys.rs"]
 mod rate_limit_keys;
+#[path = "middleware/rate_limit/layer.rs"]
+mod rate_limit_layer;
 #[path = "middleware/request_id.rs"]
 mod request_id;
