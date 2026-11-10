@@ -11,6 +11,9 @@ mod cotahist_endpoints;
 #[path = "integration/ibov_endpoints.rs"]
 mod ibov_endpoints;
 
+#[path = "integration/rate_limit.rs"]
+mod rate_limit;
+
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tucano_b3::config::AppConfig;
