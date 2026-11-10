@@ -1,9 +1,6 @@
-.git
-.pytest_cache
-__pycache__
-*.pyc
-*.pyo
-*.pyd
-*.db
-.venv
-/data
+target/
+data/
+.git/
+*.md
+tests/
+benches/
