@@ -6,6 +6,7 @@ pub mod cotahist;
 pub mod health;
 pub mod ibov;
 pub mod info;
+pub mod ingest;
 pub mod metrics;
 pub mod openapi;
 
@@ -22,5 +23,6 @@ pub fn routes(data_loader: Arc<DataLoader>, cache: Arc<CacheStore>) -> Router {
         .merge(health::routes(state.clone()))
         .merge(info::routes(state.clone()))
         .merge(cotahist::routes(state.clone()))
-        .merge(ibov::routes(state))
+        .merge(ibov::routes(state.clone()))
+        .merge(ingest::routes(state))
 }
