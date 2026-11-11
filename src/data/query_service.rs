@@ -42,7 +42,17 @@ impl QueryService {
     /// - `cotahist`: union of all COTAHIST Parquet files
     /// - `ibov`: single IBOV historical Parquet file
     pub fn new(files: DiscoveredFiles) -> Result<Self, QueryError> {
-        let ctx = SessionContext::new();
+        // Configure DataFusion for optimal performance
+        let config = SessionConfig::new()
+            .with_batch_size(8192) // Larger batches = fewer iterations
+            .with_target_partitions(4) // Match typical core count
+            .with_repartition_joins(true) // Optimize joins
+            .with_repartition_aggregations(true) // Optimize aggregations
+            .with_repartition_windows(true) // Optimize window functions
+            .with_parquet_pruning(true) // Enable parquet pruning
+            .with_collect_statistics(true); // Enable statistics for optimization
+
+        let ctx = SessionContext::new_with_config(config);
 
         // Register COTAHIST tables
         if !files.cotahist_files.is_empty() {
