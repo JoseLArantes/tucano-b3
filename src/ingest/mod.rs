@@ -4,3 +4,4 @@
 //! Supports ZIP upload, folder scanning, incremental and idempotent ingestion.
 
 pub mod cotahist_parser;
+pub mod parquet_writer;
