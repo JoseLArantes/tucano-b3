@@ -22,7 +22,7 @@ jobs:
   deploy:
     environment:
       name: github-pages
-      url: https://joselarantes.github.io/b3-tucano/
+      url: https://joselarantes.github.io/tucano-b3/
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
