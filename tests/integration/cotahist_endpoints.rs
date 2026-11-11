@@ -31,11 +31,16 @@ fn test_app_with_fixtures() -> Option<axum::Router> {
         config.rate_limit.clone(),
     ));
 
+    let metrics = std::sync::Arc::new(tucano_b3::metrics::AppMetrics::new());
+    let start_time = std::time::Instant::now();
+
     Some(tucano_b3::server::build_router(
         &config,
         data_loader,
         cache,
         rate_limit_state,
+        metrics,
+        start_time,
     ))
 }
 

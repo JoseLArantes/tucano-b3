@@ -19,10 +19,11 @@ fn test_state(limit: u32) -> Arc<RateLimitState> {
 }
 
 fn test_app(state: Arc<RateLimitState>) -> Router {
+    let metrics = Arc::new(tucano_b3::metrics::AppMetrics::new());
     Router::new()
         .route("/api/v1/test", get(|| async { "ok" }))
         .route("/api/v1/health", get(|| async { "healthy" }))
-        .layer(RateLimitLayer::new(state))
+        .layer(RateLimitLayer::new(state, metrics))
 }
 
 #[tokio::test]

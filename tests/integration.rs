@@ -14,6 +14,9 @@ mod cotahist_endpoints;
 #[path = "integration/ibov_endpoints.rs"]
 mod ibov_endpoints;
 
+#[path = "integration/observability.rs"]
+mod observability;
+
 #[path = "integration/openapi.rs"]
 mod openapi;
 
@@ -36,7 +39,16 @@ async fn start_test_server() -> SocketAddr {
         api_keys,
         config.rate_limit.clone(),
     ));
-    let router = build_router(&config, data_loader, cache, rate_limit_state);
+    let metrics = Arc::new(tucano_b3::metrics::AppMetrics::new());
+    let start_time = std::time::Instant::now();
+    let router = build_router(
+        &config,
+        data_loader,
+        cache,
+        rate_limit_state,
+        metrics,
+        start_time,
+    );
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

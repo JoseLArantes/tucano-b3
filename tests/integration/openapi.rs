@@ -15,7 +15,9 @@ fn test_app() -> axum::Router {
         api_keys,
         config.rate_limit.clone(),
     ));
-    tucano_b3::server::build_router(&config, data_loader, cache, rate_state)
+    let metrics = Arc::new(tucano_b3::metrics::AppMetrics::new());
+    let start_time = std::time::Instant::now();
+    tucano_b3::server::build_router(&config, data_loader, cache, rate_state, metrics, start_time)
 }
 
 #[tokio::test]

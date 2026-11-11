@@ -18,9 +18,10 @@ fn test_cache() -> Arc<CacheStore> {
 }
 
 fn test_app(cache: Arc<CacheStore>) -> Router {
+    let metrics = Arc::new(tucano_b3::metrics::AppMetrics::new());
     Router::new()
         .route("/api/v1/test", get(|| async { "response_data" }))
-        .layer(CacheLayer::new(cache))
+        .layer(CacheLayer::new(cache, metrics))
 }
 
 #[tokio::test]
@@ -92,9 +93,10 @@ async fn test_cache_disabled() {
 #[tokio::test]
 async fn test_health_not_cached() {
     let cache = test_cache();
+    let metrics = Arc::new(tucano_b3::metrics::AppMetrics::new());
     let app = Router::new()
         .route("/api/v1/health", get(|| async { "healthy" }))
-        .layer(CacheLayer::new(cache.clone()));
+        .layer(CacheLayer::new(cache.clone(), metrics));
 
     let _ = app
         .clone()

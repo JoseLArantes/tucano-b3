@@ -15,7 +15,16 @@ fn test_app_with_cache() -> axum::Router {
         api_keys,
         config.rate_limit.clone(),
     ));
-    tucano_b3::server::build_router(&config, data_loader, cache, rate_limit_state)
+    let metrics = std::sync::Arc::new(tucano_b3::metrics::AppMetrics::new());
+    let start_time = std::time::Instant::now();
+    tucano_b3::server::build_router(
+        &config,
+        data_loader,
+        cache,
+        rate_limit_state,
+        metrics,
+        start_time,
+    )
 }
 
 #[tokio::test]
