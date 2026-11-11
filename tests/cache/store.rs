@@ -187,3 +187,18 @@ fn test_cleanup_expired() {
 
     assert_eq!(store.len(), 0);
 }
+
+#[test]
+fn test_max_body_size_not_cached() {
+    let store = CacheStore::new(&test_config());
+    let large_body = vec![0u8; tucano_b3::cache::store::MAX_CACHE_BODY_SIZE + 1];
+    store.insert(
+        "large_key".to_string(),
+        large_body,
+        200,
+        "application/json".to_string(),
+    );
+
+    assert!(store.get("large_key").is_none());
+    assert_eq!(store.len(), 0);
+}

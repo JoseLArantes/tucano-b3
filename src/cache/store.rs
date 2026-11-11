@@ -8,6 +8,10 @@ use dashmap::DashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
+/// Maximum response body size to cache (1 MB).
+/// Responses larger than this are not cached to prevent memory bloat.
+pub const MAX_CACHE_BODY_SIZE: usize = 1_048_576;
+
 /// A single cache entry with metadata.
 #[derive(Debug, Clone)]
 pub struct CacheEntry {
@@ -112,6 +116,16 @@ impl CacheStore {
     /// If the cache is at capacity, evicts the least recently used entry.
     pub fn insert(&self, key: String, body: Vec<u8>, status: u16, content_type: String) {
         if !self.enabled {
+            return;
+        }
+
+        // Skip caching very large responses
+        if body.len() > MAX_CACHE_BODY_SIZE {
+            tracing::debug!(
+                key = %key,
+                size = body.len(),
+                "Cache: resposta muito grande, não cacheada"
+            );
             return;
         }
 
