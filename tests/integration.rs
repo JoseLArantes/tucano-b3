@@ -11,6 +11,9 @@ mod cotahist_endpoints;
 #[path = "integration/ibov_endpoints.rs"]
 mod ibov_endpoints;
 
+#[path = "integration/openapi.rs"]
+mod openapi;
+
 #[path = "integration/rate_limit.rs"]
 mod rate_limit;
 
