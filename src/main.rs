@@ -74,14 +74,35 @@ async fn main() -> anyhow::Result<()> {
         config.rate_limit.clone(),
     ));
 
+    // Initialize metrics
+    let metrics = Arc::new(tucano_b3::metrics::AppMetrics::new());
+    let start_time = std::time::Instant::now();
+
+    // Update initial data metrics
+    let query_service = data_loader.get_query_service().await;
+    metrics.update_data_metrics(
+        query_service.cotahist_file_count(),
+        query_service.total_cotahist_rows(),
+        query_service.ibov_row_count(),
+        data_loader.ticker_registry.count(),
+    );
+
     tracing::info!(
         version = env!("CARGO_PKG_VERSION"),
         port = config.server.port,
         "tucano-b3 iniciando"
     );
 
-    // Run server with data loader, cache, and rate limit state
-    server::run(config, data_loader, cache, rate_limit_state).await?;
+    // Run server with data loader, cache, rate limit state, metrics, and start time
+    server::run(
+        config,
+        data_loader,
+        cache,
+        rate_limit_state,
+        metrics,
+        start_time,
+    )
+    .await?;
 
     Ok(())
 }

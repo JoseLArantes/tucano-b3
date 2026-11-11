@@ -1,6 +1,6 @@
 //! HTTP server module for tucano-b3.
 //!
-//! Uses axum with tower middleware for routing, compression, and tracing.
+//! Uses axum with tower middleware for routing, compression, caching, rate limiting, and metrics.
 //! Supports graceful shutdown via SIGTERM/SIGINT.
 
 use crate::api::openapi::ApiDoc;
@@ -8,7 +8,10 @@ use crate::cache::store::CacheStore;
 use crate::config::AppConfig;
 use crate::data::reload::DataLoader;
 use crate::error::AppError;
-use crate::middleware::{CacheLayer, RateLimitLayer, RateLimitState, RequestIdLayer};
+use crate::metrics::AppMetrics;
+use crate::middleware::{
+    CacheLayer, MetricsLayer, RateLimitLayer, RateLimitState, RequestIdLayer, RequestLoggingLayer,
+};
 use axum::Router;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -28,22 +31,29 @@ pub fn build_router(
     data_loader: Arc<DataLoader>,
     cache: Arc<CacheStore>,
     rate_limit_state: Arc<RateLimitState>,
+    metrics: Arc<AppMetrics>,
+    start_time: std::time::Instant,
 ) -> Router {
-    let api_routes = crate::api::routes(data_loader, cache.clone());
+    let api_routes = crate::api::routes(data_loader, cache.clone())
+        .merge(crate::api::metrics::routes(metrics.clone(), start_time));
 
     Router::new()
         .nest("/api/v1", api_routes)
+        // Standalone metrics endpoint (standard Prometheus scrape /metrics)
+        .merge(crate::api::metrics::routes(metrics.clone(), start_time))
         // Swagger UI (also serves /api/docs/openapi.json)
         .merge(SwaggerUi::new("/api/docs").url("/api/docs/openapi.json", ApiDoc::openapi()))
-        .layer(CacheLayer::new(cache))
-        .layer(RateLimitLayer::new(rate_limit_state))
-        .layer(CompressionLayer::new())
-        .layer(CorsLayer::permissive())
-        .layer(RequestIdLayer::new())
         .layer(TimeoutLayer::with_status_code(
             axum::http::StatusCode::REQUEST_TIMEOUT,
             Duration::from_secs(config.server.request_timeout_seconds),
         ))
+        .layer(CorsLayer::permissive())
+        .layer(CompressionLayer::new())
+        .layer(CacheLayer::new(cache, metrics.clone()))
+        .layer(RateLimitLayer::new(rate_limit_state, metrics.clone()))
+        .layer(RequestLoggingLayer::new())
+        .layer(RequestIdLayer::new())
+        .layer(MetricsLayer::new(metrics))
 }
 
 /// Start the HTTP server and block until shutdown signal.
@@ -55,8 +65,17 @@ pub async fn run(
     data_loader: Arc<DataLoader>,
     cache: Arc<CacheStore>,
     rate_limit_state: Arc<RateLimitState>,
+    metrics: Arc<AppMetrics>,
+    start_time: std::time::Instant,
 ) -> Result<(), AppError> {
-    let router = build_router(&config, data_loader, cache, rate_limit_state);
+    let router = build_router(
+        &config,
+        data_loader,
+        cache,
+        rate_limit_state,
+        metrics,
+        start_time,
+    );
 
     let addr: SocketAddr = format!("{}:{}", config.server.host, config.server.port)
         .parse()
@@ -72,32 +91,34 @@ pub async fn run(
         .await
         .map_err(|e| AppError::Internal(anyhow::anyhow!("Failed to bind: {}", e)))?;
 
-    axum::serve(listener, router)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .map_err(|e| AppError::Internal(anyhow::anyhow!("Server error: {}", e)))?;
+    axum::serve(
+        listener,
+        router.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await
+    .map_err(|e| AppError::Internal(anyhow::anyhow!("Server error: {}", e)))?;
 
-    tracing::info!("Servidor tucano-b3 finalizado com sucesso");
-
+    tracing::info!("Servidor finalizado com sucesso");
     Ok(())
 }
 
-/// Wait for a shutdown signal (SIGTERM or SIGINT/Ctrl+C).
+/// Wait for SIGTERM or SIGINT signal.
 async fn shutdown_signal() {
     let ctrl_c = async {
-        if let Err(e) = signal::ctrl_c().await {
-            tracing::error!("Failed to install Ctrl+C handler: {e}");
+        if let Err(err) = signal::ctrl_c().await {
+            tracing::error!("Failed to install CTRL+C signal handler: {}", err);
         }
     };
 
     #[cfg(unix)]
     let terminate = async {
         match signal::unix::signal(signal::unix::SignalKind::terminate()) {
-            Ok(mut sig) => {
-                sig.recv().await;
+            Ok(mut stream) => {
+                stream.recv().await;
             }
-            Err(e) => {
-                tracing::error!("Failed to install SIGTERM handler: {e}");
+            Err(err) => {
+                tracing::error!("Failed to install SIGTERM signal handler: {}", err);
             }
         }
     };
@@ -107,10 +128,10 @@ async fn shutdown_signal() {
 
     tokio::select! {
         _ = ctrl_c => {
-            tracing::info!("Recebido SIGINT, iniciando shutdown gracioso");
+            tracing::info!("Recebido sinal SIGINT, iniciando encerramento gracioso...");
         }
         _ = terminate => {
-            tracing::info!("Recebido SIGTERM, iniciando shutdown gracioso");
+            tracing::info!("Recebido sinal SIGTERM, iniciando encerramento gracioso...");
         }
     }
 }

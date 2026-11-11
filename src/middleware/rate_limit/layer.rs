@@ -5,6 +5,7 @@
 use super::bucket::TokenBucket;
 use super::keys::ApiKeyRegistry;
 use crate::config::RateLimitConfig;
+use crate::metrics::AppMetrics;
 use axum::body::Body;
 use axum::http::{HeaderName, HeaderValue, Request, Response, StatusCode};
 use dashmap::DashMap;
@@ -126,11 +127,12 @@ impl RateLimitState {
 #[derive(Clone)]
 pub struct RateLimitLayer {
     state: Arc<RateLimitState>,
+    metrics: Arc<AppMetrics>,
 }
 
 impl RateLimitLayer {
-    pub fn new(state: Arc<RateLimitState>) -> Self {
-        Self { state }
+    pub fn new(state: Arc<RateLimitState>, metrics: Arc<AppMetrics>) -> Self {
+        Self { state, metrics }
     }
 }
 
@@ -141,6 +143,7 @@ impl<S> Layer<S> for RateLimitLayer {
         RateLimitMiddleware {
             inner,
             state: Arc::clone(&self.state),
+            metrics: Arc::clone(&self.metrics),
         }
     }
 }
@@ -150,6 +153,7 @@ impl<S> Layer<S> for RateLimitLayer {
 pub struct RateLimitMiddleware<S> {
     inner: S,
     state: Arc<RateLimitState>,
+    metrics: Arc<AppMetrics>,
 }
 
 impl<S> Service<Request<Body>> for RateLimitMiddleware<S>
@@ -175,7 +179,11 @@ where
         }
 
         // Never rate-limit health endpoint or metrics endpoint
-        if path == "/api/v1/health" || path == "/api/v1/metrics" {
+        if path == "/api/v1/health"
+            || path == "/api/v1/metrics"
+            || path == "/metrics"
+            || path == "/health"
+        {
             let mut inner = self.inner.clone();
             return Box::pin(async move { inner.call(req).await });
         }
@@ -212,6 +220,8 @@ where
                     wait = %wait_seconds,
                     "Limite de requisições excedido"
                 );
+
+                self.metrics.rate_limited_total.with_label_values(&[]).inc();
 
                 let retry_after = wait_seconds.ceil() as u64;
                 let request_id = uuid::Uuid::new_v4().to_string();

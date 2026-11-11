@@ -6,6 +6,7 @@ pub mod cotahist;
 pub mod health;
 pub mod ibov;
 pub mod info;
+pub mod metrics;
 pub mod openapi;
 
 use crate::cache::store::CacheStore;

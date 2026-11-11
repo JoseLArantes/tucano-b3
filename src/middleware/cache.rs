@@ -5,6 +5,7 @@
 
 use crate::cache::key::{generate_cache_key, is_cacheable};
 use crate::cache::store::CacheStore;
+use crate::metrics::AppMetrics;
 use axum::body::Body;
 use axum::http::{Request, Response, StatusCode};
 use std::future::Future;
@@ -17,11 +18,12 @@ use tower::{Layer, Service};
 #[derive(Clone)]
 pub struct CacheLayer {
     cache: Arc<CacheStore>,
+    metrics: Arc<AppMetrics>,
 }
 
 impl CacheLayer {
-    pub fn new(cache: Arc<CacheStore>) -> Self {
-        Self { cache }
+    pub fn new(cache: Arc<CacheStore>, metrics: Arc<AppMetrics>) -> Self {
+        Self { cache, metrics }
     }
 }
 
@@ -32,6 +34,7 @@ impl<S> Layer<S> for CacheLayer {
         CacheMiddleware {
             inner,
             cache: Arc::clone(&self.cache),
+            metrics: Arc::clone(&self.metrics),
         }
     }
 }
@@ -41,6 +44,7 @@ impl<S> Layer<S> for CacheLayer {
 pub struct CacheMiddleware<S> {
     inner: S,
     cache: Arc<CacheStore>,
+    metrics: Arc<AppMetrics>,
 }
 
 impl<S> Service<Request<Body>> for CacheMiddleware<S>
@@ -69,10 +73,12 @@ where
 
         let cache_key = generate_cache_key(&method, &path, &query);
         let cache = Arc::clone(&self.cache);
+        let metrics = Arc::clone(&self.metrics);
 
         // Check cache
         if let Some(entry) = cache.get(&cache_key) {
             tracing::debug!(key = %cache_key, path = %path, "Cache HIT");
+            metrics.cache_hits_total.with_label_values(&[]).inc();
 
             let status_code = StatusCode::from_u16(entry.status).unwrap_or(StatusCode::OK);
             let response = Response::builder()
@@ -86,6 +92,7 @@ where
         }
 
         tracing::debug!(key = %cache_key, path = %path, "Cache MISS");
+        metrics.cache_misses_total.with_label_values(&[]).inc();
 
         // Cache miss — forward to handler and cache the response
         let mut inner = self.inner.clone();

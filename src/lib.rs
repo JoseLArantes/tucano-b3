@@ -4,6 +4,7 @@ pub mod config;
 pub mod data;
 pub mod error;
 pub mod locale;
+pub mod metrics;
 pub mod middleware;
 pub mod models;
 pub mod server;
