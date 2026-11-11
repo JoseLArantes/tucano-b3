@@ -105,3 +105,4 @@ workers = 8  # Match CPU cores
 ### Behind a reverse proxy
 Use nginx or caddy for TLS termination.
 Set `X-Forwarded-For` header for accurate IP-based rate limiting.
+

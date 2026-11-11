@@ -32,3 +32,4 @@ echo "=== Vegeta: IBOV history (30s, 1000 rps) ==="
 echo "GET ${BASE_URL}/api/v1/ibov/history" | \
     ${VEGETA_CMD} attack -rate=1000 -duration=30s | \
     ${VEGETA_CMD} report
+

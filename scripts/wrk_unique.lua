@@ -6,3 +6,4 @@ request = function()
     local path = wrk.path .. "?pagina=" .. counter
     return wrk.format("GET", path)
 end
+
