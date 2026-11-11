@@ -1,51 +1,69 @@
-# Multi-stage build for tucano-b3
+# ============================================================
+# Build stage
+# ============================================================
 FROM rust:1-bookworm AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
 
-# Pre-build dependencies for caching
+# Cache dependencies
 COPY Cargo.toml Cargo.lock ./
 RUN mkdir -p src benches && \
     echo 'fn main() {}' > benches/data_layer.rs && \
     touch src/lib.rs && \
     echo 'fn main() {}' > src/main.rs && \
     cargo build --release --bin tucano-b3 && \
-    rm -rf src benches
+    rm -rf src
 
-# Copy real source code
+# Build actual application
 COPY src/ ./src/
-COPY benches/ ./benches/
-
-# Rebuild application binary
 RUN touch src/main.rs src/lib.rs && cargo build --release --bin tucano-b3
 
+# ============================================================
 # Runtime stage
-FROM debian:bookworm-slim
+# ============================================================
+FROM debian:bookworm-slim AS runtime
 
 # Install minimal runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # Create non-root user
-RUN useradd --create-home --shell /bin/bash tucano
+RUN groupadd --gid 1000 tucano \
+    && useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash tucano
 
-WORKDIR /app
-
-# Copy binary and configuration
+# Copy binary
 COPY --from=builder /build/target/release/tucano-b3 /usr/local/bin/tucano-b3
-COPY config.toml /etc/tucano/config.toml
 
-# Create data directory with appropriate permissions
-RUN mkdir -p /data && chown -R tucano:tucano /data /etc/tucano
+# Copy default config and api keys
+COPY config.toml /etc/tucano/config.toml
+COPY api_keys.toml /etc/tucano/api_keys.toml
+
+# Create data directory
+RUN mkdir -p /data/processed /data/ledger \
+    && chown -R tucano:tucano /data /etc/tucano
 
 USER tucano
 
 EXPOSE 8080
 
-HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
-    CMD curl -f http://localhost:8080/api/v1/health || exit 1
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -sf http://localhost:8080/api/v1/health || exit 1
+
+# Labels
+LABEL org.opencontainers.image.title="tucano-b3" \
+      org.opencontainers.image.description="API REST de alta performance para dados de mercado da B3" \
+      org.opencontainers.image.licenses="MIT OR Apache-2.0" \
+      org.opencontainers.image.vendor="tucano-b3"
 
 ENTRYPOINT ["tucano-b3"]
 CMD ["--config", "/etc/tucano/config.toml"]
