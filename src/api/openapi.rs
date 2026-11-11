@@ -62,6 +62,9 @@ impl Modify for SecurityAddon {
         // System endpoints
         crate::api::health::health_handler,
         crate::api::info::info_handler,
+        // Ingestion endpoints
+        crate::api::ingest::upload_handler,
+        crate::api::ingest::folder_handler,
     ),
     components(
         schemas(
@@ -84,6 +87,9 @@ impl Modify for SecurityAddon {
             IbovHistoryEntry,
             IbovHistoryResponse,
             IbovLatestResponse,
+            // Ingest
+            crate::api::ingest::IngestResponse,
+            crate::api::ingest::FolderIngestRequest,
             // Health
             crate::api::health::HealthResponse,
             crate::api::info::InfoResponse,
@@ -93,6 +99,7 @@ impl Modify for SecurityAddon {
     tags(
         (name = "cotahist", description = "Cotações históricas de ativos listados na B3"),
         (name = "ibov", description = "Série histórica do índice IBOVESPA"),
+        (name = "ingest", description = "Ingestão de dados COTAHIST"),
         (name = "sistema", description = "Endpoints de saúde e informações do serviço"),
     ),
 )]
