@@ -1,21 +1,5 @@
 services:
-  b3_postgres:
-    image: postgres:16-alpine
-    container_name: b3_postgres
-    environment:
-      POSTGRES_DB: tucano_b3
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    ports:
-      - "5433:5432"
-    volumes:
-      - tucano_b3_pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d tucano_b3"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
+  # Serviço de produção da API REST
   api:
     build:
       context: .
@@ -29,7 +13,6 @@ services:
     environment:
       - TUCANO_LOG_LEVEL=info
       - TUCANO_LOG_FORMAT=json
-      - DATABASE_URL=${B3_API_DATABASE_URL:-postgres://postgres:postgres@b3_postgres:5432/tucano_b3}
     restart: unless-stopped
     deploy:
       resources:
@@ -49,6 +32,7 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Ambiente de desenvolvimento com live-reload (cargo-watch)
   dev:
     profiles: [ dev ]
     build:
@@ -67,15 +51,16 @@ services:
       - CARGO_TARGET_DIR=/workspace/target
       - TUCANO_LOG_LEVEL=debug
       - TUCANO_LOG_FORMAT=pretty
-      - DATABASE_URL=postgres://postgres:postgres@b3_postgres:5432/tucano_b3
     working_dir: /workspace
     command: cargo watch -x run
 
+  # Contêiner utilitário para comandos de validação e CI local (fmt, clippy, test, bench)
   cargo:
     profiles: [ tools, dev ]
     build:
       context: .
       dockerfile: Dockerfile.dev
+    container_name: tucano_b3_cargo
     volumes:
       - .:/workspace
       - cargo_target:/workspace/target
@@ -85,11 +70,8 @@ services:
     environment:
       - CARGO_HOME=/usr/local/cargo
       - CARGO_TARGET_DIR=/workspace/target
-      - DATABASE_URL=${B3_TEST_DATABASE_URL:-postgres://postgres:postgres@b3_postgres:5432/tucano_b3}
 
 volumes:
-  tucano_b3_pgdata:
-    name: tucano_b3_pgdata
   cargo_target:
   cargo_registry:
   cargo_git:
