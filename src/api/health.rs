@@ -12,25 +12,28 @@ use std::sync::Arc;
 use std::time::Instant;
 use utoipa::ToSchema;
 
+use crate::cache::store::CacheStore;
 use crate::data::reload::DataLoader;
 
 /// Shared application state.
 ///
-/// Extended in M1 to include the data layer.
+/// Extended in M1 to include the data layer and in M4 to include the cache store.
 #[derive(Clone)]
 pub struct AppState {
     pub start_time: Instant,
     pub version: String,
     pub data_loader: Arc<DataLoader>,
+    pub cache: Arc<CacheStore>,
 }
 
 impl AppState {
-    /// Create a new AppState initialized with current time, package version, and DataLoader.
-    pub fn new(data_loader: Arc<DataLoader>) -> Self {
+    /// Create a new AppState initialized with current time, package version, DataLoader, and CacheStore.
+    pub fn new(data_loader: Arc<DataLoader>, cache: Arc<CacheStore>) -> Self {
         Self {
             start_time: Instant::now(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             data_loader,
+            cache,
         }
     }
 }
@@ -43,6 +46,8 @@ pub struct HealthResponse {
     pub uptime_seconds: u64,
     pub data_files_loaded: usize,
     pub tickers_count: usize,
+    pub cache_entries: usize,
+    pub cache_enabled: bool,
 }
 
 /// Verificar saúde do serviço
@@ -71,13 +76,13 @@ pub(crate) async fn health_handler(State(state): State<Arc<AppState>>) -> Json<H
                 0
             },
         tickers_count: state.data_loader.ticker_registry.count(),
+        cache_entries: state.cache.len(),
+        cache_enabled: state.cache.is_enabled(),
     })
 }
 
 /// Build health routes.
-pub fn routes(data_loader: Arc<DataLoader>) -> Router {
-    let state = Arc::new(AppState::new(data_loader));
-
+pub fn routes(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/health", get(health_handler))
         .with_state(state)

@@ -19,7 +19,7 @@ fn bench_data_loader_startup(c: &mut Criterion) {
 
     c.bench_function("data_loader_startup", |b| {
         b.iter(|| {
-            let _loader = DataLoader::new(&config);
+            let _loader = DataLoader::new_standalone(&config);
         });
     });
 }
@@ -38,7 +38,7 @@ fn bench_cotahist_query(c: &mut Criterion) {
         reload_interval_seconds: 0,
     };
 
-    let loader = DataLoader::new(&config).unwrap();
+    let loader = DataLoader::new_standalone(&config).unwrap();
 
     c.bench_function("cotahist_ticker_query", |b| {
         b.iter(|| {

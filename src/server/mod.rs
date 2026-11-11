@@ -4,10 +4,11 @@
 //! Supports graceful shutdown via SIGTERM/SIGINT.
 
 use crate::api::openapi::ApiDoc;
+use crate::cache::store::CacheStore;
 use crate::config::AppConfig;
 use crate::data::reload::DataLoader;
 use crate::error::AppError;
-use crate::middleware::{RateLimitLayer, RateLimitState, RequestIdLayer};
+use crate::middleware::{CacheLayer, RateLimitLayer, RateLimitState, RequestIdLayer};
 use axum::Router;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -25,14 +26,16 @@ use utoipa_swagger_ui::SwaggerUi;
 pub fn build_router(
     config: &AppConfig,
     data_loader: Arc<DataLoader>,
+    cache: Arc<CacheStore>,
     rate_limit_state: Arc<RateLimitState>,
 ) -> Router {
-    let api_routes = crate::api::routes(data_loader);
+    let api_routes = crate::api::routes(data_loader, cache.clone());
 
     Router::new()
         .nest("/api/v1", api_routes)
         // Swagger UI (also serves /api/docs/openapi.json)
         .merge(SwaggerUi::new("/api/docs").url("/api/docs/openapi.json", ApiDoc::openapi()))
+        .layer(CacheLayer::new(cache))
         .layer(RateLimitLayer::new(rate_limit_state))
         .layer(CompressionLayer::new())
         .layer(CorsLayer::permissive())
@@ -50,9 +53,10 @@ pub fn build_router(
 pub async fn run(
     config: AppConfig,
     data_loader: Arc<DataLoader>,
+    cache: Arc<CacheStore>,
     rate_limit_state: Arc<RateLimitState>,
 ) -> Result<(), AppError> {
-    let router = build_router(&config, data_loader, rate_limit_state);
+    let router = build_router(&config, data_loader, cache, rate_limit_state);
 
     let addr: SocketAddr = format!("{}:{}", config.server.host, config.server.port)
         .parse()

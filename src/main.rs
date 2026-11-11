@@ -50,9 +50,13 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    // Initialize cache
+    let cache = Arc::new(tucano_b3::cache::CacheStore::new(&config.cache));
+
     // Initialize data layer
     let data_loader = Arc::new(
-        DataLoader::new(&config.data).map_err(|e| anyhow::anyhow!("Failed to load data: {}", e))?,
+        DataLoader::new(&config.data, cache.clone())
+            .map_err(|e| anyhow::anyhow!("Failed to load data: {}", e))?,
     );
 
     // Initialize API key registry
@@ -76,8 +80,8 @@ async fn main() -> anyhow::Result<()> {
         "tucano-b3 iniciando"
     );
 
-    // Run server with data loader and rate limit state
-    server::run(config, data_loader, rate_limit_state).await?;
+    // Run server with data loader, cache, and rate limit state
+    server::run(config, data_loader, cache, rate_limit_state).await?;
 
     Ok(())
 }

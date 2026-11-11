@@ -3,6 +3,7 @@
 //! Supports hot-reloading of Parquet files and ticker registry
 //! without restarting the server.
 
+use crate::cache::store::CacheStore;
 use crate::config::DataConfig;
 use crate::data::query_service::QueryService;
 use crate::data::reader::discover_files;
@@ -32,11 +33,12 @@ pub struct DataLoader {
     pub query_service: Arc<RwLock<Arc<QueryService>>>,
     pub ticker_registry: Arc<TickerRegistry>,
     pub data_config: DataConfig,
+    pub cache: Arc<CacheStore>,
 }
 
 impl DataLoader {
     /// Create a new DataLoader by discovering and loading all data files.
-    pub fn new(data_config: &DataConfig) -> Result<Self, ReloadError> {
+    pub fn new(data_config: &DataConfig, cache: Arc<CacheStore>) -> Result<Self, ReloadError> {
         let files = discover_files(data_config)?;
         let query_service = QueryService::new(files)?;
         let ledger_path = data_config.dir.join("ledger/tucano.db");
@@ -46,7 +48,13 @@ impl DataLoader {
             query_service: Arc::new(RwLock::new(Arc::new(query_service))),
             ticker_registry: Arc::new(ticker_registry),
             data_config: data_config.clone(),
+            cache,
         })
+    }
+
+    /// Create a new DataLoader with disabled cache (useful in standalone contexts).
+    pub fn new_standalone(data_config: &DataConfig) -> Result<Self, ReloadError> {
+        Self::new(data_config, Arc::new(CacheStore::disabled()))
     }
 
     /// Reload all data files.
@@ -71,6 +79,9 @@ impl DataLoader {
         // Reload ticker registry
         let ledger_path = self.data_config.dir.join("ledger/tucano.db");
         self.ticker_registry.reload(&ledger_path)?;
+
+        // Purge cache on reload
+        self.cache.purge();
 
         tracing::info!("Dados recarregados com sucesso");
         Ok(())

@@ -1,12 +1,10 @@
 //! Middleware module for tucano-b3.
-//!
-//! Contains tower middleware layers for request processing.
 
+pub mod cache;
 pub mod rate_limit;
 pub mod request_id;
 
-pub use rate_limit::ApiKeyRegistry;
-pub use rate_limit::RateLimitLayer;
-pub use rate_limit::RateLimitState;
-pub use rate_limit::TokenBucket;
+pub use cache::CacheLayer;
+pub use rate_limit::keys::ApiKeyRegistry;
+pub use rate_limit::layer::{RateLimitLayer, RateLimitState};
 pub use request_id::RequestIdLayer;
