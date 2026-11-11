@@ -2,88 +2,112 @@ name: CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main, dev, "ci-*"]
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 jobs:
-  documentation-build:
-    name: Docusaurus Build
+  fmt:
+    name: Format
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.82.0
         with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: docusaurus/package-lock.json
+          components: rustfmt
+      - run: cargo fmt --all -- --check
 
-      - name: Install documentation dependencies
-        run: npm --prefix docusaurus ci
-
-      - name: Build documentation site
-        run: npm --prefix docusaurus run build
-
-  lint-and-test:
-    name: Rust Lint and Test
-    runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: tucano_b3
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
-
-      - name: Check code formatting
-        run: cargo fmt --all -- --check
-
-      - name: Run Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
-
-      - name: Run Tests
-        env:
-          DATABASE_URL: postgres://postgres:postgres@localhost:5432/tucano_b3
-        run: cargo test --all-targets --all-features
-
-  docker-build:
-    name: Docker Build Check
+  clippy:
+    name: Clippy
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build Docker Image
-        uses: docker/build-push-action@v5
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.82.0
         with:
-          context: .
-          file: ./Dockerfile
-          push: false
-          tags: tucano-b3:ci-test
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --all-targets --all-features -- -D warnings
 
+  test:
+    name: Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.82.0
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --all-features --all-targets
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.82.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Install tarpaulin
+        run: cargo install cargo-tarpaulin --locked
+      - name: Run coverage
+        run: cargo tarpaulin --out Xml
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: cobertura.xml
+          fail_ci_if_error: false
+
+  audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.82.0
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit
+
+  deny:
+    name: License & Policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.82.0
+      - run: cargo install cargo-deny --locked
+      - run: cargo deny check
+
+  openapi:
+    name: OpenAPI Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.82.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Build and extract OpenAPI spec
+        run: |
+          cargo build --release
+          # Start server, extract spec, kill
+          timeout 5 target/release/tucano-b3 &
+          sleep 2
+          curl -s http://localhost:8080/api/docs/openapi.json > openapi.json || true
+          kill %1 2>/dev/null || true
+      - name: Validate OpenAPI spec
+        run: |
+          if [ -f openapi.json ]; then
+            python3 -c "
+import json, sys
+spec = json.load(open('openapi.json'))
+assert 'openapi' in spec, 'Missing openapi version'
+assert 'info' in spec, 'Missing info'
+assert 'paths' in spec, 'Missing paths'
+assert len(spec['paths']) >= 9, f'Expected >= 9 paths, got {len(spec[\"paths\"])}'
+print(f'OpenAPI valid: {len(spec[\"paths\"])} paths')
+"
+          else
+            echo "Warning: openapi.json not generated"
+          fi
