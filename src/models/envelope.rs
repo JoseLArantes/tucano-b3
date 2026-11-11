@@ -28,10 +28,14 @@ pub struct ResponseMeta {
 
 impl ResponseMeta {
     /// Create a new ResponseMeta for a non-cached response.
+    ///
+    /// Uses pre-formatted timestamp to minimize allocation.
     pub fn new(query_time_ms: f64) -> Self {
         Self {
             request_id: uuid::Uuid::new_v4().to_string(),
-            timestamp: chrono::Utc::now().to_rfc3339(),
+            timestamp: chrono::Utc::now()
+                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                .to_string(),
             cached: false,
             query_time_ms,
         }
@@ -41,7 +45,9 @@ impl ResponseMeta {
     pub fn cached(query_time_ms: f64) -> Self {
         Self {
             request_id: uuid::Uuid::new_v4().to_string(),
-            timestamp: chrono::Utc::now().to_rfc3339(),
+            timestamp: chrono::Utc::now()
+                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                .to_string(),
             cached: true,
             query_time_ms,
         }

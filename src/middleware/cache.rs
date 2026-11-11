@@ -116,8 +116,10 @@ where
                     .await
                     .unwrap_or_default();
 
-                // Store in cache
-                cache.insert(cache_key, body_bytes.to_vec(), status, content_type.clone());
+                // Store in cache if within size limit
+                if body_bytes.len() <= crate::cache::store::MAX_CACHE_BODY_SIZE {
+                    cache.insert(cache_key, body_bytes.to_vec(), status, content_type.clone());
+                }
 
                 // Build response with original body and MISS header
                 let mut res = Response::from_parts(parts, Body::from(body_bytes));
