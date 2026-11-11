@@ -8,6 +8,7 @@ use axum::{Json, Router};
 use serde::Deserialize;
 use std::sync::Arc;
 use std::time::Instant;
+use utoipa::IntoParams;
 
 use crate::api::health::AppState;
 use crate::error::AppResult;
@@ -16,16 +17,18 @@ use crate::models::envelope::ApiResponse;
 use crate::models::pagination::{PaginationMeta, PaginationParams};
 use crate::services::cotahist::CotahistService;
 
-/// Query parameters for GET /tickers
-#[derive(Debug, Deserialize)]
+/// Parâmetros de consulta para listar tickers.
+#[derive(Debug, Deserialize, IntoParams)]
 pub struct ListTickersParams {
+    /// Número da página (1-indexado)
     #[serde(default = "default_page")]
     pub pagina: u32,
+    /// Itens por página (máximo 200)
     #[serde(default = "default_per_page")]
     pub por_pagina: u32,
-    /// Filter by ticker prefix
+    /// Filtrar por prefixo do ticker (ex: "VALE")
     pub busca: Option<String>,
-    /// Only active tickers (default: true)
+    /// Apenas tickers ativos (padrão: true)
     #[serde(default = "default_true")]
     pub ativo: bool,
 }
@@ -40,10 +43,26 @@ fn default_true() -> bool {
     true
 }
 
-/// GET /api/v1/cotahist/tickers
+/// Listar todos os tickers disponíveis
 ///
-/// Lista todos os tickers disponíveis com paginação e busca opcional.
-async fn list_tickers_handler(
+/// Retorna uma lista paginada de todos os tickers disponíveis nos dados ingeridos. Suporta busca por prefixo e filtro por status ativo.
+#[utoipa::path(
+    get,
+    path = "/cotahist/tickers",
+    tag = "cotahist",
+    params(
+        ListTickersParams,
+    ),
+    responses(
+        (status = 200, description = "Lista de tickers retornada com sucesso", body = ApiResponse<TickerListResponse>),
+        (status = 429, description = "Limite de requisições excedido", body = ErrorResponse),
+        (status = 500, description = "Erro interno do servidor", body = ErrorResponse),
+    ),
+    security(
+        ("ApiKeyAuth" = []),
+    ),
+)]
+pub(crate) async fn list_tickers_handler(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ListTickersParams>,
 ) -> AppResult<Json<ApiResponse<TickerListResponse>>> {
@@ -71,10 +90,27 @@ async fn list_tickers_handler(
     )))
 }
 
-/// GET /api/v1/cotahist/tickers/{ticker}
+/// Obter metadados de um ticker
 ///
-/// Retorna metadados de um ticker específico.
-async fn get_ticker_handler(
+/// Retorna informações detalhadas de um ticker específico, incluindo ISIN, nome da empresa, datas de primeira e última cotação, e preço mais recente.
+#[utoipa::path(
+    get,
+    path = "/cotahist/tickers/{ticker}",
+    tag = "cotahist",
+    params(
+        ("ticker" = String, Path, description = "Código do ticker (ex: VALE3, PETR4)"),
+    ),
+    responses(
+        (status = 200, description = "Ticker encontrado", body = ApiResponse<TickerDetailResponse>),
+        (status = 404, description = "Ticker não encontrado", body = ErrorResponse),
+        (status = 429, description = "Limite de requisições excedido", body = ErrorResponse),
+        (status = 500, description = "Erro interno do servidor", body = ErrorResponse),
+    ),
+    security(
+        ("ApiKeyAuth" = []),
+    ),
+)]
+pub(crate) async fn get_ticker_handler(
     State(state): State<Arc<AppState>>,
     Path(ticker): Path<String>,
 ) -> AppResult<Json<ApiResponse<TickerDetailResponse>>> {
@@ -94,20 +130,22 @@ async fn get_ticker_handler(
     Ok(Json(ApiResponse::new(detail, elapsed)))
 }
 
-/// Query parameters for GET /tickers/{ticker}/quotes
-#[derive(Debug, Deserialize)]
+/// Parâmetros de consulta para histórico de cotações.
+#[derive(Debug, Deserialize, IntoParams)]
 pub struct QuoteHistoryParams {
-    /// Start date (YYYY-MM-DD)
+    /// Data inicial (AAAA-MM-DD)
     pub desde: Option<String>,
-    /// End date (YYYY-MM-DD)
+    /// Data final (AAAA-MM-DD)
     pub ate: Option<String>,
-    /// Last N trading days
+    /// Últimos N dias de pregão
     pub dias: Option<u32>,
-    /// Sort order: asc or desc (default: desc)
+    /// Ordem de classificação: asc ou desc (padrão: desc)
     #[serde(default = "default_order")]
     pub ordem: String,
+    /// Número da página
     #[serde(default = "default_page")]
     pub pagina: u32,
+    /// Itens por página (padrão: 252, máximo: 1000)
     #[serde(default = "default_per_page_quotes")]
     pub por_pagina: u32,
 }
@@ -119,10 +157,29 @@ fn default_per_page_quotes() -> u32 {
     252
 }
 
-/// GET /api/v1/cotahist/tickers/{ticker}/quotes
+/// Obter histórico de cotações de um ticker
 ///
-/// Retorna histórico de cotações de um ticker com filtros de data e paginação.
-async fn get_quotes_handler(
+/// Retorna o histórico de cotações diárias de um ticker com filtros de data e paginação. Inclui variação percentual e absoluta calculadas automaticamente.
+#[utoipa::path(
+    get,
+    path = "/cotahist/tickers/{ticker}/quotes",
+    tag = "cotahist",
+    params(
+        ("ticker" = String, Path, description = "Código do ticker"),
+        QuoteHistoryParams,
+    ),
+    responses(
+        (status = 200, description = "Cotações retornadas com sucesso", body = ApiResponse<QuoteListResponse>),
+        (status = 400, description = "Data inválida ou intervalo invertido", body = ErrorResponse),
+        (status = 404, description = "Ticker não encontrado", body = ErrorResponse),
+        (status = 429, description = "Limite de requisições excedido", body = ErrorResponse),
+        (status = 500, description = "Erro interno do servidor", body = ErrorResponse),
+    ),
+    security(
+        ("ApiKeyAuth" = []),
+    ),
+)]
+pub(crate) async fn get_quotes_handler(
     State(state): State<Arc<AppState>>,
     Path(ticker): Path<String>,
     Query(params): Query<QuoteHistoryParams>,
@@ -161,10 +218,27 @@ async fn get_quotes_handler(
     )))
 }
 
-/// GET /api/v1/cotahist/tickers/{ticker}/latest
+/// Obter a cotação mais recente de um ticker
 ///
-/// Retorna a cotação mais recente de um ticker.
-async fn get_latest_handler(
+/// Retorna a cotação mais recente de um ticker, incluindo variação percentual e absoluta em relação ao pregão anterior.
+#[utoipa::path(
+    get,
+    path = "/cotahist/tickers/{ticker}/latest",
+    tag = "cotahist",
+    params(
+        ("ticker" = String, Path, description = "Código do ticker"),
+    ),
+    responses(
+        (status = 200, description = "Cotação mais recente retornada", body = ApiResponse<LatestQuoteResponse>),
+        (status = 404, description = "Ticker não encontrado ou sem dados", body = ErrorResponse),
+        (status = 429, description = "Limite de requisições excedido", body = ErrorResponse),
+        (status = 500, description = "Erro interno do servidor", body = ErrorResponse),
+    ),
+    security(
+        ("ApiKeyAuth" = []),
+    ),
+)]
+pub(crate) async fn get_latest_handler(
     State(state): State<Arc<AppState>>,
     Path(ticker): Path<String>,
 ) -> AppResult<Json<ApiResponse<LatestQuoteResponse>>> {
@@ -184,10 +258,29 @@ async fn get_latest_handler(
     Ok(Json(ApiResponse::new(latest, elapsed)))
 }
 
-/// GET /api/v1/cotahist/dates/{date}/quotes
+/// Obter todas as cotações de uma data específica
 ///
-/// Retorna todas as cotações de uma data específica.
-async fn get_date_quotes_handler(
+/// Retorna todas as cotações de todos os tickers para uma data específica de pregão.
+#[utoipa::path(
+    get,
+    path = "/cotahist/dates/{date}/quotes",
+    tag = "cotahist",
+    params(
+        ("date" = String, Path, description = "Data do pregão (AAAA-MM-DD)"),
+        PaginationParams,
+    ),
+    responses(
+        (status = 200, description = "Cotações da data retornadas", body = ApiResponse<DateQuotesResponse>),
+        (status = 400, description = "Formato de data inválido", body = ErrorResponse),
+        (status = 404, description = "Nenhum dado encontrado para a data", body = ErrorResponse),
+        (status = 429, description = "Limite de requisições excedido", body = ErrorResponse),
+        (status = 500, description = "Erro interno do servidor", body = ErrorResponse),
+    ),
+    security(
+        ("ApiKeyAuth" = []),
+    ),
+)]
+pub(crate) async fn get_date_quotes_handler(
     State(state): State<Arc<AppState>>,
     Path(date): Path<String>,
     Query(params): Query<PaginationParams>,

@@ -6,6 +6,7 @@ pub mod cotahist;
 pub mod health;
 pub mod ibov;
 pub mod info;
+pub mod openapi;
 
 use crate::data::reload::DataLoader;
 use axum::Router;

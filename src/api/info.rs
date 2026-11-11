@@ -22,8 +22,18 @@ pub struct InfoResponse {
     pub uptime_seconds: u64,
 }
 
-/// GET /api/v1/info
-async fn info_handler(State(state): State<Arc<AppState>>) -> Json<InfoResponse> {
+/// Obter informações do serviço
+///
+/// Retorna metadados do serviço, incluindo versão, tempo de atividade e informações sobre os dados carregados.
+#[utoipa::path(
+    get,
+    path = "/info",
+    tag = "sistema",
+    responses(
+        (status = 200, description = "Informações retornadas", body = InfoResponse),
+    ),
+)]
+pub(crate) async fn info_handler(State(state): State<Arc<AppState>>) -> Json<InfoResponse> {
     let uptime = state.start_time.elapsed().as_secs();
 
     Json(InfoResponse {

@@ -3,6 +3,7 @@
 //! Uses axum with tower middleware for routing, compression, and tracing.
 //! Supports graceful shutdown via SIGTERM/SIGINT.
 
+use crate::api::openapi::ApiDoc;
 use crate::config::AppConfig;
 use crate::data::reload::DataLoader;
 use crate::error::AppError;
@@ -15,6 +16,8 @@ use tokio::signal;
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
 use tower_http::timeout::TimeoutLayer;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
 /// Build the axum Router with all routes and middleware.
 ///
@@ -28,6 +31,8 @@ pub fn build_router(
 
     Router::new()
         .nest("/api/v1", api_routes)
+        // Swagger UI (also serves /api/docs/openapi.json)
+        .merge(SwaggerUi::new("/api/docs").url("/api/docs/openapi.json", ApiDoc::openapi()))
         .layer(RateLimitLayer::new(rate_limit_state))
         .layer(CompressionLayer::new())
         .layer(CorsLayer::permissive())

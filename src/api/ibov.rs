@@ -8,6 +8,7 @@ use axum::{Json, Router};
 use serde::Deserialize;
 use std::sync::Arc;
 use std::time::Instant;
+use utoipa::IntoParams;
 
 use crate::api::health::AppState;
 use crate::error::AppResult;
@@ -16,20 +17,22 @@ use crate::models::ibov::*;
 use crate::models::pagination::{PaginationMeta, PaginationParams};
 use crate::services::ibov::IbovService;
 
-/// Query parameters for GET /ibov/history
-#[derive(Debug, Deserialize)]
+/// Parâmetros de consulta para série histórica do IBOV.
+#[derive(Debug, Deserialize, IntoParams)]
 pub struct IbovHistoryParams {
-    /// Start date (YYYY-MM-DD)
+    /// Data inicial (AAAA-MM-DD)
     pub desde: Option<String>,
-    /// End date (YYYY-MM-DD)
+    /// Data final (AAAA-MM-DD)
     pub ate: Option<String>,
-    /// Last N trading days
+    /// Últimos N dias de pregão
     pub dias: Option<u32>,
-    /// Sort order: asc or desc (default: desc)
+    /// Ordem: asc ou desc (padrão: desc)
     #[serde(default = "default_order")]
     pub ordem: String,
+    /// Número da página
     #[serde(default = "default_page")]
     pub pagina: u32,
+    /// Itens por página (padrão: 252)
     #[serde(default = "default_per_page")]
     pub por_pagina: u32,
 }
@@ -44,10 +47,28 @@ fn default_per_page() -> u32 {
     252
 }
 
-/// GET /api/v1/ibov/history
+/// Obter série histórica do IBOVESPA
 ///
-/// Retorna a série histórica do IBOVESPA com filtros e paginação.
-async fn history_handler(
+/// Retorna a série histórica do índice IBOVESPA com filtros de data e paginação. Inclui variação percentual calculada automaticamente.
+#[utoipa::path(
+    get,
+    path = "/ibov/history",
+    tag = "ibov",
+    params(
+        IbovHistoryParams,
+    ),
+    responses(
+        (status = 200, description = "Série histórica retornada", body = ApiResponse<IbovHistoryResponse>),
+        (status = 400, description = "Data inválida", body = ErrorResponse),
+        (status = 404, description = "Nenhum dado encontrado", body = ErrorResponse),
+        (status = 429, description = "Limite de requisições excedido", body = ErrorResponse),
+        (status = 500, description = "Erro interno do servidor", body = ErrorResponse),
+    ),
+    security(
+        ("ApiKeyAuth" = []),
+    ),
+)]
+pub(crate) async fn history_handler(
     State(state): State<Arc<AppState>>,
     Query(params): Query<IbovHistoryParams>,
 ) -> AppResult<Json<ApiResponse<IbovHistoryResponse>>> {
@@ -94,10 +115,24 @@ async fn history_handler(
     )))
 }
 
-/// GET /api/v1/ibov/latest
+/// Obter o dado mais recente do IBOVESPA
 ///
-/// Retorna o dado mais recente do IBOVESPA.
-async fn latest_handler(
+/// Retorna o ponto de dados mais recente do índice IBOVESPA, incluindo variação percentual em relação ao pregão anterior.
+#[utoipa::path(
+    get,
+    path = "/ibov/latest",
+    tag = "ibov",
+    responses(
+        (status = 200, description = "Dado mais recente retornado", body = ApiResponse<IbovLatestResponse>),
+        (status = 404, description = "Nenhum dado encontrado", body = ErrorResponse),
+        (status = 429, description = "Limite de requisições excedido", body = ErrorResponse),
+        (status = 500, description = "Erro interno do servidor", body = ErrorResponse),
+    ),
+    security(
+        ("ApiKeyAuth" = []),
+    ),
+)]
+pub(crate) async fn latest_handler(
     State(state): State<Arc<AppState>>,
 ) -> AppResult<Json<ApiResponse<IbovLatestResponse>>> {
     let start = Instant::now();

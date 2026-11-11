@@ -8,6 +8,7 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Serialize;
 use thiserror::Error;
+use utoipa::ToSchema;
 
 /// Top-level error type for the tucano-b3 service.
 #[derive(Error, Debug)]
@@ -82,18 +83,22 @@ impl AppError {
 }
 
 /// JSON error response body.
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct ErrorResponse {
     pub error: ErrorDetail,
 }
 
 /// Details of the error contained in ErrorResponse.
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct ErrorDetail {
+    /// Código do erro (identificador estável em inglês)
     pub code: String,
+    /// Mensagem de erro em português brasileiro
     pub message: String,
+    /// Detalhes adicionais sobre o erro
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<String>,
+    /// Identificador único da requisição
     pub request_id: String,
 }
 

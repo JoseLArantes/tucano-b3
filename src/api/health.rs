@@ -45,11 +45,18 @@ pub struct HealthResponse {
     pub tickers_count: usize,
 }
 
-/// GET /api/v1/health
+/// Verificar saúde do serviço
 ///
-/// Returns the health status of the service.
-/// Used by load balancers and container orchestrators.
-async fn health_handler(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
+/// Retorna o status de saúde do serviço. Usado por balanceadores de carga e orquestradores de containers.
+#[utoipa::path(
+    get,
+    path = "/health",
+    tag = "sistema",
+    responses(
+        (status = 200, description = "Serviço saudável", body = HealthResponse),
+    ),
+)]
+pub(crate) async fn health_handler(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
     let uptime = state.start_time.elapsed().as_secs();
     let query_service = state.data_loader.get_query_service().await;
 
