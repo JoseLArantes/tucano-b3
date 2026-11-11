@@ -10,3 +10,4 @@ rate_limit = 1000
 key = "tucano-test-key-002"
 name = "Test Suite"
 rate_limit = 500
+
