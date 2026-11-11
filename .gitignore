@@ -32,7 +32,8 @@ htmlcov/
 Cargo.lock.bak
 
 # Runtime data
-/data/
+/data/*
+!/data/.gitkeep
 *.db
 *.sqlite3
 !tests/fixtures/**/*.db
