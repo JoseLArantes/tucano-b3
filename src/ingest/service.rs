@@ -101,15 +101,23 @@ impl IngestService {
         // Scan folder
         let files = zip_handler::scan_folder_for_cotahist(folder)?;
 
-        // Read and process each file
-        let extracted: Vec<ExtractedFile> = files
-            .iter()
-            .filter_map(|path| {
-                let content = std::fs::read(path).ok()?;
-                let filename = path.file_name()?.to_string_lossy().to_string();
-                Some(ExtractedFile { filename, content })
-            })
-            .collect();
+        // Read and process each file (support both .TXT and .ZIP archives)
+        let mut extracted: Vec<ExtractedFile> = Vec::new();
+        for path in &files {
+            if let Ok(content) = std::fs::read(path) {
+                let filename = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                if filename.to_uppercase().ends_with(".ZIP") {
+                    if let Ok(files_in_zip) = zip_handler::extract_cotahist_from_zip(&content) {
+                        extracted.extend(files_in_zip);
+                    }
+                } else {
+                    extracted.push(ExtractedFile { filename, content });
+                }
+            }
+        }
 
         Self::ingest_extracted_files(&task_id, &extracted, data_dir, data_loader)
     }
@@ -226,15 +234,34 @@ impl IngestService {
                     .map_err(|e| IngestError::Ledger(e.to_string()))?;
             }
 
-            // Update ticker registry in ledger
+            // Update ticker registry in ledger (deduplicate in memory to avoid redundant queries)
+            use std::collections::HashMap;
+            let mut unique_tickers: HashMap<&str, (Option<&str>, Option<&str>, NaiveDate)> =
+                HashMap::new();
             for record in &all_new_records {
-                ledger
-                    .upsert_ticker(
-                        &record.ticker,
+                unique_tickers
+                    .entry(&record.ticker)
+                    .and_modify(|e| {
+                        if record.date > e.2 {
+                            e.2 = record.date;
+                            if record.isin.is_some() {
+                                e.0 = record.isin.as_deref();
+                            }
+                            if record.company_name.is_some() {
+                                e.1 = record.company_name.as_deref();
+                            }
+                        }
+                    })
+                    .or_insert((
                         record.isin.as_deref(),
                         record.company_name.as_deref(),
                         record.date,
-                    )
+                    ));
+            }
+
+            for (ticker, (isin, company_name, date)) in unique_tickers {
+                ledger
+                    .upsert_ticker(ticker, isin, company_name, date)
                     .map_err(|e| IngestError::Ledger(e.to_string()))?;
             }
 

@@ -121,7 +121,9 @@ pub fn scan_folder_for_cotahist(folder: &Path) -> Result<Vec<PathBuf>, ZipError>
             .map(|n| n.to_string_lossy().to_uppercase())
             .unwrap_or_default();
 
-        if filename.contains("COTAHIST") && filename.ends_with(".TXT") {
+        if filename.contains("COTAHIST")
+            && (filename.ends_with(".TXT") || filename.ends_with(".ZIP"))
+        {
             files.push(path);
         }
     }
