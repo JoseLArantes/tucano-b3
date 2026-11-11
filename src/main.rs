@@ -10,12 +10,32 @@ use tucano_b3::server;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        println!(
+            "tucano-b3 {}\n\
+API REST de alta performance para dados de mercado da B3\n\n\
+USO:\n    \
+    tucano-b3 [OPÇÕES]\n\n\
+OPÇÕES:\n    \
+    --config <ARQUIVO>    Caminho para o arquivo de configuração [padrão: config.toml]\n    \
+    -h, --help            Imprime informações de ajuda\n    \
+    -V, --version         Imprime informações de versão",
+            env!("CARGO_PKG_VERSION")
+        );
+        return Ok(());
+    }
+
+    if args.iter().any(|arg| arg == "--version" || arg == "-V") {
+        println!("tucano-b3 {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+
     // Parse CLI args for config path
-    let config_path = std::env::args()
-        .skip(1)
-        .position(|arg| arg == "--config")
-        .and_then(|idx| std::env::args().nth(idx + 2))
-        .map(|p| Path::new(Box::leak(p.into_boxed_str())).to_path_buf());
+    let config_path = args
+        .windows(2)
+        .find(|w| w[0] == "--config")
+        .map(|w| Path::new(&w[1]).to_path_buf());
 
     // Load configuration
     let config = AppConfig::load(config_path.as_deref())

@@ -3,9 +3,21 @@ name = "tucano-b3"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.82"
-description = "High-performance REST API for B3 market data"
+description = "API REST de alta performance para dados de mercado da B3"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/tucano-b3/tucano-b3"
+documentation = "https://github.com/tucano-b3/tucano-b3"
+homepage = "https://github.com/tucano-b3/tucano-b3"
+readme = "README.md"
+keywords = ["b3", "market-data", "rest-api", "parquet", "datafusion"]
+categories = ["web-programming::http-server", "finance"]
+exclude = [
+    "tests/fixtures/*",
+    "benches/*",
+    ".github/*",
+    "docker/*",
+    "contrib/*",
+]
 
 [dependencies]
 # Web framework
@@ -71,4 +83,7 @@ lto = "fat"
 codegen-units = 1
 strip = true
 panic = "abort"
+
+[profile.release.package."*"]
+opt-level = 3
 
