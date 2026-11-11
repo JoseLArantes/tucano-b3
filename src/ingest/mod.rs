@@ -5,3 +5,4 @@
 
 pub mod cotahist_parser;
 pub mod parquet_writer;
+pub mod zip_handler;
