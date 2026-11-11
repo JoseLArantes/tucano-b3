@@ -39,13 +39,16 @@ async fn test_cotahist_and_ibov_routes_registered() {
 
     let test_routes = vec![
         ("/api/v1/cotahist/tickers", StatusCode::OK),
-        ("/api/v1/cotahist/tickers/VALE3", StatusCode::NOT_FOUND),
         (
-            "/api/v1/cotahist/tickers/VALE3/quotes",
+            "/api/v1/cotahist/tickers/NONEXISTENT99",
             StatusCode::NOT_FOUND,
         ),
         (
-            "/api/v1/cotahist/tickers/VALE3/latest",
+            "/api/v1/cotahist/tickers/NONEXISTENT99/quotes",
+            StatusCode::NOT_FOUND,
+        ),
+        (
+            "/api/v1/cotahist/tickers/NONEXISTENT99/latest",
             StatusCode::NOT_FOUND,
         ),
         (

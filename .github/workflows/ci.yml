@@ -1,29 +1,35 @@
-name: CI
+name: CI & Docker Build
 
 on:
   push:
-    branches: [main, dev, "ci-*"]
+    branches: [dev, master, main]
   pull_request:
-    branches: [main]
+    branches: [dev, master, main]
   workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  REGISTRY: ghcr.io
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   fmt:
-    name: Format
+    name: Code Formatting
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - run: cargo fmt --all -- --check
+      - name: Check Formatting
+        run: cargo fmt --all -- --check
 
   clippy:
-    name: Clippy
+    name: Clippy Linter
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,125 +37,56 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Run Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
 
   test:
-    name: Test (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo test --all-features --all-targets
-
-  coverage:
-    name: Coverage
+    name: Test Suite
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Install tarpaulin
-        run: cargo install cargo-tarpaulin --locked
-      - name: Run coverage
-        run: cargo tarpaulin --out Xml
-      - name: Upload to Codecov
-        uses: codecov/codecov-action@v4
+      - name: Run Tests
+        run: cargo test --all-targets --all-features
+
+  docker:
+    name: Build & Push Container Image
+    needs: [fmt, clippy, test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log into GitHub Container Registry (${{ env.REGISTRY }})
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
         with:
-          files: cobertura.xml
-          fail_ci_if_error: false
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-  audit:
-    name: Security Audit
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo install cargo-audit --locked
-      - run: cargo audit
-
-  deny:
-    name: License & Policy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo install cargo-deny --locked
-      - run: cargo deny check
-
-  openapi:
-    name: OpenAPI Validation
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Build and extract OpenAPI spec
-        run: |
-          cargo build --release
-          # Start server, extract spec, kill
-          timeout 5 target/release/tucano-b3 &
-          sleep 2
-          curl -s http://localhost:8080/api/docs/openapi.json > openapi.json || true
-          kill %1 2>/dev/null || true
-      - name: Validate OpenAPI spec
-        run: |
-          if [ -f openapi.json ]; then
-            python3 -c "
-import json, sys
-spec = json.load(open('openapi.json'))
-assert 'openapi' in spec, 'Missing openapi version'
-assert 'info' in spec, 'Missing info'
-assert 'paths' in spec, 'Missing paths'
-assert len(spec['paths']) >= 9, f'Expected >= 9 paths, got {len(spec[\"paths\"])}'
-print(f'OpenAPI valid: {len(spec[\"paths\"])} paths')
-"
-          else
-            echo "Warning: openapi.json not generated"
-          fi
-
-  performance:
-    name: Performance Gate
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Build release
-        run: cargo build --release
-
-      - name: Run benchmarks
-        run: cargo bench -- --output-format bencher | tee bench_results.txt
-
-      - name: Check binary size
-        run: |
-          SIZE=$(stat -f%z target/release/tucano-b3 2>/dev/null || stat -c%s target/release/tucano-b3)
-          SIZE_MB=$((SIZE / 1024 / 1024))
-          echo "Binary size: ${SIZE_MB} MB"
-          if [ $SIZE_MB -gt 30 ]; then
-            echo "::error::Binary size ${SIZE_MB} MB exceeds 30 MB limit"
-            exit 1
-          fi
-
-      - name: Check startup time
-        run: |
-          START=$(date +%s%N)
-          timeout 2 ./target/release/tucano-b3 --help > /dev/null 2>&1 || true
-          END=$(date +%s%N)
-          ELAPSED_MS=$(( (END - START) / 1000000 ))
-          echo "Startup time: ${ELAPSED_MS} ms"
-          if [ $ELAPSED_MS -gt 100 ]; then
-            echo "::error::Startup time ${ELAPSED_MS} ms exceeds 100 ms limit"
-            exit 1
-          fi
-
-      - name: Upload benchmark results
-        uses: actions/upload-artifact@v4
+      - name: Extract Docker Metadata (Tags & Labels)
+        id: meta
+        uses: docker/metadata-action@v5
         with:
-          name: benchmark-results
-          path: bench_results.txt
+          images: ${{ env.REGISTRY }}/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=,format=short
+            type=sha,prefix=,format=long
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

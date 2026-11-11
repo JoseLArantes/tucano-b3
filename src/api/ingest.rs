@@ -157,15 +157,19 @@ pub(crate) async fn folder_handler(
     }
 
     let data_dir = state.data_loader.data_config.dir.clone();
-    let result = IngestService::ingest_folder(folder, &data_dir, &state.data_loader)
-        .map_err(|e| match e {
-            crate::ingest::service::IngestError::Zip(crate::ingest::zip_handler::ZipError::NoCotahistFiles) => {
-                AppError::InvalidParam {
-                    message: format!("Nenhum arquivo COTAHIST (.TXT ou .ZIP) encontrado na pasta '{}'", body.caminho),
-                }
-            }
+    let result = IngestService::ingest_folder(folder, &data_dir, &state.data_loader).map_err(
+        |e| match e {
+            crate::ingest::service::IngestError::Zip(
+                crate::ingest::zip_handler::ZipError::NoCotahistFiles,
+            ) => AppError::InvalidParam {
+                message: format!(
+                    "Nenhum arquivo COTAHIST (.TXT ou .ZIP) encontrado na pasta '{}'",
+                    body.caminho
+                ),
+            },
             other => AppError::Internal(anyhow::anyhow!("{}", other)),
-        })?;
+        },
+    )?;
 
     let elapsed = start.elapsed().as_secs_f64() * 1000.0;
 
