@@ -111,3 +111,45 @@ print(f'OpenAPI valid: {len(spec[\"paths\"])} paths')
           else
             echo "Warning: openapi.json not generated"
           fi
+
+  performance:
+    name: Performance Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release
+        run: cargo build --release
+
+      - name: Run benchmarks
+        run: cargo bench -- --output-format bencher | tee bench_results.txt
+
+      - name: Check binary size
+        run: |
+          SIZE=$(stat -f%z target/release/tucano-b3 2>/dev/null || stat -c%s target/release/tucano-b3)
+          SIZE_MB=$((SIZE / 1024 / 1024))
+          echo "Binary size: ${SIZE_MB} MB"
+          if [ $SIZE_MB -gt 30 ]; then
+            echo "::error::Binary size ${SIZE_MB} MB exceeds 30 MB limit"
+            exit 1
+          fi
+
+      - name: Check startup time
+        run: |
+          START=$(date +%s%N)
+          timeout 2 ./target/release/tucano-b3 --help > /dev/null 2>&1 || true
+          END=$(date +%s%N)
+          ELAPSED_MS=$(( (END - START) / 1000000 ))
+          echo "Startup time: ${ELAPSED_MS} ms"
+          if [ $ELAPSED_MS -gt 100 ]; then
+            echo "::error::Startup time ${ELAPSED_MS} ms exceeds 100 ms limit"
+            exit 1
+          fi
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: bench_results.txt
