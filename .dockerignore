@@ -1,11 +1,11 @@
-target/
+target/*
+!target/release
+target/release/*
+!target/release/tucano-b3
 data/
 .git/
 .github/
 *.md
 tests/
-benches/
 contrib/
-Dockerfile*
-docker-compose*
 .dockerignore

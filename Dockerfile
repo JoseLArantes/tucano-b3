@@ -7,14 +7,18 @@ FROM rust:1-bookworm AS builder
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
+    clang \
+    lld \
     && rm -rf /var/lib/apt/lists/*
+
+ENV RUSTFLAGS="-C link-arg=-fuse-ld=lld"
 
 WORKDIR /build
 
 # Cache dependencies
 COPY Cargo.toml Cargo.lock ./
-RUN mkdir -p src benches && \
-    echo 'fn main() {}' > benches/data_layer.rs && \
+COPY benches/ ./benches/
+RUN mkdir -p src && \
     touch src/lib.rs && \
     echo 'fn main() {}' > src/main.rs && \
     cargo build --release --bin tucano-b3 && \
@@ -22,7 +26,8 @@ RUN mkdir -p src benches && \
 
 # Build actual application
 COPY src/ ./src/
-RUN touch src/main.rs src/lib.rs && cargo build --release --bin tucano-b3
+RUN touch src/main.rs src/lib.rs && \
+    cargo build --release --bin tucano-b3
 
 # ============================================================
 # Runtime stage
