@@ -5,4 +5,7 @@
 
 pub mod cotahist_parser;
 pub mod parquet_writer;
+pub mod service;
 pub mod zip_handler;
+
+pub use service::IngestService;
