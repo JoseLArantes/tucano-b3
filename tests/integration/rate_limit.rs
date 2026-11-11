@@ -10,14 +10,16 @@ fn test_app_with_rate_limit(limit: u32) -> axum::Router {
     config.rate_limit.enabled = true;
     config.rate_limit.default_requests_per_minute = limit;
 
-    let data_loader = Arc::new(tucano_b3::data::reload::DataLoader::new(&config.data).unwrap());
+    let cache = Arc::new(tucano_b3::cache::CacheStore::new(&config.cache));
+    let data_loader =
+        Arc::new(tucano_b3::data::reload::DataLoader::new(&config.data, cache.clone()).unwrap());
     let api_keys = Arc::new(tucano_b3::middleware::ApiKeyRegistry::empty());
     let rate_state = Arc::new(tucano_b3::middleware::RateLimitState::new(
         api_keys,
         config.rate_limit.clone(),
     ));
 
-    tucano_b3::server::build_router(&config, data_loader, rate_state)
+    tucano_b3::server::build_router(&config, data_loader, cache, rate_state)
 }
 
 #[tokio::test]

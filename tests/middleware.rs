@@ -1,3 +1,5 @@
+#[path = "middleware/cache.rs"]
+mod cache;
 #[path = "middleware/rate_limit/api_key_auth.rs"]
 mod rate_limit_api_key_auth;
 #[path = "middleware/rate_limit/bucket.rs"]

@@ -21,7 +21,7 @@ fn create_test_loader() -> (TempDir, DataLoader) {
         reload_interval_seconds: 0,
     };
 
-    let loader = DataLoader::new(&config).expect("Failed to create DataLoader");
+    let loader = DataLoader::new_standalone(&config).expect("Failed to create DataLoader");
     (temp, loader)
 }
 

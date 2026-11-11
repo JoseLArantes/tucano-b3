@@ -8,13 +8,14 @@ use tucano_b3::server::build_router;
 
 fn test_app() -> axum::Router {
     let config = AppConfig::default();
-    let data_loader = Arc::new(DataLoader::new(&config.data).unwrap());
+    let cache = Arc::new(tucano_b3::cache::CacheStore::new(&config.cache));
+    let data_loader = Arc::new(DataLoader::new(&config.data, cache.clone()).unwrap());
     let api_keys = Arc::new(tucano_b3::middleware::ApiKeyRegistry::empty());
     let rate_limit_state = Arc::new(tucano_b3::middleware::RateLimitState::new(
         api_keys,
         config.rate_limit.clone(),
     ));
-    build_router(&config, data_loader, rate_limit_state)
+    build_router(&config, data_loader, cache, rate_limit_state)
 }
 
 #[tokio::test]
@@ -76,6 +77,8 @@ async fn test_health_response_structure() {
     assert!(json["uptime_seconds"].is_number());
     assert!(json["data_files_loaded"].is_number());
     assert!(json["tickers_count"].is_number());
+    assert!(json["cache_entries"].is_number());
+    assert!(json["cache_enabled"].is_boolean());
 }
 
 #[tokio::test]
@@ -100,6 +103,8 @@ async fn test_health_response_includes_data_info() {
     assert_eq!(json["status"], "healthy");
     assert!(json["data_files_loaded"].is_number());
     assert!(json["tickers_count"].is_number());
+    assert!(json["cache_entries"].is_number());
+    assert!(json["cache_enabled"].is_boolean());
 }
 
 #[tokio::test]

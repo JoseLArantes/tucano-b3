@@ -5,6 +5,9 @@
 #[path = "integration/data_layer.rs"]
 mod data_layer;
 
+#[path = "integration/cache.rs"]
+mod cache;
+
 #[path = "integration/cotahist_endpoints.rs"]
 mod cotahist_endpoints;
 
@@ -26,13 +29,14 @@ use tucano_b3::server::build_router;
 /// Helper: start a test server on a random port.
 async fn start_test_server() -> SocketAddr {
     let config = AppConfig::default();
-    let data_loader = Arc::new(DataLoader::new(&config.data).unwrap());
+    let cache = Arc::new(tucano_b3::cache::CacheStore::new(&config.cache));
+    let data_loader = Arc::new(DataLoader::new(&config.data, cache.clone()).unwrap());
     let api_keys = Arc::new(tucano_b3::middleware::ApiKeyRegistry::empty());
     let rate_limit_state = Arc::new(tucano_b3::middleware::RateLimitState::new(
         api_keys,
         config.rate_limit.clone(),
     ));
-    let router = build_router(&config, data_loader, rate_limit_state);
+    let router = build_router(&config, data_loader, cache, rate_limit_state);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

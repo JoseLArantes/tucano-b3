@@ -21,8 +21,10 @@ fn test_app_with_fixtures() -> Option<axum::Router> {
         ..Default::default()
     };
 
-    let data_loader =
-        std::sync::Arc::new(tucano_b3::data::reload::DataLoader::new(&config.data).ok()?);
+    let cache = std::sync::Arc::new(tucano_b3::cache::CacheStore::new(&config.cache));
+    let data_loader = std::sync::Arc::new(
+        tucano_b3::data::reload::DataLoader::new(&config.data, cache.clone()).ok()?,
+    );
     let api_keys = std::sync::Arc::new(tucano_b3::middleware::ApiKeyRegistry::empty());
     let rate_limit_state = std::sync::Arc::new(tucano_b3::middleware::RateLimitState::new(
         api_keys,
@@ -32,6 +34,7 @@ fn test_app_with_fixtures() -> Option<axum::Router> {
     Some(tucano_b3::server::build_router(
         &config,
         data_loader,
+        cache,
         rate_limit_state,
     ))
 }
