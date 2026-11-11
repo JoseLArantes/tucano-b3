@@ -23,6 +23,12 @@ mod openapi;
 #[path = "integration/rate_limit.rs"]
 mod rate_limit;
 
+#[path = "integration/ingest.rs"]
+mod ingest;
+
+#[path = "integration/ingest_e2e.rs"]
+mod ingest_e2e;
+
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tucano_b3::config::AppConfig;
