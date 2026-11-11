@@ -35,3 +35,4 @@ class TucanoB3 < Formula
     assert_match "tucano-b3", shell_output("#{bin}/tucano-b3 --help")
   end
 end
+

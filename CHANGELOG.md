@@ -18,3 +18,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Docker deployment
 - Cross-platform release builds (Linux, macOS, Windows)
 - 100% test coverage on all business logic
+

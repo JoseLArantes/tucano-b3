@@ -77,3 +77,4 @@
 ### 5. Observability (`src/metrics/`)
 - Prometheus metrics registry exposed at `/metrics` and `/api/v1/metrics`.
 - Gauges and counters tracking data volume, loaded tickers, query durations, cache statistics, and rate limiting.
+

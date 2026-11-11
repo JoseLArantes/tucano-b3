@@ -56,3 +56,4 @@ Key metrics:
 - `tucano_http_request_duration_seconds` — latency histogram
 - `tucano_cache_hits_total` — cache hits
 - `tucano_rate_limited_total` — rate limit rejections
+
