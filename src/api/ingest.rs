@@ -35,6 +35,14 @@ pub struct FolderIngestRequest {
     pub caminho: String,
 }
 
+/// Request body para upload de arquivo COTAHIST (Swagger UI / OpenAPI).
+#[derive(Debug, ToSchema)]
+pub struct UploadFileRequest {
+    /// Arquivo ZIP contendo arquivos COTAHIST (.TXT) da B3
+    #[schema(value_type = String, format = Binary)]
+    pub file: String,
+}
+
 /// Upload de arquivo ZIP para ingestão
 ///
 /// Faz upload de um arquivo ZIP contendo arquivos COTAHIST (.TXT).
@@ -45,8 +53,9 @@ pub struct FolderIngestRequest {
     path = "/ingest/upload",
     tag = "ingest",
     request_body(
-        content = String,
+        content = UploadFileRequest,
         content_type = "multipart/form-data",
+        description = "Arquivo ZIP do COTAHIST (.ZIP) para upload",
     ),
     responses(
         (status = 200, description = "Ingestão concluída com sucesso", body = ApiResponse<IngestResponse>),

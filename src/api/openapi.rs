@@ -90,6 +90,7 @@ impl Modify for SecurityAddon {
             // Ingest
             crate::api::ingest::IngestResponse,
             crate::api::ingest::FolderIngestRequest,
+            crate::api::ingest::UploadFileRequest,
             // Health
             crate::api::health::HealthResponse,
             crate::api::info::InfoResponse,
