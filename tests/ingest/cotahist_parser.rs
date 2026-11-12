@@ -135,7 +135,7 @@ fn test_parse_invalid_lines_skipped_and_logged() {
     content.push_str("short line\n");
 
     // Invalid record type line
-    content.push_str(&("99invalid_record_type".to_string() + &" ".repeat(230) + "\n"));
+    content.push_str(&("98invalid_record_type".to_string() + &" ".repeat(230) + "\n"));
 
     // Invalid date line
     let mut line4 = line1.clone();
@@ -154,4 +154,18 @@ fn test_parse_invalid_lines_skipped_and_logged() {
     assert_eq!(stats.lines_parsed, 1);
     assert_eq!(stats.lines_skipped, 1); // empty line
     assert_eq!(stats.lines_errored, 3); // short line, invalid record type, invalid date
+}
+
+#[test]
+fn test_parse_trailer_99_line() {
+    let mut line = String::from("99");
+    line.push_str(&" ".repeat(243));
+    assert_eq!(line.len(), 245);
+
+    let input = Cursor::new(line.into_bytes());
+    let (records, stats) = CotahistParser::parse(input).unwrap();
+    assert_eq!(records.len(), 0);
+    assert_eq!(stats.lines_total, 1);
+    assert_eq!(stats.lines_skipped, 1);
+    assert_eq!(stats.lines_errored, 0);
 }
