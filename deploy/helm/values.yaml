@@ -69,8 +69,11 @@ vault:
   refreshInterval: "1h"
   serviceAccount: "default"
   role: "tucano-services-role"
-  secretPath: "tucano/b3/production"
+  secretPath: "tucano-services/production/base"
+  # Optional inline PEM, base64. Leave empty; production reads the CA from a ConfigMap.
   caBundle: ""
+  caConfigMap: ""
+  caConfigMapKey: "ca.crt"
 
 rollout:
   enabled: true

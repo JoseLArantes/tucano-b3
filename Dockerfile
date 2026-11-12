@@ -1,7 +1,12 @@
 # ============================================================
-# Build stage
+# Dependency stage
 # ============================================================
-FROM rust:1-bookworm AS builder
+# Published by CI as ghcr.io/<repo>-deps:<hash of this stage + Cargo.lock +
+# Cargo.toml>. Application builds set BUILDER_IMAGE to that tag and compile
+# only src/. A local `docker build` leaves BUILDER_IMAGE unset and builds
+# this stage itself.
+ARG BUILDER_IMAGE=deps
+FROM rust:1-bookworm AS deps
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -15,7 +20,6 @@ ENV RUSTFLAGS="-C link-arg=-fuse-ld=lld"
 
 WORKDIR /build
 
-# Cache dependencies
 COPY Cargo.toml Cargo.lock ./
 COPY benches/ ./benches/
 RUN mkdir -p src && \
@@ -24,7 +28,13 @@ RUN mkdir -p src && \
     cargo build --release --bin tucano-b3 && \
     rm -rf src
 
-# Build actual application
+# ============================================================
+# Application stage
+# ============================================================
+FROM ${BUILDER_IMAGE} AS builder
+
+WORKDIR /build
+
 COPY src/ ./src/
 RUN touch src/main.rs src/lib.rs && \
     cargo build --release --bin tucano-b3

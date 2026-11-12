@@ -58,9 +58,13 @@ persistence:
   mountPath: /data
 
 vault:
-  enabled: false
+  enabled: true
   role: "tucano-services-role"
-  secretPath: "tucano/b3/production"
+  # /v1/bos-secrets/data/tucano-services/production/base
+  secretPath: "tucano-services/production/base"
+  # ConfigMap in tucano-services. Not stored in git. Same CA as vault-cluster-store.
+  caConfigMap: "vault-ca"
+  caConfigMapKey: "ca.crt"
 
 resources:
   requests:

@@ -67,15 +67,29 @@ brew install argoproj/tap/kubectl-argo-rollouts
 
 ### Application secret
 
-Create `tucano-b3-secret` before the first sync:
+Production (`values-production.yaml`) turns on External Secrets. ESO reads KV v2 path `tucano-services/production/base` on mount `bos-secrets` (`/v1/bos-secrets/data/tucano-services/production/base`) and writes Kubernetes secret `tucano-b3-secret`.
+
+The SecretStore uses the Vault Kubernetes auth role `tucano-services-role` and the `default` service account in `tucano-services`. It trusts Vault through ConfigMap `vault-ca` in `tucano-services` (`caProvider`), the same CA as `ClusterSecretStore/vault-cluster-store`. That certificate is not in git.
 
 ```bash
-cp deploy/secret.example.yaml /tmp/tucano-b3-secret.yaml
-# edit TUCANO_B3_TOKEN
-kubectl apply -f /tmp/tucano-b3-secret.yaml -n tucano-services
+kubectl get clustersecretstore vault-cluster-store -o jsonpath='{.spec.provider.vault.caBundle}' \
+  | base64 -d > /tmp/vault-ca.crt
+kubectl create configmap vault-ca -n tucano-services \
+  --from-file=ca.crt=/tmp/vault-ca.crt \
+  --dry-run=client -o yaml | kubectl apply -f -
+rm /tmp/vault-ca.crt
 ```
 
-Vault/ESO for app secrets is optional (`vault.enabled: false` by default).
+`tucano-b3-secret` already exists and is not owned by ESO. Delete it once before the first sync so the ExternalSecret can create it. Pods keep the previous environment until they restart.
+
+```bash
+kubectl delete secret tucano-b3-secret -n tucano-services
+# after the ExternalSecret reports SecretSynced:
+kubectl argo rollouts restart tucano-b3 -n tucano-services
+kubectl get externalsecret -n tucano-services
+```
+
+`deploy/secret.example.yaml` is only for a cluster where `vault.enabled` is false.
 
 ### Object storage (Cloudflare R2)
 
@@ -91,7 +105,7 @@ Vault/ESO for app secrets is optional (`vault.enabled: false` by default).
 | `TUCANO_S3_ACCESS_KEY_ID` | Secret | R2 access key |
 | `TUCANO_S3_SECRET_ACCESS_KEY` | Secret | R2 secret |
 
-Set the non-secret values in `deploy/helm/values-production.yaml` (`config.s3*`). Put the keys in `tucano-b3-secret` (see `deploy/secret.example.yaml`). A call with an empty body uses the configured prefix; `{"prefix":"cotahist/2025/"}` overrides it for that request only.
+Set the non-secret values in `deploy/helm/values-production.yaml` (`config.s3*`). Put `TUCANO_S3_ACCESS_KEY_ID` and `TUCANO_S3_SECRET_ACCESS_KEY` in the Vault secret `tucano-services/production/base`, next to `TUCANO_B3_TOKEN`. ESO copies every key into `tucano-b3-secret`. A call with an empty body uses the configured prefix; `{"prefix":"cotahist/2025/"}` overrides it for that request only.
 
 ---
 
