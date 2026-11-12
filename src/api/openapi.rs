@@ -24,6 +24,14 @@ impl Modify for SecurityAddon {
                     ),
                 ),
             );
+            components.add_security_scheme(
+                "BearerAuth",
+                utoipa::openapi::security::SecurityScheme::Http(
+                    utoipa::openapi::security::Http::new(
+                        utoipa::openapi::security::HttpAuthScheme::Bearer,
+                    ),
+                ),
+            );
         }
     }
 }

@@ -87,3 +87,15 @@ fn test_validation_zero_ttl_with_cache_enabled() {
     config.cache.enabled = true;
     assert!(config.validate().is_err());
 }
+
+#[test]
+fn test_env_override_auth_token() {
+    let _lock = ENV_MUTEX.lock().unwrap();
+    std::env::set_var("TUCANO_B3_TOKEN", "my-super-secret-token");
+    let config = AppConfig::load(None).unwrap();
+    assert_eq!(config.auth.token.as_deref(), Some("my-super-secret-token"));
+    assert!(config.auth.is_enabled());
+    assert!(config.auth.validate_token("my-super-secret-token"));
+    assert!(!config.auth.validate_token("wrong-token"));
+    std::env::remove_var("TUCANO_B3_TOKEN");
+}

@@ -20,6 +20,8 @@ pub struct AppConfig {
     pub rate_limit: RateLimitConfig,
     pub logging: LoggingConfig,
     pub metrics: MetricsConfig,
+    #[serde(default)]
+    pub auth: AuthConfig,
 }
 
 /// HTTP server configuration.
@@ -82,6 +84,57 @@ pub struct MetricsConfig {
     pub enabled: bool,
 }
 
+/// Authentication configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AuthConfig {
+    /// Token principal de autenticação (TUCANO_B3_TOKEN)
+    pub token: Option<String>,
+    /// Tokens adicionais permitidos (ex: TUCANO_B3_READ_TOKEN, TUCANO_B3_ADMIN_TOKEN)
+    #[serde(default)]
+    pub allowed_tokens: Vec<String>,
+}
+
+impl AuthConfig {
+    /// Returns true if authentication is enabled (at least one token configured)
+    pub fn is_enabled(&self) -> bool {
+        self.token.is_some() || !self.allowed_tokens.is_empty()
+    }
+
+    /// Validate a candidate token against configured tokens
+    pub fn validate_token(&self, candidate: &str) -> bool {
+        if let Some(ref primary) = self.token {
+            if primary == candidate {
+                return true;
+            }
+        }
+        for allowed in &self.allowed_tokens {
+            if allowed == candidate {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+/// Load key-value pairs from .env file into std::env if not already set.
+pub fn load_dotenv() {
+    if let Ok(content) = std::fs::read_to_string(".env") {
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+            if let Some((key, value)) = trimmed.split_once('=') {
+                let key = key.trim();
+                let value = value.trim().trim_matches('"').trim_matches('\'');
+                if !key.is_empty() && std::env::var(key).is_err() {
+                    std::env::set_var(key, value);
+                }
+            }
+        }
+    }
+}
+
 /// Errors that can occur during configuration loading.
 #[derive(Error, Debug)]
 pub enum ConfigError {
@@ -106,6 +159,7 @@ impl AppConfig {
     /// 2. Config file (config.toml)
     /// 3. Built-in defaults
     pub fn load(config_path: Option<&Path>) -> Result<Self, ConfigError> {
+        load_dotenv();
         let mut config = Self::default();
 
         // Layer 1: Load from file if it exists
@@ -174,6 +228,24 @@ impl AppConfig {
         if let Ok(val) = std::env::var("TUCANO_LOG_FORMAT") {
             self.logging.format = val;
         }
+        if let Ok(val) = std::env::var("TUCANO_B3_TOKEN") {
+            let trimmed = val.trim();
+            if !trimmed.is_empty() {
+                self.auth.token = Some(trimmed.to_string());
+            }
+        }
+        if let Ok(val) = std::env::var("TUCANO_B3_READ_TOKEN") {
+            let trimmed = val.trim();
+            if !trimmed.is_empty() && !self.auth.allowed_tokens.contains(&trimmed.to_string()) {
+                self.auth.allowed_tokens.push(trimmed.to_string());
+            }
+        }
+        if let Ok(val) = std::env::var("TUCANO_B3_ADMIN_TOKEN") {
+            let trimmed = val.trim();
+            if !trimmed.is_empty() && !self.auth.allowed_tokens.contains(&trimmed.to_string()) {
+                self.auth.allowed_tokens.push(trimmed.to_string());
+            }
+        }
     }
 
     /// Validate configuration values.
@@ -225,6 +297,7 @@ impl Default for AppConfig {
                 format: "json".to_string(),
             },
             metrics: MetricsConfig { enabled: true },
+            auth: AuthConfig::default(),
         }
     }
 }

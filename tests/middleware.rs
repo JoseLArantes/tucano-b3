@@ -1,3 +1,5 @@
+#[path = "middleware/auth.rs"]
+mod auth;
 #[path = "middleware/cache.rs"]
 mod cache;
 #[path = "middleware/metrics.rs"]

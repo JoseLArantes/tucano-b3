@@ -45,6 +45,9 @@ pub fn is_cacheable(path: &str) -> bool {
         && !path.starts_with("/api/v1/info")
         && !path.starts_with("/metrics")
         && !path.starts_with("/api/docs")
+        && !path.starts_with("/health")
+        && !path.starts_with("/redoc")
+        && !path.starts_with("/api/redoc")
 }
 
 /// CacheKey type alias for key representation.

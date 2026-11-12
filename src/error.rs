@@ -36,6 +36,9 @@ pub enum AppError {
 
     #[error("Parâmetro inválido: {message}")]
     InvalidParam { message: String },
+
+    #[error("Não autorizado")]
+    Unauthorized,
 }
 
 impl AppError {
@@ -50,6 +53,7 @@ impl AppError {
             Self::Internal(_) => "INTERNAL_ERROR",
             Self::ServiceUnavailable => "SERVICE_UNAVAILABLE",
             Self::InvalidParam { .. } => "INVALID_PARAM",
+            Self::Unauthorized => "UNAUTHORIZED",
         }
     }
 
@@ -64,6 +68,7 @@ impl AppError {
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::ServiceUnavailable => StatusCode::SERVICE_UNAVAILABLE,
             Self::InvalidParam { .. } => StatusCode::BAD_REQUEST,
+            Self::Unauthorized => StatusCode::UNAUTHORIZED,
         }
     }
 
@@ -77,6 +82,9 @@ impl AppError {
             Self::DateRangeInvalid => Some("A data inicial não pode ser posterior à data final."),
             Self::NoDataInRange => Some("Verifique o intervalo de datas disponível nos dados."),
             Self::RateLimited => Some("Aguarde e tente novamente."),
+            Self::Unauthorized => {
+                Some("Forneça um token válido via cabeçalho 'Authorization: Bearer <token>' ou 'X-API-Key'.")
+            }
             _ => None,
         }
     }
