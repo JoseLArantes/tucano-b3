@@ -68,7 +68,7 @@ vault:
   kvVersion: "v2"
   refreshInterval: "1h"
   serviceAccount: "default"
-  role: "tucano-services-role"
+  role: "tucano-services"
   secretPath: "tucano-services/production/base"
   # Optional inline PEM, base64. Leave empty; production reads the CA from a ConfigMap.
   caBundle: ""

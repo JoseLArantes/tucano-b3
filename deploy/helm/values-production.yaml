@@ -59,7 +59,7 @@ persistence:
 
 vault:
   enabled: true
-  role: "tucano-services-role"
+  role: "tucano-services"
   # /v1/bos-secrets/data/tucano-services/production/base
   secretPath: "tucano-services/production/base"
   # ConfigMap in tucano-services. Not stored in git. Same CA as vault-cluster-store.
@@ -68,10 +68,12 @@ vault:
 
 resources:
   requests:
-    cpu: 200m
-    memory: 512Mi
+    cpu: 500m
+    # Annual COTAHIST parse keeps millions of rows in memory before Parquet write.
+    # 2Gi OOMKills ingest (~3.4M quotes); Cloudflare then returns 502.
+    memory: 4Gi
   limits:
-    memory: 2Gi
+    memory: 8Gi
 
 metrics:
   enabled: true

@@ -69,7 +69,7 @@ brew install argoproj/tap/kubectl-argo-rollouts
 
 Production (`values-production.yaml`) turns on External Secrets. ESO reads KV v2 path `tucano-services/production/base` on mount `bos-secrets` (`/v1/bos-secrets/data/tucano-services/production/base`) and writes Kubernetes secret `tucano-b3-secret`.
 
-The SecretStore uses the Vault Kubernetes auth role `tucano-services-role` and the `default` service account in `tucano-services`. It trusts Vault through ConfigMap `vault-ca` in `tucano-services` (`caProvider`), the same CA as `ClusterSecretStore/vault-cluster-store`. That certificate is not in git.
+The SecretStore uses the Vault Kubernetes auth role `tucano-services` and the `default` service account in `tucano-services`. It trusts Vault through ConfigMap `vault-ca` in `tucano-services` (`caProvider`), the same CA as `ClusterSecretStore/vault-cluster-store`. That certificate is not in git.
 
 ```bash
 kubectl get clustersecretstore vault-cluster-store -o jsonpath='{.spec.provider.vault.caBundle}' \
@@ -183,5 +183,7 @@ kubectl describe ingress tucano-b3-ingress-ingest -n tucano-services
 ```
 
 `POST /api/v1/ingest/upload` accepts ZIP archives up to **500 MB** (the application limit). `tucano-b3-ingress-ingest` sets `nginx.ingress.kubernetes.io/proxy-body-size: 500m` and 600s proxy read/send timeouts for `/api/v1/ingest` only. The main Ingress keeps nginx's default 1 MB body limit.
+
+Annual COTAHIST ingest is memory-heavy: the service holds the parsed rows in process memory before writing Parquet. Production requests **4Gi** and limits **8Gi**. A Cloudflare **502** during ingest with pod exit **137** / `OOMKilled` means the limit was hit, not that the ZIP was invalid. Trailer lines (`TIPOREG=99`) log a parse warning and are expected.
 
 A `413` HTML page from nginx on that path means the request was rejected before the pod. If TLS terminates on another nginx in front of this Ingress, that hop needs `client_max_body_size 500m` as well.
