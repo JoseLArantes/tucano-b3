@@ -3,8 +3,26 @@ name: CI & Docker Build
 on:
   push:
     branches: [dev, master, main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "docusaurus/**"
+      - "deploy/**"
+      - "contrib/**"
+      - "LICENSE"
+      - ".gitignore"
+      - ".env.example"
   # pull_request:
   #   branches: [dev, master, main]
+  #   paths-ignore:
+  #     - "**.md"
+  #     - "docs/**"
+  #     - "docusaurus/**"
+  #     - "deploy/**"
+  #     - "contrib/**"
+  #     - "LICENSE"
+  #     - ".gitignore"
+  #     - ".env.example"
   workflow_dispatch:
 
 env:
@@ -85,7 +103,7 @@ jobs:
 
       - name: Log into GitHub Container Registry (${{ env.REGISTRY }})
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -121,7 +139,7 @@ jobs:
 
       - name: Log into GitHub Container Registry (${{ env.REGISTRY }})
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
