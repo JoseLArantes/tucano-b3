@@ -35,10 +35,9 @@ pub fn build_router(
     metrics: Arc<AppMetrics>,
     start_time: std::time::Instant,
 ) -> Router {
-    let health_state = Arc::new(crate::api::health::AppState::new(
-        data_loader.clone(),
-        cache.clone(),
-    ));
+    let mut app_state = crate::api::health::AppState::new(data_loader.clone(), cache.clone());
+    app_state.object_storage = config.object_storage.clone();
+    let health_state = Arc::new(app_state);
 
     let request_timeout = Duration::from_secs(config.server.request_timeout_seconds);
 

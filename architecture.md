@@ -27,7 +27,7 @@ src/
 ├── api/                    # HTTP transport adapters & Utoipa OpenAPI 3.0 specification
 │   ├── cotahist.rs         # Tickers, quotes, latest, compact series, min/max, date quotes
 │   ├── ibov.rs             # IBOVESPA history and latest point handlers
-│   ├── ingest.rs           # Multipart ZIP upload & server folder ingestion handlers
+│   ├── ingest.rs           # ZIP upload, local folder, and S3/R2 bucket ingestion handlers
 │   ├── health.rs           # Liveness/readiness probe (/health, /api/v1/health)
 │   ├── info.rs             # Dataset & runtime metadata (/api/v1/info)
 │   ├── metrics.rs          # Prometheus scrape endpoint (/metrics, /api/v1/metrics)
@@ -86,7 +86,9 @@ Requests traverse the Tower layer stack from outer to inner on ingress, and inne
 
 ### 3.2. Ingestion Engine (`src/ingest/`, `src/ledger/`)
 
-When `POST /api/v1/ingest/upload` or `POST /api/v1/ingest/folder` is invoked:
+When `POST /api/v1/ingest/upload`, `POST /api/v1/ingest/folder`, or `POST /api/v1/ingest/bucket` is invoked:
+
+`/ingest/bucket` lists COTAHIST `.ZIP` keys in the S3-compatible bucket configured by `TUCANO_S3_*` (Cloudflare R2 uses region `auto` and path-style addressing) and downloads them one at a time. It does not run unless that endpoint is called.
 
 1. **Discovery & Extraction (`zip_handler.rs`)**: Scans the target directory for both `.ZIP` archives and `.TXT` files (or reads uploaded multipart bytes), validating archive size limits (`max 500 MB` compressed) and extracting `COTAHIST*.TXT` members.
 2. **Streaming Positional Parsing (`cotahist_parser.rs`)**: Reads lines using a `1 MB` `BufReader`, decodes ISO-8859-1 (Latin-1) or UTF-8 bytes, filters for quote records (`TIPOREG == "01"`), normalizes tickers, and converts implied decimal integers using `FAT_COTACAO`.

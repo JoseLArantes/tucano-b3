@@ -45,6 +45,11 @@ config:
   cacheEnabled: "true"
   cacheTtl: "300"
   cacheMaxEntries: "10000"
+  s3Endpoint: ""
+  s3Bucket: ""
+  s3Region: "auto"
+  s3Prefix: ""
+  s3ForcePathStyle: "true"
 
 persistence:
   enabled: true

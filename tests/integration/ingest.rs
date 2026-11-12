@@ -121,4 +121,29 @@ async fn test_ingest_endpoints_in_openapi() {
     let paths = json["paths"].as_object().unwrap();
     assert!(paths.contains_key("/ingest/upload"));
     assert!(paths.contains_key("/ingest/folder"));
+    assert!(paths.contains_key("/ingest/bucket"));
+}
+
+#[tokio::test]
+async fn test_bucket_without_configuration_returns_400() {
+    let app = test_app();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/ingest/bucket")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let message = json["error"]["message"].as_str().unwrap_or_default();
+    assert!(message.contains("TUCANO_S3_ENDPOINT"));
 }

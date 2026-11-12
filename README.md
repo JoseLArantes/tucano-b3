@@ -164,7 +164,7 @@ format = "json" # "json" ou "pretty"
 enabled = true
 ```
 
-> **Sobrescrita via Variáveis de Ambiente:** Qualquer chave do `config.toml` pode ser sobrescrita via variáveis de ambiente: `TUCANO_SERVER_HOST`, `TUCANO_SERVER_PORT`, `TUCANO_SERVER_WORKERS`, `TUCANO_DATA_DIR`, `TUCANO_CACHE_ENABLED`, `TUCANO_CACHE_TTL`, `TUCANO_CACHE_MAX_ENTRIES`, `TUCANO_LOG_LEVEL` e `TUCANO_LOG_FORMAT`.
+> **Sobrescrita via Variáveis de Ambiente:** Qualquer chave do `config.toml` pode ser sobrescrita via variáveis de ambiente: `TUCANO_SERVER_HOST`, `TUCANO_SERVER_PORT`, `TUCANO_SERVER_WORKERS`, `TUCANO_DATA_DIR`, `TUCANO_CACHE_ENABLED`, `TUCANO_CACHE_TTL`, `TUCANO_CACHE_MAX_ENTRIES`, `TUCANO_LOG_LEVEL`, `TUCANO_LOG_FORMAT`, `TUCANO_S3_ENDPOINT`, `TUCANO_S3_BUCKET`, `TUCANO_S3_REGION`, `TUCANO_S3_ACCESS_KEY_ID`, `TUCANO_S3_SECRET_ACCESS_KEY`, `TUCANO_S3_PREFIX` e `TUCANO_S3_FORCE_PATH_STYLE`.
 
 ### Compilação e Execução Nativa
 
@@ -207,7 +207,7 @@ docker run -d \
 
 ## Ingestão de Dados
 
-O Tucano-B3 possui dois métodos integrados via API para ingerir arquivos `COTAHIST` da B3 (tanto arquivos `.ZIP` quanto `.TXT` descompactados).
+O Tucano-B3 possui três métodos integrados via API para ingerir arquivos `COTAHIST` da B3 (arquivos `.ZIP` e, na pasta local, também `.TXT` descompactados). Nenhum deles roda sozinho: a ingestão começa quando o endpoint correspondente é chamado.
 
 ### Ingestão em Lote a partir de uma Pasta Local (`POST /api/v1/ingest/folder`)
 
@@ -247,6 +247,35 @@ curl -X POST "http://localhost:8080/api/v1/ingest/folder" \
   }
 }
 ```
+
+### Ingestão a partir de object storage S3 (`POST /api/v1/ingest/bucket`)
+
+Coloque os arquivos `.ZIP` do COTAHIST em um bucket compatível com S3. Cloudflare R2 usa o endpoint da conta, a região `auto` e endereçamento path-style. O serviço só baixa e ingere esses arquivos quando `POST /api/v1/ingest/bucket` é chamado.
+
+O nome do objeto precisa conter `COTAHIST` e terminar em `.ZIP` (por exemplo `cotahist/COTAHIST_A2025.ZIP`). Cada ZIP pode ter no máximo 500 MB. Pregões já registrados no ledger são ignorados.
+
+```bash
+# .env ou ambiente do processo
+TUCANO_S3_ENDPOINT=https://<account_id>.r2.cloudflarestorage.com
+TUCANO_S3_BUCKET=cotahist
+TUCANO_S3_REGION=auto
+TUCANO_S3_ACCESS_KEY_ID=...
+TUCANO_S3_SECRET_ACCESS_KEY=...
+TUCANO_S3_PREFIX=cotahist/
+TUCANO_S3_FORCE_PATH_STYLE=true
+
+# Usa o prefixo configurado. O corpo pode ser omitido.
+curl -X POST "http://localhost:8080/api/v1/ingest/bucket" \
+  -H "Authorization: Bearer $TUCANO_B3_TOKEN"
+
+# Prefixo só desta execução. Não altera a configuração.
+curl -X POST "http://localhost:8080/api/v1/ingest/bucket" \
+  -H "Authorization: Bearer $TUCANO_B3_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"prefix": "cotahist/2025/"}'
+```
+
+Sem `TUCANO_S3_ENDPOINT`, `TUCANO_S3_BUCKET`, `TUCANO_S3_ACCESS_KEY_ID` e `TUCANO_S3_SECRET_ACCESS_KEY`, a rota responde `400`.
 
 ### Ingestão via Upload de Arquivo (`POST /api/v1/ingest/upload`)
 
@@ -305,6 +334,7 @@ Todas as rotas da API — **exceto** `/health`, `/api/v1/health` e `/api/docs/*`
 | `GET` | `/api/v1/ibov/latest` | Protegida | Ponto mais recente disponível do índice IBOVESPA |
 | `POST` | `/api/v1/ingest/upload` | Protegida | Upload e ingestão incremental de arquivo `.ZIP` do COTAHIST |
 | `POST` | `/api/v1/ingest/folder` | Protegida | Varredura e ingestão incremental de pasta local no servidor |
+| `POST` | `/api/v1/ingest/bucket` | Protegida | Ingestão sob demanda dos `.ZIP` COTAHIST em bucket S3 compatível (R2) |
 | `GET` | `/metrics` ou `/api/v1/metrics` | Protegida | Métricas no formato texto do Prometheus |
 
 > **Analytics COTAHIST:** retornos, stats, drawdown, relative, movers, gaps, rolling, spread, liquidity e compare são **indicadores derivados** de preços nominais. Não possuem ajuste por eventos corporativos e não são séries oficiais da B3.

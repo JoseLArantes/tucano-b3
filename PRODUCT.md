@@ -22,7 +22,7 @@ The product is a single deployable binary with no mandatory external database se
 
 ### In scope
 
-- COTAHIST ingestion from ZIP or folder, with streaming parse, Latin-1 handling, implied decimals / `FATCOT`, and idempotent trading-date ledger control.
+- COTAHIST ingestion from ZIP upload, a local folder, or an S3-compatible bucket (including Cloudflare R2), with streaming parse, Latin-1 handling, implied decimals / `FATCOT`, and idempotent trading-date ledger control. Bucket ingestion runs only when `POST /api/v1/ingest/bucket` is called.
 - COTAHIST REST: ticker discovery, quote history, latest, date ranges, compact series, extremes, and additive analytics derived from nominal prices.
 - IBOV REST: historical series, latest point, and date-range queries.
 - In-memory query cache (TTL + LRU), Bearer/API-key auth, per-key and per-IP rate limiting.

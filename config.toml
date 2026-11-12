@@ -25,3 +25,14 @@ format = "json"
 [metrics]
 enabled = true
 
+# Opcional. A ingestão do bucket só roda em POST /api/v1/ingest/bucket.
+# Prefira as variáveis TUCANO_S3_* para credenciais.
+[object_storage]
+endpoint = ""
+bucket = ""
+region = "auto"
+access_key_id = ""
+secret_access_key = ""
+prefix = ""
+force_path_style = true
+

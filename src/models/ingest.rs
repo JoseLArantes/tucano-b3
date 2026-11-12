@@ -22,6 +22,18 @@ pub struct FolderIngestRequest {
     pub caminho: String,
 }
 
+/// Corpo opcional de `POST /ingest/bucket`.
+///
+/// O bucket, o endpoint e as credenciais vêm das variáveis `TUCANO_S3_*`.
+/// A ingestão só ocorre quando este endpoint é chamado.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct BucketIngestRequest {
+    /// Prefixo das chaves no bucket. Se omitido, usa `TUCANO_S3_PREFIX`.
+    /// Exemplo: `cotahist/`.
+    #[serde(default)]
+    pub prefix: Option<String>,
+}
+
 /// Request body para upload de arquivo COTAHIST (Swagger UI / OpenAPI).
 #[derive(Debug, ToSchema)]
 pub struct UploadFileRequest {

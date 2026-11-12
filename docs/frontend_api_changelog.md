@@ -4,6 +4,13 @@
 
 ### Added
 
+- `POST /api/v1/ingest/bucket`
+  - Triggers ingestion of COTAHIST `.ZIP` files stored in an S3-compatible bucket (Cloudflare R2).
+  - Optional body: `{ "prefix": "cotahist/" }`. Omit the body to use `TUCANO_S3_PREFIX`.
+  - `400` when object storage is not configured or no COTAHIST ZIP is found.
+  - Success body matches the other ingest routes (`task_id`, `files_processed`, `total_records_parsed`, `total_records_new`, `total_records_skipped`, `success`, `message`).
+  - Compatibility: additive. OpenAPI title is `API dados de mercado da B3`.
+
 - COTAHIST analytics (additive; all use nominal unadjusted prices and include `aviso`):
   - `GET /api/v1/cotahist/tickers/{ticker}/returns` — period return / annualized return (`desde` required).
   - `GET /api/v1/cotahist/tickers/{ticker}/stats` — market-card aggregates (extremes, vol, ADV, ATR proxy).

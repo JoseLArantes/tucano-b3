@@ -56,7 +56,7 @@ async fn test_openapi_json_is_valid() {
 
     // Verify structure
     assert_eq!(json["openapi"], "3.0.3");
-    assert_eq!(json["info"]["title"], "tucano-b3");
+    assert_eq!(json["info"]["title"], "API dados de mercado da B3");
     assert!(json["paths"].is_object());
     assert!(json["components"]["schemas"].is_object());
 }

@@ -13,6 +13,7 @@ use std::time::Instant;
 use utoipa::ToSchema;
 
 use crate::cache::store::CacheStore;
+use crate::config::ObjectStorageConfig;
 use crate::data::reload::DataLoader;
 
 /// Shared application state.
@@ -24,6 +25,8 @@ pub struct AppState {
     pub version: String,
     pub data_loader: Arc<DataLoader>,
     pub cache: Arc<CacheStore>,
+    /// S3-compatible bucket used by `POST /api/v1/ingest/bucket`.
+    pub object_storage: ObjectStorageConfig,
 }
 
 impl AppState {
@@ -34,6 +37,7 @@ impl AppState {
             version: env!("CARGO_PKG_VERSION").to_string(),
             data_loader,
             cache,
+            object_storage: ObjectStorageConfig::default(),
         }
     }
 }

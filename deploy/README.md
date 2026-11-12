@@ -77,6 +77,22 @@ kubectl apply -f /tmp/tucano-b3-secret.yaml -n tucano-services
 
 Vault/ESO for app secrets is optional (`vault.enabled: false` by default).
 
+### Object storage (Cloudflare R2)
+
+`POST /api/v1/ingest/bucket` reads COTAHIST `.ZIP` objects from an S3-compatible bucket. It does not run on a timer.
+
+| Variable | Where | Purpose |
+|---|---|---|
+| `TUCANO_S3_ENDPOINT` | ConfigMap | `https://<account_id>.r2.cloudflarestorage.com` |
+| `TUCANO_S3_BUCKET` | ConfigMap | Bucket name |
+| `TUCANO_S3_REGION` | ConfigMap | `auto` for R2 |
+| `TUCANO_S3_PREFIX` | ConfigMap | Optional key prefix, such as `cotahist/` |
+| `TUCANO_S3_FORCE_PATH_STYLE` | ConfigMap | `true` for R2 |
+| `TUCANO_S3_ACCESS_KEY_ID` | Secret | R2 access key |
+| `TUCANO_S3_SECRET_ACCESS_KEY` | Secret | R2 secret |
+
+Set the non-secret values in `deploy/helm/values-production.yaml` (`config.s3*`). Put the keys in `tucano-b3-secret` (see `deploy/secret.example.yaml`). A call with an empty body uses the configured prefix; `{"prefix":"cotahist/2025/"}` overrides it for that request only.
+
 ---
 
 ## 4. Helm (manual)

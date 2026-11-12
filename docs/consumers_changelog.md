@@ -4,6 +4,13 @@
 
 ### Added
 
+- `POST /api/v1/ingest/bucket`
+  - Ingests COTAHIST `.ZIP` objects from S3-compatible storage (Cloudflare R2).
+  - Configuration is environment-only for credentials: `TUCANO_S3_ENDPOINT`, `TUCANO_S3_BUCKET`, `TUCANO_S3_REGION` (`auto` for R2), `TUCANO_S3_ACCESS_KEY_ID`, `TUCANO_S3_SECRET_ACCESS_KEY`, optional `TUCANO_S3_PREFIX`, `TUCANO_S3_FORCE_PATH_STYLE` (default true).
+  - Does not run on a schedule. Optional JSON body `{"prefix":"cotahist/"}` overrides the configured prefix for that call.
+  - Same idempotent trading-date ledger and 500 MB ZIP limit as upload. Response envelope is unchanged (`IngestResponse`).
+  - Compatibility: additive. OpenAPI `info.title` is now `API dados de mercado da B3`.
+
 - COTAHIST analytics (additive; all use nominal unadjusted prices and include `aviso`):
   - `GET /api/v1/cotahist/tickers/{ticker}/returns` — period return / annualized return (`desde` required).
   - `GET /api/v1/cotahist/tickers/{ticker}/stats` — market-card aggregates (extremes, vol, ADV, ATR proxy).

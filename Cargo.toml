@@ -56,6 +56,13 @@ prometheus = "0.13"
 config = "0.14"
 toml = "0.8"
 
+# S3-compatible object storage (Cloudflare R2 and others).
+# rusty-s3 0.8 stays on the crate MSRV (Rust 1.81). Newer AWS SDK releases require Rust 1.86+.
+rusty-s3 = "=0.8.1"
+url = "2"
+percent-encoding = "2"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+
 # Utilities
 chrono = { version = "0.4", features = ["serde"] }
 chrono-tz = "0.10"

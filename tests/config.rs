@@ -73,6 +73,46 @@ fn test_env_override_log_level() {
 }
 
 #[test]
+fn test_env_override_object_storage() {
+    let _lock = ENV_MUTEX.lock().unwrap();
+    std::env::set_var(
+        "TUCANO_S3_ENDPOINT",
+        "https://example.r2.cloudflarestorage.com/",
+    );
+    std::env::set_var("TUCANO_S3_BUCKET", "cotahist");
+    std::env::set_var("TUCANO_S3_REGION", "auto");
+    std::env::set_var("TUCANO_S3_ACCESS_KEY_ID", "key-id");
+    std::env::set_var("TUCANO_S3_SECRET_ACCESS_KEY", "super-secret-value");
+    std::env::set_var("TUCANO_S3_PREFIX", "/cotahist/");
+    std::env::set_var("TUCANO_S3_FORCE_PATH_STYLE", "true");
+
+    let config = AppConfig::load(None).unwrap();
+    assert_eq!(
+        config.object_storage.endpoint,
+        "https://example.r2.cloudflarestorage.com"
+    );
+    assert_eq!(config.object_storage.bucket, "cotahist");
+    assert_eq!(config.object_storage.prefix, "cotahist/");
+    assert!(config.object_storage.force_path_style);
+    assert!(config.object_storage.is_configured());
+    let debug = format!("{:?}", config.object_storage);
+    assert!(debug.contains("<redacted>"));
+    assert!(!debug.contains("super-secret-value"));
+
+    for key in [
+        "TUCANO_S3_ENDPOINT",
+        "TUCANO_S3_BUCKET",
+        "TUCANO_S3_REGION",
+        "TUCANO_S3_ACCESS_KEY_ID",
+        "TUCANO_S3_SECRET_ACCESS_KEY",
+        "TUCANO_S3_PREFIX",
+        "TUCANO_S3_FORCE_PATH_STYLE",
+    ] {
+        std::env::remove_var(key);
+    }
+}
+
+#[test]
 fn test_validation_zero_port() {
     let mut config = AppConfig::default();
     config.server.port = 0;

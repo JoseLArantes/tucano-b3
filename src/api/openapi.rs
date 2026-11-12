@@ -44,7 +44,7 @@ impl Modify for SecurityAddon {
 #[derive(OpenApi)]
 #[openapi(
     info(
-        title = "tucano-b3",
+        title = "API dados de mercado da B3",
         version = "0.1.0",
         description = "API REST de alta performance para dados oficiais de mercado da B3 (Brasil, Bolsa, Balcão).\n\n\
 ## Capabilidades\n\n\
@@ -60,7 +60,7 @@ Indicadores calculados sobre PREULT/OHLCV COTAHIST — **não** são séries ofi
 ### IBOV\n\
 Série histórica e ponto mais recente do índice IBOVESPA.\n\n\
 ### Ingestão e operações\n\
-Upload/pasta de arquivos COTAHIST (`.ZIP`/`.TXT`) com idempotência por data de pregão, health, info do dataset e métricas Prometheus.\n\n\
+Upload, pasta local ou bucket S3 compatível (Cloudflare R2) de arquivos COTAHIST (`.ZIP`/`.TXT`) com idempotência por data de pregão. A ingestão do bucket só ocorre em `POST /ingest/bucket`. Health, info do dataset e métricas Prometheus.\n\n\
 ### Contratos e limitações\n\
 - Preços COTAHIST são **nominais** (sem ajuste retroativo por eventos corporativos).\n\
 - Autenticação Bearer / API Key nas rotas protegidas; `/health` e `/api/docs` são públicos.\n\
@@ -111,6 +111,7 @@ Upload/pasta de arquivos COTAHIST (`.ZIP`/`.TXT`) com idempotência por data de 
         // Ingestion endpoints
         crate::api::ingest::upload_handler,
         crate::api::ingest::folder_handler,
+        crate::api::ingest::bucket_handler,
     ),
     components(
         schemas(
@@ -177,6 +178,7 @@ Upload/pasta de arquivos COTAHIST (`.ZIP`/`.TXT`) com idempotência por data de 
             // Ingest
             crate::models::ingest::IngestResponse,
             crate::models::ingest::FolderIngestRequest,
+            crate::models::ingest::BucketIngestRequest,
             crate::models::ingest::UploadFileRequest,
             // Health
             crate::api::health::HealthResponse,

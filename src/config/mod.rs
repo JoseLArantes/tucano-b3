@@ -22,6 +22,9 @@ pub struct AppConfig {
     pub metrics: MetricsConfig,
     #[serde(default)]
     pub auth: AuthConfig,
+    /// S3-compatible bucket used by `POST /api/v1/ingest/bucket`. Disabled until configured.
+    #[serde(default)]
+    pub object_storage: ObjectStorageConfig,
 }
 
 /// HTTP server configuration.
@@ -92,6 +95,76 @@ pub struct AuthConfig {
     /// Tokens adicionais permitidos (ex: TUCANO_B3_READ_TOKEN, TUCANO_B3_ADMIN_TOKEN)
     #[serde(default)]
     pub allowed_tokens: Vec<String>,
+}
+
+/// S3-compatible object storage (AWS S3, Cloudflare R2, MinIO).
+///
+/// Credentials and the endpoint come from the environment. Ingestion does not
+/// run until `POST /api/v1/ingest/bucket` is called.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ObjectStorageConfig {
+    /// Base URL, for example `https://<account>.r2.cloudflarestorage.com`.
+    pub endpoint: String,
+    /// Bucket that holds COTAHIST `.ZIP` archives.
+    pub bucket: String,
+    /// Signing region. Cloudflare R2 uses `auto`.
+    pub region: String,
+    /// Access key id.
+    pub access_key_id: String,
+    /// Secret access key. Omitted from debug output.
+    pub secret_access_key: String,
+    /// Key prefix inside the bucket. Empty lists from the bucket root.
+    pub prefix: String,
+    /// Path-style addressing. Required by Cloudflare R2 and other non-AWS endpoints.
+    pub force_path_style: bool,
+}
+
+impl Default for ObjectStorageConfig {
+    fn default() -> Self {
+        Self {
+            endpoint: String::new(),
+            bucket: String::new(),
+            region: "auto".to_string(),
+            access_key_id: String::new(),
+            secret_access_key: String::new(),
+            prefix: String::new(),
+            force_path_style: true,
+        }
+    }
+}
+
+impl std::fmt::Debug for ObjectStorageConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ObjectStorageConfig")
+            .field("endpoint", &self.endpoint)
+            .field("bucket", &self.bucket)
+            .field("region", &self.region)
+            .field("access_key_id_set", &!self.access_key_id.is_empty())
+            .field("secret_access_key", &"<redacted>")
+            .field("prefix", &self.prefix)
+            .field("force_path_style", &self.force_path_style)
+            .finish()
+    }
+}
+
+impl ObjectStorageConfig {
+    /// True when the endpoint, bucket, and both credentials are present.
+    pub fn is_configured(&self) -> bool {
+        !self.endpoint.trim().is_empty()
+            && !self.bucket.trim().is_empty()
+            && !self.access_key_id.trim().is_empty()
+            && !self.secret_access_key.trim().is_empty()
+    }
+
+    /// Signing region, falling back to `auto` (Cloudflare R2).
+    pub fn region(&self) -> &str {
+        let region = self.region.trim();
+        if region.is_empty() {
+            "auto"
+        } else {
+            region
+        }
+    }
 }
 
 impl AuthConfig {
@@ -246,6 +319,30 @@ impl AppConfig {
                 self.auth.allowed_tokens.push(trimmed.to_string());
             }
         }
+        if let Ok(val) = std::env::var("TUCANO_S3_ENDPOINT") {
+            self.object_storage.endpoint = val.trim().trim_end_matches('/').to_string();
+        }
+        if let Ok(val) = std::env::var("TUCANO_S3_BUCKET") {
+            self.object_storage.bucket = val.trim().to_string();
+        }
+        if let Ok(val) = std::env::var("TUCANO_S3_REGION") {
+            self.object_storage.region = val.trim().to_string();
+        }
+        if let Ok(val) = std::env::var("TUCANO_S3_ACCESS_KEY_ID") {
+            self.object_storage.access_key_id = val.trim().to_string();
+        }
+        if let Ok(val) = std::env::var("TUCANO_S3_SECRET_ACCESS_KEY") {
+            self.object_storage.secret_access_key = val.trim().to_string();
+        }
+        if let Ok(val) = std::env::var("TUCANO_S3_PREFIX") {
+            self.object_storage.prefix = val.trim().trim_start_matches('/').to_string();
+        }
+        if let Ok(val) = std::env::var("TUCANO_S3_FORCE_PATH_STYLE") {
+            self.object_storage.force_path_style = matches!(
+                val.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            );
+        }
     }
 
     /// Validate configuration values.
@@ -298,6 +395,7 @@ impl Default for AppConfig {
             },
             metrics: MetricsConfig { enabled: true },
             auth: AuthConfig::default(),
+            object_storage: ObjectStorageConfig::default(),
         }
     }
 }

@@ -14,3 +14,8 @@ data:
   TUCANO_CACHE_ENABLED: {{ .Values.config.cacheEnabled | quote }}
   TUCANO_CACHE_TTL: {{ .Values.config.cacheTtl | quote }}
   TUCANO_CACHE_MAX_ENTRIES: {{ .Values.config.cacheMaxEntries | quote }}
+  TUCANO_S3_ENDPOINT: {{ .Values.config.s3Endpoint | quote }}
+  TUCANO_S3_BUCKET: {{ .Values.config.s3Bucket | quote }}
+  TUCANO_S3_REGION: {{ .Values.config.s3Region | quote }}
+  TUCANO_S3_PREFIX: {{ .Values.config.s3Prefix | quote }}
+  TUCANO_S3_FORCE_PATH_STYLE: {{ .Values.config.s3ForcePathStyle | quote }}
