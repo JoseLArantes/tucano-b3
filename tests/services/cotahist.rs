@@ -114,4 +114,47 @@ async fn test_cotahist_service_operations() {
             .expect("get_quotes_by_date failed");
     assert_eq!(total_date, 3); // VALE3, PETR4, ITUB4 on 2026-01-01
     assert_eq!(date_quotes.len(), 3);
+
+    // 6. Compact series for charts
+    let series = CotahistService::get_series(
+        &query_service,
+        &registry,
+        "VALE3",
+        "2026-01-01",
+        Some("2026-01-02"),
+    )
+    .await
+    .expect("get_series failed");
+    assert_eq!(series.ticker, "VALE3");
+    assert_eq!(series.series.len(), 2);
+    assert!(series.series[0].date_ms < series.series[1].date_ms);
+    assert!(series.series[0].pre_ult.is_some());
+    assert!(series.series[0].vol_tot.is_some());
+    assert!(series.series[0].tot_neg.is_some());
+    // 2026-01-01 UTC midnight
+    assert_eq!(series.series[0].date_ms, 1_767_225_600_000);
+
+    // 7. Min / max pre_ult in period
+    let min = CotahistService::get_pre_ult_min(
+        &query_service,
+        &registry,
+        "VALE3",
+        "2026-01-01",
+        Some("2026-01-02"),
+    )
+    .await
+    .expect("get_pre_ult_min failed");
+    let max = CotahistService::get_pre_ult_max(
+        &query_service,
+        &registry,
+        "VALE3",
+        "2026-01-01",
+        Some("2026-01-02"),
+    )
+    .await
+    .expect("get_pre_ult_max failed");
+    assert_eq!(min.pre_ult, 62.17);
+    assert_eq!(min.data, "2026-01-01");
+    assert_eq!(max.pre_ult, 62.30);
+    assert_eq!(max.data, "2026-01-02");
 }

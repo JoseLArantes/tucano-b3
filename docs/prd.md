@@ -425,6 +425,70 @@ Get historical quotes for a ticker with filters.
 }
 ```
 
+#### `GET /api/v1/cotahist/tickers/{ticker}/series`
+
+Compact historical series for charts. Returns only `date_ms`, `pre_ult`, `vol_tot`, and `tot_neg`, ordered ascending by date. No pagination.
+
+**Query parameters:**
+
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `desde` | date | — | **Required.** Start date (YYYY-MM-DD) |
+| `ate` | date | — | End date (YYYY-MM-DD). If omitted, all sessions from `desde` onward |
+
+**Response:**
+```json
+{
+  "data": {
+    "ticker": "VALE3",
+    "desde": "2026-01-01",
+    "ate": "2026-01-31",
+    "series": [
+      {
+        "date_ms": 1767225600000,
+        "pre_ult": 61.50,
+        "vol_tot": 1500000000.0,
+        "tot_neg": 200000
+      }
+    ]
+  }
+}
+```
+
+`date_ms` is the trading date at UTC midnight as Unix epoch milliseconds.
+
+#### `GET /api/v1/cotahist/tickers/{ticker}/pre-ult/min`
+
+Minimum closing price (`pre_ult`) for a ticker in a period. On ties, returns the earliest date.
+
+**Query parameters:**
+
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `desde` | date | — | **Required.** Start date (YYYY-MM-DD) |
+| `ate` | date | — | End date (YYYY-MM-DD). If omitted, all sessions from `desde` onward |
+
+**Response:**
+```json
+{
+  "data": {
+    "ticker": "VALE3",
+    "desde": "2026-01-01",
+    "ate": "2026-01-31",
+    "data": "2026-01-02",
+    "pre_ult": 61.20
+  }
+}
+```
+
+#### `GET /api/v1/cotahist/tickers/{ticker}/pre-ult/max`
+
+Maximum closing price (`pre_ult`) for a ticker in a period. On ties, returns the earliest date.
+
+**Query parameters:** same as `pre-ult/min`.
+
+**Response:** same shape as `pre-ult/min`, with the period maximum.
+
 #### `GET /api/v1/cotahist/tickers/{ticker}/latest`
 
 Get the latest quote for a ticker. Shortcut for `quotes?dias=1`.

@@ -86,6 +86,9 @@ async fn test_openapi_has_all_endpoints() {
     assert!(paths.contains_key("/cotahist/tickers/{ticker}"));
     assert!(paths.contains_key("/cotahist/tickers/{ticker}/quotes"));
     assert!(paths.contains_key("/cotahist/tickers/{ticker}/latest"));
+    assert!(paths.contains_key("/cotahist/tickers/{ticker}/series"));
+    assert!(paths.contains_key("/cotahist/tickers/{ticker}/pre-ult/min"));
+    assert!(paths.contains_key("/cotahist/tickers/{ticker}/pre-ult/max"));
     assert!(paths.contains_key("/cotahist/dates/{date}/quotes"));
 
     // IBOV endpoints

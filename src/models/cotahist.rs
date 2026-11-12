@@ -90,3 +90,45 @@ pub struct DateQuotesResponse {
     pub quotes: Vec<QuoteResponse>,
     pub paginacao: PaginationMeta,
 }
+
+/// Compact daily point for historical charts.
+///
+/// `date_ms` is the trading date at UTC midnight as Unix epoch milliseconds.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SeriesPoint {
+    /// Data do pregão em milissegundos (Unix epoch, UTC 00:00)
+    pub date_ms: i64,
+    /// Preço de fechamento (PREULT)
+    pub pre_ult: Option<f64>,
+    /// Volume total negociado em R$ (VOLTOT)
+    pub vol_tot: Option<f64>,
+    /// Quantidade total de negócios (TOTNEG)
+    pub tot_neg: Option<u32>,
+}
+
+/// Response for the compact historical series endpoint.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SeriesResponse {
+    pub ticker: String,
+    /// Data inicial solicitada (AAAA-MM-DD)
+    pub desde: String,
+    /// Data final solicitada, se informada (AAAA-MM-DD)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ate: Option<String>,
+    pub series: Vec<SeriesPoint>,
+}
+
+/// Extreme (min or max) closing price for a period.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PreUltExtremeResponse {
+    pub ticker: String,
+    /// Data inicial do período (AAAA-MM-DD)
+    pub desde: String,
+    /// Data final do período, se informada (AAAA-MM-DD)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ate: Option<String>,
+    /// Data do pregão em que o extremo ocorreu (AAAA-MM-DD)
+    pub data: String,
+    /// Preço de fechamento extremo (PREULT)
+    pub pre_ult: f64,
+}

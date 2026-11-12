@@ -50,6 +50,9 @@ curl http://localhost:8080/api/v1/ibov/history?dias=5
 | GET | `/api/v1/cotahist/tickers/{ticker}` | Detalhe do ticker |
 | GET | `/api/v1/cotahist/tickers/{ticker}/quotes` | Histórico de cotações |
 | GET | `/api/v1/cotahist/tickers/{ticker}/latest` | Última cotação |
+| GET | `/api/v1/cotahist/tickers/{ticker}/series` | Série compacta para gráficos |
+| GET | `/api/v1/cotahist/tickers/{ticker}/pre-ult/min` | Menor PREULT no período |
+| GET | `/api/v1/cotahist/tickers/{ticker}/pre-ult/max` | Maior PREULT no período |
 | GET | `/api/v1/cotahist/dates/{date}/quotes` | Cotações por data |
 | GET | `/api/v1/ibov/history` | Série histórica IBOV |
 | GET | `/api/v1/ibov/latest` | Último dado IBOV |

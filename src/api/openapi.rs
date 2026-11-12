@@ -57,12 +57,19 @@ impl Modify for SecurityAddon {
     servers(
         (url = "/api/v1", description = "Servidor principal"),
     ),
+    security(
+        ("BearerAuth" = []),
+        ("ApiKeyAuth" = []),
+    ),
     paths(
         // COTAHIST endpoints
         crate::api::cotahist::list_tickers_handler,
         crate::api::cotahist::get_ticker_handler,
         crate::api::cotahist::get_quotes_handler,
         crate::api::cotahist::get_latest_handler,
+        crate::api::cotahist::get_series_handler,
+        crate::api::cotahist::get_pre_ult_min_handler,
+        crate::api::cotahist::get_pre_ult_max_handler,
         crate::api::cotahist::get_date_quotes_handler,
         // IBOV endpoints
         crate::api::ibov::history_handler,
@@ -82,6 +89,8 @@ impl Modify for SecurityAddon {
             QuoteListApiResponse,
             LatestQuoteApiResponse,
             DateQuotesApiResponse,
+            SeriesApiResponse,
+            PreUltExtremeApiResponse,
             IbovHistoryApiResponse,
             IbovLatestApiResponse,
             IngestApiResponse,
@@ -98,6 +107,9 @@ impl Modify for SecurityAddon {
             QuoteListResponse,
             LatestQuoteResponse,
             DateQuotesResponse,
+            SeriesPoint,
+            SeriesResponse,
+            PreUltExtremeResponse,
             // IBOV
             IbovHistoryEntry,
             IbovHistoryResponse,

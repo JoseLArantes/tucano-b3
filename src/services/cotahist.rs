@@ -325,12 +325,194 @@ impl CotahistService {
         Ok((quotes, total))
     }
 
+    /// Get a compact historical series for charts (date_ms, pre_ult, vol_tot, tot_neg).
+    ///
+    /// `desde` is required. Results are ordered ascending by date (chart-friendly).
+    /// No pagination: the payload is intentionally slim for graph rendering.
+    pub async fn get_series(
+        query_service: &QueryService,
+        registry: &TickerRegistry,
+        ticker: &str,
+        desde: &str,
+        ate: Option<&str>,
+    ) -> AppResult<SeriesResponse> {
+        let upper = ticker.to_uppercase();
+
+        if !registry.exists(&upper) {
+            return Err(AppError::TickerNotFound { ticker: upper });
+        }
+
+        Self::validate_period(desde, ate)?;
+
+        if !query_service.has_table("cotahist") {
+            return Ok(SeriesResponse {
+                ticker: upper,
+                desde: desde.to_string(),
+                ate: ate.map(str::to_string),
+                series: Vec::new(),
+            });
+        }
+
+        let where_clause = Self::period_where(&upper, desde, ate);
+        let sql = format!(
+            "SELECT date, pre_ult, vol_tot, tot_neg \
+             FROM cotahist {where_clause} \
+             ORDER BY date ASC"
+        );
+
+        let batches = query_service
+            .execute_sql(&sql)
+            .await
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("{}", e)))?;
+
+        let series = Self::extract_series(&batches);
+
+        Ok(SeriesResponse {
+            ticker: upper,
+            desde: desde.to_string(),
+            ate: ate.map(str::to_string),
+            series,
+        })
+    }
+
+    /// Get the minimum closing price (`pre_ult`) for a ticker in a period.
+    pub async fn get_pre_ult_min(
+        query_service: &QueryService,
+        registry: &TickerRegistry,
+        ticker: &str,
+        desde: &str,
+        ate: Option<&str>,
+    ) -> AppResult<PreUltExtremeResponse> {
+        Self::get_pre_ult_extreme(query_service, registry, ticker, desde, ate, true).await
+    }
+
+    /// Get the maximum closing price (`pre_ult`) for a ticker in a period.
+    pub async fn get_pre_ult_max(
+        query_service: &QueryService,
+        registry: &TickerRegistry,
+        ticker: &str,
+        desde: &str,
+        ate: Option<&str>,
+    ) -> AppResult<PreUltExtremeResponse> {
+        Self::get_pre_ult_extreme(query_service, registry, ticker, desde, ate, false).await
+    }
+
+    async fn get_pre_ult_extreme(
+        query_service: &QueryService,
+        registry: &TickerRegistry,
+        ticker: &str,
+        desde: &str,
+        ate: Option<&str>,
+        is_min: bool,
+    ) -> AppResult<PreUltExtremeResponse> {
+        let upper = ticker.to_uppercase();
+
+        if !registry.exists(&upper) {
+            return Err(AppError::TickerNotFound { ticker: upper });
+        }
+
+        Self::validate_period(desde, ate)?;
+
+        if !query_service.has_table("cotahist") {
+            return Err(AppError::NoDataInRange);
+        }
+
+        let where_clause = Self::period_where(&upper, desde, ate);
+        let order = if is_min { "ASC" } else { "DESC" };
+        // Tie-break by earliest date for deterministic results.
+        let sql = format!(
+            "SELECT date, pre_ult \
+             FROM cotahist {where_clause} AND pre_ult IS NOT NULL \
+             ORDER BY pre_ult {order}, date ASC \
+             LIMIT 1"
+        );
+
+        let batches = query_service
+            .execute_sql(&sql)
+            .await
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("{}", e)))?;
+
+        let extreme = Self::extract_pre_ult_extreme(&batches).ok_or(AppError::NoDataInRange)?;
+
+        Ok(PreUltExtremeResponse {
+            ticker: upper,
+            desde: desde.to_string(),
+            ate: ate.map(str::to_string),
+            data: extreme.0,
+            pre_ult: extreme.1,
+        })
+    }
+
+    /// Validate `desde` (required) and optional `ate`, including inverted ranges.
+    fn validate_period(desde: &str, ate: Option<&str>) -> AppResult<()> {
+        Self::validate_date(desde)?;
+        if let Some(a) = ate {
+            Self::validate_date(a)?;
+            if desde > a {
+                return Err(AppError::DateRangeInvalid);
+            }
+        }
+        Ok(())
+    }
+
+    /// Build a WHERE clause for ticker + period filters.
+    fn period_where(ticker: &str, desde: &str, ate: Option<&str>) -> String {
+        let mut where_clause = format!("WHERE ticker = '{ticker}' AND date >= '{desde}'");
+        if let Some(a) = ate {
+            where_clause.push_str(&format!(" AND date <= '{a}'"));
+        }
+        where_clause
+    }
+
     /// Validate a date string in YYYY-MM-DD format.
     pub fn validate_date(date: &str) -> AppResult<()> {
         chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").map_err(|_| AppError::InvalidDate {
             value: date.to_string(),
         })?;
         Ok(())
+    }
+
+    /// Convert a YYYY-MM-DD date to Unix epoch milliseconds at UTC midnight.
+    fn date_to_ms(date: &str) -> Option<i64> {
+        let naive = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()?;
+        let datetime = naive.and_hms_opt(0, 0, 0)?;
+        Some(datetime.and_utc().timestamp_millis())
+    }
+
+    /// Extract compact series points from DataFusion RecordBatches.
+    fn extract_series(batches: &[RecordBatch]) -> Vec<SeriesPoint> {
+        let mut series = Vec::new();
+
+        for batch in batches {
+            for row in 0..batch.num_rows() {
+                let Some(data) = Self::get_str(batch, row, "date") else {
+                    continue;
+                };
+                let Some(date_ms) = Self::date_to_ms(&data) else {
+                    continue;
+                };
+
+                series.push(SeriesPoint {
+                    date_ms,
+                    pre_ult: Self::get_f64(batch, row, "pre_ult"),
+                    vol_tot: Self::get_f64(batch, row, "vol_tot"),
+                    tot_neg: Self::get_u32(batch, row, "tot_neg"),
+                });
+            }
+        }
+
+        series
+    }
+
+    /// Extract (date, pre_ult) for a min/max extreme query.
+    fn extract_pre_ult_extreme(batches: &[RecordBatch]) -> Option<(String, f64)> {
+        if batches.is_empty() || batches[0].num_rows() == 0 {
+            return None;
+        }
+        let batch = &batches[0];
+        let data = Self::get_str(batch, 0, "date")?;
+        let pre_ult = Self::get_f64(batch, 0, "pre_ult")?;
+        Some((data, pre_ult))
     }
 
     /// Extract QuoteResponse records from DataFusion RecordBatches.

@@ -90,7 +90,11 @@ pub fn build_router(
         // Standalone metrics endpoint (standard Prometheus scrape /metrics)
         .merge(crate::api::metrics::routes(metrics.clone(), start_time))
         // Swagger UI (also serves /api/docs/openapi.json)
-        .merge(SwaggerUi::new("/api/docs").url("/api/docs/openapi.json", ApiDoc::openapi()))
+        .merge(
+            SwaggerUi::new("/api/docs")
+                .url("/api/docs/openapi.json", ApiDoc::openapi())
+                .config(utoipa_swagger_ui::Config::default().persist_authorization(true)),
+        )
         .layer(TimeoutLayer::with_status_code(
             axum::http::StatusCode::REQUEST_TIMEOUT,
             Duration::from_secs(config.server.request_timeout_seconds),

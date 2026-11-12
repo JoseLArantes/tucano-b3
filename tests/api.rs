@@ -4,6 +4,8 @@ mod cotahist_dates;
 mod cotahist_latest;
 #[path = "api/cotahist_quotes.rs"]
 mod cotahist_quotes;
+#[path = "api/cotahist_series.rs"]
+mod cotahist_series;
 #[path = "api/cotahist_tickers.rs"]
 mod cotahist_tickers;
 #[path = "api/health.rs"]

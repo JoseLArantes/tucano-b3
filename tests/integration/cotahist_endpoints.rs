@@ -178,6 +178,94 @@ async fn test_get_latest_quote_with_data() {
 }
 
 #[tokio::test]
+async fn test_get_series_with_data() {
+    let app = match test_app_with_fixtures() {
+        Some(app) => app,
+        None => {
+            eprintln!("Skipping: no fixtures");
+            return;
+        }
+    };
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/cotahist/tickers/VALE3/series?desde=2026-01-01&ate=2026-01-02")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(json["data"]["ticker"], "VALE3");
+    assert_eq!(json["data"]["desde"], "2026-01-01");
+    let series = json["data"]["series"].as_array().unwrap();
+    assert_eq!(series.len(), 2);
+    assert!(series[0]["date_ms"].is_number());
+    assert!(series[0]["pre_ult"].is_number());
+    assert!(series[0]["vol_tot"].is_number());
+    assert!(series[0]["tot_neg"].is_number());
+    assert!(series[0]["date_ms"].as_i64().unwrap() < series[1]["date_ms"].as_i64().unwrap());
+}
+
+#[tokio::test]
+async fn test_get_pre_ult_min_max_with_data() {
+    let app = match test_app_with_fixtures() {
+        Some(app) => app,
+        None => {
+            eprintln!("Skipping: no fixtures");
+            return;
+        }
+    };
+
+    let min_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/cotahist/tickers/VALE3/pre-ult/min?desde=2026-01-01&ate=2026-01-02")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(min_response.status(), StatusCode::OK);
+    let min_body = axum::body::to_bytes(min_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let min_json: serde_json::Value = serde_json::from_slice(&min_body).unwrap();
+    assert_eq!(min_json["data"]["ticker"], "VALE3");
+    assert!(min_json["data"]["pre_ult"].is_number());
+    assert!(min_json["data"]["data"].is_string());
+
+    let max_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/cotahist/tickers/VALE3/pre-ult/max?desde=2026-01-01&ate=2026-01-02")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(max_response.status(), StatusCode::OK);
+    let max_body = axum::body::to_bytes(max_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let max_json: serde_json::Value = serde_json::from_slice(&max_body).unwrap();
+    assert_eq!(max_json["data"]["pre_ult"], 62.30);
+    assert!(
+        min_json["data"]["pre_ult"].as_f64().unwrap()
+            <= max_json["data"]["pre_ult"].as_f64().unwrap()
+    );
+}
+
+#[tokio::test]
 async fn test_get_date_quotes_with_data() {
     let app = match test_app_with_fixtures() {
         Some(app) => app,

@@ -65,6 +65,7 @@ fn default_per_page() -> u32 {
         (status = 500, description = "Erro interno do servidor", body = ErrorResponse),
     ),
     security(
+        ("BearerAuth" = []),
         ("ApiKeyAuth" = []),
     ),
 )]
@@ -129,6 +130,7 @@ pub(crate) async fn history_handler(
         (status = 500, description = "Erro interno do servidor", body = ErrorResponse),
     ),
     security(
+        ("BearerAuth" = []),
         ("ApiKeyAuth" = []),
     ),
 )]

@@ -52,6 +52,18 @@ async fn test_cotahist_and_ibov_routes_registered() {
             StatusCode::NOT_FOUND,
         ),
         (
+            "/api/v1/cotahist/tickers/NONEXISTENT99/series?desde=2026-01-01",
+            StatusCode::NOT_FOUND,
+        ),
+        (
+            "/api/v1/cotahist/tickers/NONEXISTENT99/pre-ult/min?desde=2026-01-01",
+            StatusCode::NOT_FOUND,
+        ),
+        (
+            "/api/v1/cotahist/tickers/NONEXISTENT99/pre-ult/max?desde=2026-01-01",
+            StatusCode::NOT_FOUND,
+        ),
+        (
             "/api/v1/cotahist/dates/2026-01-01/quotes",
             StatusCode::NOT_FOUND,
         ),

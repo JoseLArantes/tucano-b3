@@ -59,6 +59,7 @@ fn default_true() -> bool {
         (status = 500, description = "Erro interno do servidor", body = ErrorResponse),
     ),
     security(
+        ("BearerAuth" = []),
         ("ApiKeyAuth" = []),
     ),
 )]
@@ -107,6 +108,7 @@ pub(crate) async fn list_tickers_handler(
         (status = 500, description = "Erro interno do servidor", body = ErrorResponse),
     ),
     security(
+        ("BearerAuth" = []),
         ("ApiKeyAuth" = []),
     ),
 )]
@@ -176,6 +178,7 @@ fn default_per_page_quotes() -> u32 {
         (status = 500, description = "Erro interno do servidor", body = ErrorResponse),
     ),
     security(
+        ("BearerAuth" = []),
         ("ApiKeyAuth" = []),
     ),
 )]
@@ -235,6 +238,7 @@ pub(crate) async fn get_quotes_handler(
         (status = 500, description = "Erro interno do servidor", body = ErrorResponse),
     ),
     security(
+        ("BearerAuth" = []),
         ("ApiKeyAuth" = []),
     ),
 )]
@@ -277,6 +281,7 @@ pub(crate) async fn get_latest_handler(
         (status = 500, description = "Erro interno do servidor", body = ErrorResponse),
     ),
     security(
+        ("BearerAuth" = []),
         ("ApiKeyAuth" = []),
     ),
 )]
@@ -306,6 +311,176 @@ pub(crate) async fn get_date_quotes_handler(
     )))
 }
 
+/// Parâmetros de consulta para série histórica compacta e extremos de PREULT.
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct SeriesPeriodParams {
+    /// Data inicial obrigatória (AAAA-MM-DD)
+    pub desde: Option<String>,
+    /// Data final opcional (AAAA-MM-DD). Se omitida, usa todos os pregões a partir de `desde`.
+    pub ate: Option<String>,
+}
+
+fn require_desde(params: &SeriesPeriodParams) -> AppResult<&str> {
+    match params.desde.as_deref().map(str::trim) {
+        Some(d) if !d.is_empty() => Ok(d),
+        _ => Err(crate::error::AppError::InvalidParam {
+            message: "O parâmetro 'desde' é obrigatório (AAAA-MM-DD).".to_string(),
+        }),
+    }
+}
+
+/// Obter série histórica compacta para gráficos
+///
+/// Retorna uma lista enxuta com data em milissegundos (Unix epoch UTC 00:00), preço de
+/// fechamento (`pre_ult`), volume total (`vol_tot`) e quantidade de negócios (`tot_neg`).
+/// Projetada para renderização eficiente de gráficos históricos. Ordenação ascendente por data.
+/// Sem paginação: o payload já é reduzido aos campos essenciais.
+///
+/// **Aviso COTAHIST:** preços nominais históricos sem ajuste retroativo por eventos corporativos.
+#[utoipa::path(
+    get,
+    path = "/cotahist/tickers/{ticker}/series",
+    tag = "cotahist",
+    params(
+        ("ticker" = String, Path, description = "Código do ticker (ex: VALE3, PETR4)"),
+        SeriesPeriodParams,
+    ),
+    responses(
+        (status = 200, description = "Série histórica retornada com sucesso", body = SeriesApiResponse),
+        (status = 400, description = "Data inválida, parâmetro ausente ou intervalo invertido", body = ErrorResponse),
+        (status = 404, description = "Ticker não encontrado", body = ErrorResponse),
+        (status = 429, description = "Limite de requisições excedido", body = ErrorResponse),
+        (status = 500, description = "Erro interno do servidor", body = ErrorResponse),
+    ),
+    security(
+        ("BearerAuth" = []),
+        ("ApiKeyAuth" = []),
+    ),
+)]
+pub(crate) async fn get_series_handler(
+    State(state): State<Arc<AppState>>,
+    Path(ticker): Path<String>,
+    Query(params): Query<SeriesPeriodParams>,
+) -> AppResult<Json<ApiResponse<SeriesResponse>>> {
+    let start = Instant::now();
+    let desde = require_desde(&params)?;
+
+    let query_service = state.data_loader.get_query_service().await;
+
+    let series = CotahistService::get_series(
+        &query_service,
+        &state.data_loader.ticker_registry,
+        &ticker,
+        desde,
+        params.ate.as_deref(),
+    )
+    .await?;
+
+    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+
+    Ok(Json(ApiResponse::new(series, elapsed)))
+}
+
+/// Obter o menor preço de fechamento (PREULT) no período
+///
+/// Retorna o mínimo de `pre_ult` entre `desde` e `ate` (opcional), incluindo a data do pregão
+/// em que o extremo ocorreu. Em caso de empate, retorna a data mais antiga.
+///
+/// **Aviso COTAHIST:** preços nominais históricos sem ajuste retroativo por eventos corporativos.
+#[utoipa::path(
+    get,
+    path = "/cotahist/tickers/{ticker}/pre-ult/min",
+    tag = "cotahist",
+    params(
+        ("ticker" = String, Path, description = "Código do ticker (ex: VALE3, PETR4)"),
+        SeriesPeriodParams,
+    ),
+    responses(
+        (status = 200, description = "Mínimo de pre_ult retornado", body = PreUltExtremeApiResponse),
+        (status = 400, description = "Data inválida, parâmetro ausente ou intervalo invertido", body = ErrorResponse),
+        (status = 404, description = "Ticker não encontrado ou sem dados no período", body = ErrorResponse),
+        (status = 429, description = "Limite de requisições excedido", body = ErrorResponse),
+        (status = 500, description = "Erro interno do servidor", body = ErrorResponse),
+    ),
+    security(
+        ("BearerAuth" = []),
+        ("ApiKeyAuth" = []),
+    ),
+)]
+pub(crate) async fn get_pre_ult_min_handler(
+    State(state): State<Arc<AppState>>,
+    Path(ticker): Path<String>,
+    Query(params): Query<SeriesPeriodParams>,
+) -> AppResult<Json<ApiResponse<PreUltExtremeResponse>>> {
+    let start = Instant::now();
+    let desde = require_desde(&params)?;
+
+    let query_service = state.data_loader.get_query_service().await;
+
+    let extreme = CotahistService::get_pre_ult_min(
+        &query_service,
+        &state.data_loader.ticker_registry,
+        &ticker,
+        desde,
+        params.ate.as_deref(),
+    )
+    .await?;
+
+    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+
+    Ok(Json(ApiResponse::new(extreme, elapsed)))
+}
+
+/// Obter o maior preço de fechamento (PREULT) no período
+///
+/// Retorna o máximo de `pre_ult` entre `desde` e `ate` (opcional), incluindo a data do pregão
+/// em que o extremo ocorreu. Em caso de empate, retorna a data mais antiga.
+///
+/// **Aviso COTAHIST:** preços nominais históricos sem ajuste retroativo por eventos corporativos.
+#[utoipa::path(
+    get,
+    path = "/cotahist/tickers/{ticker}/pre-ult/max",
+    tag = "cotahist",
+    params(
+        ("ticker" = String, Path, description = "Código do ticker (ex: VALE3, PETR4)"),
+        SeriesPeriodParams,
+    ),
+    responses(
+        (status = 200, description = "Máximo de pre_ult retornado", body = PreUltExtremeApiResponse),
+        (status = 400, description = "Data inválida, parâmetro ausente ou intervalo invertido", body = ErrorResponse),
+        (status = 404, description = "Ticker não encontrado ou sem dados no período", body = ErrorResponse),
+        (status = 429, description = "Limite de requisições excedido", body = ErrorResponse),
+        (status = 500, description = "Erro interno do servidor", body = ErrorResponse),
+    ),
+    security(
+        ("BearerAuth" = []),
+        ("ApiKeyAuth" = []),
+    ),
+)]
+pub(crate) async fn get_pre_ult_max_handler(
+    State(state): State<Arc<AppState>>,
+    Path(ticker): Path<String>,
+    Query(params): Query<SeriesPeriodParams>,
+) -> AppResult<Json<ApiResponse<PreUltExtremeResponse>>> {
+    let start = Instant::now();
+    let desde = require_desde(&params)?;
+
+    let query_service = state.data_loader.get_query_service().await;
+
+    let extreme = CotahistService::get_pre_ult_max(
+        &query_service,
+        &state.data_loader.ticker_registry,
+        &ticker,
+        desde,
+        params.ate.as_deref(),
+    )
+    .await?;
+
+    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+
+    Ok(Json(ApiResponse::new(extreme, elapsed)))
+}
+
 /// Build COTAHIST routes.
 pub fn routes(state: Arc<AppState>) -> Router {
     Router::new()
@@ -313,6 +488,15 @@ pub fn routes(state: Arc<AppState>) -> Router {
         .route("/cotahist/tickers/:ticker", get(get_ticker_handler))
         .route("/cotahist/tickers/:ticker/quotes", get(get_quotes_handler))
         .route("/cotahist/tickers/:ticker/latest", get(get_latest_handler))
+        .route("/cotahist/tickers/:ticker/series", get(get_series_handler))
+        .route(
+            "/cotahist/tickers/:ticker/pre-ult/min",
+            get(get_pre_ult_min_handler),
+        )
+        .route(
+            "/cotahist/tickers/:ticker/pre-ult/max",
+            get(get_pre_ult_max_handler),
+        )
         .route("/cotahist/dates/:date/quotes", get(get_date_quotes_handler))
         .with_state(state)
 }

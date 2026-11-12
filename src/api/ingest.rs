@@ -36,6 +36,7 @@ pub use crate::models::ingest::{FolderIngestRequest, IngestResponse, UploadFileR
         (status = 500, description = "Erro interno do servidor", body = ErrorResponse),
     ),
     security(
+        ("BearerAuth" = []),
         ("ApiKeyAuth" = []),
     ),
 )]
@@ -121,6 +122,7 @@ pub(crate) async fn upload_handler(
         (status = 500, description = "Erro interno", body = ErrorResponse),
     ),
     security(
+        ("BearerAuth" = []),
         ("ApiKeyAuth" = []),
     ),
 )]

@@ -70,16 +70,24 @@ impl<S> AuthMiddleware<S> {
     /// 2. `X-API-Key: <token>`
     /// 3. `X-Token: <token>`
     fn extract_token<'a>(&self, req: &'a Request<Body>) -> Option<&'a str> {
+        // Helper to strip optional "Bearer " or "bearer " prefixes
+        fn strip_bearer(val: &str) -> &str {
+            let mut s = val.trim();
+            while let Some(rest) = s
+                .strip_prefix("Bearer ")
+                .or_else(|| s.strip_prefix("bearer "))
+            {
+                s = rest.trim();
+            }
+            s
+        }
+
         // 1. Authorization header
         if let Some(auth_val) = req.headers().get(header::AUTHORIZATION) {
             if let Ok(auth_str) = auth_val.to_str() {
-                let auth_str = auth_str.trim();
-                if let Some(token) = auth_str.strip_prefix("Bearer ") {
-                    return Some(token.trim());
-                } else if let Some(token) = auth_str.strip_prefix("bearer ") {
-                    return Some(token.trim());
-                } else if !auth_str.is_empty() {
-                    return Some(auth_str);
+                let token = strip_bearer(auth_str);
+                if !token.is_empty() {
+                    return Some(token);
                 }
             }
         }
@@ -87,9 +95,9 @@ impl<S> AuthMiddleware<S> {
         // 2. X-API-Key header
         if let Some(key_val) = req.headers().get(API_KEY_HEADER) {
             if let Ok(key_str) = key_val.to_str() {
-                let key_str = key_str.trim();
-                if !key_str.is_empty() {
-                    return Some(key_str);
+                let token = strip_bearer(key_str);
+                if !token.is_empty() {
+                    return Some(token);
                 }
             }
         }
@@ -97,9 +105,9 @@ impl<S> AuthMiddleware<S> {
         // 3. X-Token header
         if let Some(token_val) = req.headers().get(TOKEN_HEADER) {
             if let Ok(token_str) = token_val.to_str() {
-                let token_str = token_str.trim();
-                if !token_str.is_empty() {
-                    return Some(token_str);
+                let token = strip_bearer(token_str);
+                if !token.is_empty() {
+                    return Some(token);
                 }
             }
         }

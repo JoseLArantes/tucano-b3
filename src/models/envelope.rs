@@ -7,8 +7,8 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::models::cotahist::{
-    DateQuotesResponse, LatestQuoteResponse, QuoteListResponse, TickerDetailResponse,
-    TickerListResponse,
+    DateQuotesResponse, LatestQuoteResponse, PreUltExtremeResponse, QuoteListResponse,
+    SeriesResponse, TickerDetailResponse, TickerListResponse,
 };
 use crate::models::ibov::{IbovHistoryResponse, IbovLatestResponse};
 use crate::models::ingest::IngestResponse;
@@ -21,6 +21,8 @@ use crate::models::ingest::IngestResponse;
     QuoteListApiResponse = ApiResponse<QuoteListResponse>,
     LatestQuoteApiResponse = ApiResponse<LatestQuoteResponse>,
     DateQuotesApiResponse = ApiResponse<DateQuotesResponse>,
+    SeriesApiResponse = ApiResponse<SeriesResponse>,
+    PreUltExtremeApiResponse = ApiResponse<PreUltExtremeResponse>,
     IbovHistoryApiResponse = ApiResponse<IbovHistoryResponse>,
     IbovLatestApiResponse = ApiResponse<IbovLatestResponse>,
     IngestApiResponse = ApiResponse<IngestResponse>,
