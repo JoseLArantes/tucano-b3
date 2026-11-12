@@ -2,9 +2,20 @@
 
 use chrono::NaiveDate;
 use rusqlite::Connection;
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Mutex;
 use thiserror::Error;
+
+/// Aggregated ticker metadata for batch ledger upserts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TickerBatchEntry {
+    pub ticker: String,
+    pub isin: Option<String>,
+    pub company_name: Option<String>,
+    pub first_seen: NaiveDate,
+    pub last_seen: NaiveDate,
+}
 
 /// Errors during ledger operations.
 #[derive(Error, Debug)]
@@ -39,7 +50,10 @@ impl Ledger {
         })?;
 
         conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS tickers (
+            "PRAGMA journal_mode = WAL;
+            PRAGMA synchronous = NORMAL;
+            PRAGMA busy_timeout = 5000;
+            CREATE TABLE IF NOT EXISTS tickers (
                 ticker TEXT PRIMARY KEY,
                 isin TEXT,
                 company_name TEXT,
@@ -137,6 +151,58 @@ impl Ledger {
         )?;
         Ok(())
     }
+
+    /// Atomically record a batch of ingested dates and ticker upserts in a single SQLite transaction.
+    ///
+    /// Wrapping thousands of ticker upserts and trading dates in one transaction avoids per-row
+    /// journal fsync overhead on networked or block-backed PersistentVolumes.
+    pub fn record_ingestion_batch(
+        &self,
+        format: &str,
+        partition_key: &str,
+        dates: &HashSet<NaiveDate>,
+        tickers: &[TickerBatchEntry],
+    ) -> Result<(), LedgerError> {
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|e| LedgerError::Lock(e.to_string()))?;
+
+        let tx = conn.transaction()?;
+        {
+            let mut date_stmt = tx.prepare_cached(
+                "INSERT OR IGNORE INTO ingested_dates (format, partition_key, date, ingestion_id)
+                 VALUES (?1, ?2, ?3, NULL)",
+            )?;
+            for date in dates {
+                let date_str = date.format("%Y-%m-%d").to_string();
+                date_stmt.execute(rusqlite::params![format, partition_key, date_str])?;
+            }
+
+            let mut ticker_stmt = tx.prepare_cached(
+                "INSERT INTO tickers (ticker, isin, company_name, first_seen, last_seen, is_active)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 1)
+                 ON CONFLICT(ticker) DO UPDATE SET
+                     first_seen = MIN(first_seen, excluded.first_seen),
+                     last_seen = MAX(last_seen, excluded.last_seen),
+                     isin = COALESCE(excluded.isin, isin),
+                     company_name = COALESCE(excluded.company_name, company_name)",
+            )?;
+            for entry in tickers {
+                let first_str = entry.first_seen.format("%Y-%m-%d").to_string();
+                let last_str = entry.last_seen.format("%Y-%m-%d").to_string();
+                ticker_stmt.execute(rusqlite::params![
+                    entry.ticker,
+                    entry.isin,
+                    entry.company_name,
+                    first_str,
+                    last_str,
+                ])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -199,5 +265,39 @@ mod tests {
         assert_eq!(row.2.as_deref(), Some("PETROBRAS"));
         assert_eq!(row.3, "2026-01-02");
         assert_eq!(row.4, "2026-01-03");
+    }
+
+    #[test]
+    fn test_ledger_batch_ingestion_transaction() {
+        let temp = TempDir::new().unwrap();
+        let ledger_path = temp.path().join("ledger/tucano.db");
+        let ledger = Ledger::open(&ledger_path).unwrap();
+
+        let d1 = NaiveDate::from_ymd_opt(2025, 1, 2).unwrap();
+        let d2 = NaiveDate::from_ymd_opt(2025, 12, 30).unwrap();
+        let dates: HashSet<NaiveDate> = [d1, d2].into_iter().collect();
+
+        let tickers: Vec<TickerBatchEntry> = (0..5_000)
+            .map(|i| TickerBatchEntry {
+                ticker: format!("TICK{i:04}"),
+                isin: Some(format!("BRTICK{i:04}01")),
+                company_name: Some(format!("COMPANY {i}")),
+                first_seen: d1,
+                last_seen: d2,
+            })
+            .collect();
+
+        ledger
+            .record_ingestion_batch("cotahist", "ingested", &dates, &tickers)
+            .unwrap();
+
+        let ingested = ledger.get_all_ingested_dates("cotahist").unwrap();
+        assert_eq!(ingested.len(), 2);
+
+        let conn = ledger.conn.lock().unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM tickers", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 5_000);
     }
 }

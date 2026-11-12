@@ -63,7 +63,7 @@ COPY config.toml /etc/tucano/config.toml
 COPY api_keys.toml /etc/tucano/api_keys.toml
 
 # Create data directory
-RUN mkdir -p /data/processed /data/ledger \
+RUN mkdir -p /data/processed /data/ledger /data/tmp \
     && chown -R tucano:tucano /data /etc/tucano
 
 USER tucano

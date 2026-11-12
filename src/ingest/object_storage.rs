@@ -280,13 +280,19 @@ impl S3ObjectStorage {
                 });
             }
 
-            let result =
-                IngestService::ingest_zip(bytes, data_dir, data_loader).map_err(|source| {
-                    ObjectStorageError::Ingest {
-                        key: object.key.clone(),
-                        source,
-                    }
-                })?;
+            let data_dir_buf = data_dir.to_path_buf();
+            let loader = Arc::clone(data_loader);
+            let result = tokio::task::spawn_blocking(move || {
+                IngestService::ingest_zip(bytes, &data_dir_buf, &loader)
+            })
+            .await
+            .map_err(|err| ObjectStorageError::Storage {
+                message: format!("Falha ao executar tarefa de ingestão: {err}"),
+            })?
+            .map_err(|source| ObjectStorageError::Ingest {
+                key: object.key.clone(),
+                source,
+            })?;
 
             combined = Some(match combined {
                 None => {

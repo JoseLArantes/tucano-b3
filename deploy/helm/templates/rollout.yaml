@@ -58,12 +58,16 @@ spec:
               port: http
             initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold | default 6 }}
           readinessProbe:
             httpGet:
               path: {{ .Values.probes.readiness.path }}
               port: http
             initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold | default 3 }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           {{- if .Values.persistence.enabled }}

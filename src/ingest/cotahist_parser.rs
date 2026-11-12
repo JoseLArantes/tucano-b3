@@ -82,15 +82,29 @@ pub struct ParseStats {
 pub struct CotahistParser;
 
 impl CotahistParser {
-    /// Parse a COTAHIST file from any Read source.
+    /// Parse a COTAHIST file from any Read source into a `Vec`.
     ///
-    /// Returns an iterator of parsed records and final statistics.
     /// Lines with errors are skipped (logged) rather than aborting.
     pub fn parse<R: Read>(
         reader: R,
     ) -> Result<(Vec<CotahistRecord>, ParseStats), CotahistParseError> {
-        let mut buf_reader = BufReader::with_capacity(1_048_576, reader); // 1 MB buffer
         let mut records = Vec::new();
+        let stats = Self::parse_stream(reader, |record| -> Result<(), CotahistParseError> {
+            records.push(record);
+            Ok(())
+        })?;
+        Ok((records, stats))
+    }
+
+    /// Stream-parse a COTAHIST file from any `Read` source, invoking `on_record`
+    /// for each valid quote record without buffering the entire file in memory.
+    pub fn parse_stream<R, F, E>(reader: R, mut on_record: F) -> Result<ParseStats, E>
+    where
+        R: Read,
+        F: FnMut(CotahistRecord) -> Result<(), E>,
+        E: From<CotahistParseError>,
+    {
+        let mut buf_reader = BufReader::with_capacity(256 * 1024, reader); // 256 KB buffer
         let mut stats = ParseStats::default();
         let mut raw_bytes = Vec::with_capacity(512);
         let mut line_num = 0;
@@ -113,15 +127,13 @@ impl CotahistParser {
             line_num += 1;
             stats.lines_total += 1;
 
-            // Safe conversion supporting UTF-8 and ISO-8859-1 (Latin-1)
-            let line = match std::str::from_utf8(&raw_bytes) {
-                Ok(s) => s.trim_end_matches(['\r', '\n']).to_string(),
-                Err(_) => raw_bytes
-                    .iter()
-                    .map(|&b| b as char)
-                    .collect::<String>()
-                    .trim_end_matches(['\r', '\n'])
-                    .to_string(),
+            // Safe conversion supporting UTF-8 and ISO-8859-1 (Latin-1) without allocating for UTF-8
+            let line: std::borrow::Cow<'_, str> = match std::str::from_utf8(&raw_bytes) {
+                Ok(s) => std::borrow::Cow::Borrowed(s.trim_end_matches(['\r', '\n'])),
+                Err(_) => {
+                    let s: String = raw_bytes.iter().map(|&b| b as char).collect();
+                    std::borrow::Cow::Owned(s.trim_end_matches(['\r', '\n']).to_string())
+                }
             };
 
             // Skip empty lines
@@ -133,14 +145,15 @@ impl CotahistParser {
             // Parse the line
             match Self::parse_line(&line, line_num) {
                 Ok(Some(record)) => {
-                    // Update stats
-                    stats.tickers_seen.insert(record.ticker.clone());
+                    if !stats.tickers_seen.contains(&record.ticker) {
+                        stats.tickers_seen.insert(record.ticker.clone());
+                    }
                     stats.date_min =
                         Some(stats.date_min.map_or(record.date, |d| d.min(record.date)));
                     stats.date_max =
                         Some(stats.date_max.map_or(record.date, |d| d.max(record.date)));
                     stats.lines_parsed += 1;
-                    records.push(record);
+                    on_record(record)?;
                 }
                 Ok(None) => {
                     // Header or trailer — skip
@@ -153,7 +166,7 @@ impl CotahistParser {
             }
         }
 
-        Ok((records, stats))
+        Ok(stats)
     }
 
     /// Parse a single COTAHIST line.

@@ -50,40 +50,71 @@ pub(crate) async fn upload_handler(
     mut multipart: Multipart,
 ) -> AppResult<Json<ApiResponse<IngestResponse>>> {
     let start = Instant::now();
+    let data_dir = state.data_loader.data_config.dir.clone();
+    let tmp_dir = data_dir.join("tmp");
+    std::fs::create_dir_all(&tmp_dir).map_err(|e| {
+        AppError::Internal(anyhow::anyhow!("Erro ao criar diretório temporário: {}", e))
+    })?;
 
-    // Extract file from multipart
-    let mut file_data: Option<Vec<u8>> = None;
+    let temp_guard = TempUploadFile(tmp_dir.join(format!("upload-{}.zip", uuid::Uuid::new_v4())));
+    let mut found_file = false;
 
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|e| AppError::InvalidParam {
-            message: format!("Erro ao ler upload: {}", e),
-        })?
+    while let Some(mut field) =
+        multipart
+            .next_field()
+            .await
+            .map_err(|e| AppError::InvalidParam {
+                message: format!("Erro ao ler upload: {}", e),
+            })?
     {
         if field.name() == Some("file") {
-            let data = field.bytes().await.map_err(|e| AppError::InvalidParam {
-                message: format!("Erro ao ler dados do arquivo: {}", e),
+            found_file = true;
+            let file = std::fs::File::create(&temp_guard.0).map_err(|e| {
+                AppError::Internal(anyhow::anyhow!("Erro ao criar arquivo temporário: {}", e))
             })?;
-            file_data = Some(data.to_vec());
+            let mut writer = std::io::BufWriter::with_capacity(64 * 1024, file);
+            let mut total_bytes = 0usize;
+
+            while let Some(chunk) = field.chunk().await.map_err(|e| AppError::InvalidParam {
+                message: format!("Erro ao ler dados do arquivo: {}", e),
+            })? {
+                total_bytes += chunk.len();
+                if total_bytes > MAX_ZIP_SIZE {
+                    return Err(AppError::InvalidParam {
+                        message: "Arquivo muito grande (máximo 500 MB)".to_string(),
+                    });
+                }
+                std::io::Write::write_all(&mut writer, &chunk).map_err(|e| {
+                    AppError::Internal(anyhow::anyhow!("Erro ao gravar upload temporário: {}", e))
+                })?;
+            }
+            std::io::Write::flush(&mut writer).map_err(|e| {
+                AppError::Internal(anyhow::anyhow!(
+                    "Erro ao finalizar upload temporário: {}",
+                    e
+                ))
+            })?;
+            break;
         }
     }
 
-    let data = file_data.ok_or_else(|| AppError::InvalidParam {
-        message: "Nenhum arquivo enviado. Use o campo 'file'.".to_string(),
-    })?;
-
-    // Validate file size (500 MB max)
-    if data.len() > 500 * 1024 * 1024 {
+    if !found_file {
         return Err(AppError::InvalidParam {
-            message: "Arquivo muito grande (máximo 500 MB)".to_string(),
+            message: "Nenhum arquivo enviado. Use o campo 'file'.".to_string(),
         });
     }
 
-    // Run ingestion
-    let data_dir = state.data_loader.data_config.dir.clone();
-    let result = IngestService::ingest_zip(data, &data_dir, &state.data_loader)
-        .map_err(|e| AppError::Internal(anyhow::anyhow!("{}", e)))?;
+    // Run CPU/disk-intensive ingestion on a blocking worker thread so `/health` probes stay responsive.
+    let temp_path = temp_guard.0.clone();
+    let loader = Arc::clone(&state.data_loader);
+    let result = tokio::task::spawn_blocking(move || {
+        IngestService::ingest_zip_path(&temp_path, &data_dir, &loader)
+    })
+    .await
+    .map_err(|e| AppError::Internal(anyhow::anyhow!("Falha na tarefa de ingestão: {}", e)))?
+    .map_err(|e| AppError::Internal(anyhow::anyhow!("{}", e)))?;
+
+    drop(temp_guard);
 
     let elapsed = start.elapsed().as_secs_f64() * 1000.0;
 
@@ -144,20 +175,26 @@ pub(crate) async fn folder_handler(
         });
     }
 
+    let folder_buf = folder.to_path_buf();
+    let caminho = body.caminho.clone();
     let data_dir = state.data_loader.data_config.dir.clone();
-    let result = IngestService::ingest_folder(folder, &data_dir, &state.data_loader).map_err(
-        |e| match e {
-            crate::ingest::service::IngestError::Zip(
-                crate::ingest::zip_handler::ZipError::NoCotahistFiles,
-            ) => AppError::InvalidParam {
-                message: format!(
-                    "Nenhum arquivo COTAHIST (.TXT ou .ZIP) encontrado na pasta '{}'",
-                    body.caminho
-                ),
-            },
-            other => AppError::Internal(anyhow::anyhow!("{}", other)),
+    let loader = Arc::clone(&state.data_loader);
+    let result = tokio::task::spawn_blocking(move || {
+        IngestService::ingest_folder(&folder_buf, &data_dir, &loader)
+    })
+    .await
+    .map_err(|e| AppError::Internal(anyhow::anyhow!("Falha na tarefa de ingestão: {}", e)))?
+    .map_err(|e| match e {
+        crate::ingest::service::IngestError::Zip(
+            crate::ingest::zip_handler::ZipError::NoCotahistFiles,
+        ) => AppError::InvalidParam {
+            message: format!(
+                "Nenhum arquivo COTAHIST (.TXT ou .ZIP) encontrado na pasta '{}'",
+                caminho
+            ),
         },
-    )?;
+        other => AppError::Internal(anyhow::anyhow!("{}", other)),
+    })?;
 
     let elapsed = start.elapsed().as_secs_f64() * 1000.0;
 
@@ -259,6 +296,14 @@ pub(crate) async fn bucket_handler(
 
 /// Multipart framing on top of a ZIP at `MAX_ZIP_SIZE`.
 const UPLOAD_BODY_LIMIT: usize = MAX_ZIP_SIZE + 1024 * 1024;
+
+struct TempUploadFile(std::path::PathBuf);
+
+impl Drop for TempUploadFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
 
 /// Annual COTAHIST archives take longer than the default API timeout to upload and parse.
 pub const INGEST_REQUEST_TIMEOUT: Duration = Duration::from_secs(600);

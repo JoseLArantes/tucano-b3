@@ -9,16 +9,18 @@
 //! 6. Reload DataLoader
 
 use crate::data::reload::DataLoader;
-use crate::ingest::cotahist_parser::{CotahistParser, CotahistRecord};
-use crate::ingest::parquet_writer;
-use crate::ingest::zip_handler::{self, ExtractedFile};
-use crate::ledger::Ledger;
+use crate::ingest::cotahist_parser::CotahistParser;
+use crate::ingest::parquet_writer::{self, StreamingParquetWriter};
+use crate::ingest::zip_handler::{self, MAX_ZIP_SIZE};
+use crate::ledger::{Ledger, TickerBatchEntry};
 use chrono::NaiveDate;
 use std::collections::{HashMap, HashSet};
+use std::io::{Read, Seek};
 use std::path::Path;
 use std::sync::Arc;
 use thiserror::Error;
 use uuid::Uuid;
+use zip::ZipArchive;
 
 /// Errors during ingestion.
 #[derive(Error, Debug)]
@@ -71,158 +73,282 @@ pub struct IngestResult {
 pub struct IngestService;
 
 impl IngestService {
-    /// Ingest from uploaded ZIP data.
+    /// Ingest from uploaded ZIP data in memory.
     ///
-    /// Takes ownership of the ZIP bytes so they can be dropped after extraction
-    /// and before the Parquet write (annual archives otherwise OOM on small nodes).
+    /// Streams each archive entry directly through the chunked parser and Parquet writer
+    /// without materializing uncompressed `.TXT` buffers or full-year record vectors.
     pub fn ingest_zip(
         data: Vec<u8>,
         data_dir: &Path,
         data_loader: &Arc<DataLoader>,
     ) -> Result<IngestResult, IngestError> {
-        let task_id = Uuid::new_v4().to_string();
-
-        tracing::info!(task_id = %task_id, "Iniciando ingestão de ZIP");
-
-        let extracted = zip_handler::extract_cotahist_from_zip(&data)?;
-        drop(data);
-
-        Self::ingest_extracted_files(&task_id, extracted, data_dir, data_loader)
+        let size = data.len();
+        let cursor = std::io::Cursor::new(data);
+        Self::ingest_zip_reader(cursor, size, data_dir, data_loader)
     }
 
-    /// Ingest from a local folder.
+    /// Ingest from a ZIP file on disk without loading the archive into RAM.
+    pub fn ingest_zip_path(
+        zip_path: &Path,
+        data_dir: &Path,
+        data_loader: &Arc<DataLoader>,
+    ) -> Result<IngestResult, IngestError> {
+        let metadata = std::fs::metadata(zip_path)?;
+        let size = metadata.len() as usize;
+        let file = std::fs::File::open(zip_path)?;
+        Self::ingest_zip_reader(file, size, data_dir, data_loader)
+    }
+
+    /// Ingest from any seekable ZIP reader.
+    pub fn ingest_zip_reader<R: Read + Seek>(
+        reader: R,
+        size: usize,
+        data_dir: &Path,
+        data_loader: &Arc<DataLoader>,
+    ) -> Result<IngestResult, IngestError> {
+        if size > MAX_ZIP_SIZE {
+            return Err(IngestError::Zip(zip_handler::ZipError::FileTooLarge {
+                size,
+                max: MAX_ZIP_SIZE,
+            }));
+        }
+
+        let task_id = Uuid::new_v4().to_string();
+        tracing::info!(task_id = %task_id, "Iniciando ingestão de ZIP");
+
+        let mut archive = ZipArchive::new(reader).map_err(zip_handler::ZipError::from)?;
+        let mut matching_indices = Vec::new();
+        for i in 0..archive.len() {
+            let file = archive.by_index(i).map_err(zip_handler::ZipError::from)?;
+            if let Some(filename) = zip_handler::cotahist_entry_filename(file.name()) {
+                matching_indices.push((i, filename));
+            }
+        }
+
+        if matching_indices.is_empty() {
+            return Err(IngestError::Zip(zip_handler::ZipError::NoCotahistFiles));
+        }
+
+        tracing::info!(
+            count = matching_indices.len(),
+            "Arquivos COTAHIST extraídos do ZIP"
+        );
+
+        let mut state = IngestRunState::new(&task_id, data_dir)?;
+        for (idx, filename) in matching_indices {
+            let entry = archive.by_index(idx).map_err(zip_handler::ZipError::from)?;
+            Self::ingest_single_reader(&task_id, &filename, entry, &mut state)?;
+        }
+
+        state.finalize(data_loader)
+    }
+
+    /// Ingest from a local folder, streaming `.TXT` and `.ZIP` files one by one.
     pub fn ingest_folder(
         folder: &Path,
         data_dir: &Path,
         data_loader: &Arc<DataLoader>,
     ) -> Result<IngestResult, IngestError> {
         let task_id = Uuid::new_v4().to_string();
-
         tracing::info!(task_id = %task_id, folder = %folder.display(), "Iniciando ingestão de pasta");
 
         let files = zip_handler::scan_folder_for_cotahist(folder)?;
+        let mut state = IngestRunState::new(&task_id, data_dir)?;
 
-        let mut extracted: Vec<ExtractedFile> = Vec::new();
         for path in &files {
-            if let Ok(content) = std::fs::read(path) {
-                let filename = path
-                    .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_default();
-                if filename.to_uppercase().ends_with(".ZIP") {
-                    if let Ok(files_in_zip) = zip_handler::extract_cotahist_from_zip(&content) {
-                        extracted.extend(files_in_zip);
+            let filename = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            if filename.to_uppercase().ends_with(".ZIP") {
+                if let Ok(file) = std::fs::File::open(path) {
+                    if let Ok(mut archive) = ZipArchive::new(file) {
+                        for i in 0..archive.len() {
+                            let entry_name = match archive.by_index(i) {
+                                Ok(e) => zip_handler::cotahist_entry_filename(e.name()),
+                                Err(_) => None,
+                            };
+                            if let Some(inner_name) = entry_name {
+                                if let Ok(entry) = archive.by_index(i) {
+                                    Self::ingest_single_reader(
+                                        &task_id,
+                                        &inner_name,
+                                        entry,
+                                        &mut state,
+                                    )?;
+                                }
+                            }
+                        }
                     }
-                } else {
-                    extracted.push(ExtractedFile { filename, content });
                 }
+            } else if let Ok(file) = std::fs::File::open(path) {
+                Self::ingest_single_reader(&task_id, &filename, file, &mut state)?;
             }
         }
 
-        Self::ingest_extracted_files(&task_id, extracted, data_dir, data_loader)
+        state.finalize(data_loader)
     }
 
-    /// Process extracted COTAHIST files one at a time.
-    ///
-    /// Each file is parsed, written, and ledger-updated before the next file's
-    /// raw bytes are kept, so peak memory stays closer to one annual TXT.
-    fn ingest_extracted_files(
+    /// Stream-parse a single COTAHIST `.TXT` reader, write Parquet in bounded chunks,
+    /// and commit new dates and ticker metadata in a single SQLite transaction.
+    fn ingest_single_reader<R: Read>(
         task_id: &str,
-        mut files: Vec<ExtractedFile>,
-        data_dir: &Path,
-        data_loader: &Arc<DataLoader>,
-    ) -> Result<IngestResult, IngestError> {
+        filename: &str,
+        reader: R,
+        state: &mut IngestRunState,
+    ) -> Result<(), IngestError> {
+        tracing::info!(
+            task_id = %task_id,
+            file = %filename,
+            "Processando arquivo"
+        );
+
+        let mut parquet_writer = StreamingParquetWriter::new(&state.output_dir);
+        let mut new_dates: HashSet<NaiveDate> = HashSet::new();
+        let mut unique_tickers: HashMap<String, TickerBatchEntry> = HashMap::new();
+        let mut records_new = 0usize;
+
+        let stats = CotahistParser::parse_stream(reader, |record| -> Result<(), IngestError> {
+            // Track ticker metadata across all parsed rows (allows self-healing if a prior run
+            // crashed after inserting dates but before committing tickers).
+            if let Some(entry) = unique_tickers.get_mut(&record.ticker) {
+                if record.date < entry.first_seen {
+                    entry.first_seen = record.date;
+                }
+                if record.date >= entry.last_seen {
+                    entry.last_seen = record.date;
+                    if record.isin.is_some() {
+                        entry.isin.clone_from(&record.isin);
+                    }
+                    if record.company_name.is_some() {
+                        entry.company_name.clone_from(&record.company_name);
+                    }
+                } else {
+                    if entry.isin.is_none() && record.isin.is_some() {
+                        entry.isin.clone_from(&record.isin);
+                    }
+                    if entry.company_name.is_none() && record.company_name.is_some() {
+                        entry.company_name.clone_from(&record.company_name);
+                    }
+                }
+            } else {
+                unique_tickers.insert(
+                    record.ticker.clone(),
+                    TickerBatchEntry {
+                        ticker: record.ticker.clone(),
+                        isin: record.isin.clone(),
+                        company_name: record.company_name.clone(),
+                        first_seen: record.date,
+                        last_seen: record.date,
+                    },
+                );
+            }
+
+            if !state.ingested_set.contains(&record.date) {
+                records_new += 1;
+                new_dates.insert(record.date);
+                parquet_writer.push(record)?;
+            }
+
+            Ok(())
+        })?;
+
+        state.ingested_set.extend(new_dates.iter().copied());
+
+        let records_parsed = stats.lines_parsed;
+        let records_skipped = records_parsed.saturating_sub(records_new);
+
+        tracing::info!(
+            task_id = %task_id,
+            file = %filename,
+            parsed = records_parsed,
+            new = records_new,
+            skipped = records_skipped,
+            "Arquivo processado"
+        );
+
+        let mut file_result = FileIngestResult {
+            filename: filename.to_string(),
+            records_parsed,
+            records_new,
+            records_skipped,
+            date_min: stats.date_min,
+            date_max: stats.date_max,
+            parquet_files: Vec::new(),
+        };
+
+        if records_new > 0 {
+            let write_stats = parquet_writer.finish()?;
+            tracing::info!(
+                task_id = %task_id,
+                file = %filename,
+                records = records_new,
+                files = write_stats.len(),
+                "Parquet gravado"
+            );
+            file_result.parquet_files = write_stats;
+            state.wrote_any = true;
+        }
+
+        if !new_dates.is_empty() || !unique_tickers.is_empty() {
+            let ticker_entries: Vec<TickerBatchEntry> = unique_tickers.into_values().collect();
+            state
+                .ledger
+                .record_ingestion_batch("cotahist", "ingested", &new_dates, &ticker_entries)
+                .map_err(|e| IngestError::Ledger(e.to_string()))?;
+            state.wrote_any = true;
+        }
+
+        state.result.file_results.push(file_result);
+        state.result.files_processed += 1;
+        state.result.total_records_parsed += records_parsed;
+        state.result.total_records_new += records_new;
+        state.result.total_records_skipped += records_skipped;
+
+        Ok(())
+    }
+}
+
+struct IngestRunState {
+    output_dir: std::path::PathBuf,
+    ledger: Ledger,
+    ingested_set: HashSet<NaiveDate>,
+    result: IngestResult,
+    wrote_any: bool,
+}
+
+impl IngestRunState {
+    fn new(task_id: &str, data_dir: &Path) -> Result<Self, IngestError> {
         let output_dir = data_dir.join("processed/cotahist");
         let ledger_path = data_dir.join("ledger/tucano.db");
 
-        let mut result = IngestResult {
-            task_id: task_id.to_string(),
-            files_processed: 0,
-            total_records_parsed: 0,
-            total_records_new: 0,
-            total_records_skipped: 0,
-            file_results: Vec::new(),
-            success: true,
-            error: None,
-        };
-
         let ledger = Ledger::open(&ledger_path).map_err(|e| IngestError::Ledger(e.to_string()))?;
-
         let ingested_dates = ledger
             .get_all_ingested_dates("cotahist")
             .map_err(|e| IngestError::Ledger(e.to_string()))?;
-        let mut ingested_set: HashSet<NaiveDate> = ingested_dates.into_iter().collect();
-        let mut wrote_any = false;
+        let ingested_set: HashSet<NaiveDate> = ingested_dates.into_iter().collect();
 
-        for file in &mut files {
-            tracing::info!(
-                task_id = %task_id,
-                file = %file.filename,
-                "Processando arquivo"
-            );
+        Ok(Self {
+            output_dir,
+            ledger,
+            ingested_set,
+            result: IngestResult {
+                task_id: task_id.to_string(),
+                files_processed: 0,
+                total_records_parsed: 0,
+                total_records_new: 0,
+                total_records_skipped: 0,
+                file_results: Vec::new(),
+                success: true,
+                error: None,
+            },
+            wrote_any: false,
+        })
+    }
 
-            let cursor = std::io::Cursor::new(&file.content);
-            let (records, stats) = CotahistParser::parse(cursor)?;
-            // Raw TXT is no longer needed after parse.
-            file.content = Vec::new();
-
-            let new_records: Vec<CotahistRecord> = records
-                .into_iter()
-                .filter(|r| !ingested_set.contains(&r.date))
-                .collect();
-
-            for r in &new_records {
-                ingested_set.insert(r.date);
-            }
-
-            let records_parsed = stats.lines_parsed;
-            let records_new = new_records.len();
-            let records_skipped = records_parsed.saturating_sub(records_new);
-
-            tracing::info!(
-                task_id = %task_id,
-                file = %file.filename,
-                parsed = records_parsed,
-                new = records_new,
-                skipped = records_skipped,
-                "Arquivo processado"
-            );
-
-            let mut file_result = FileIngestResult {
-                filename: file.filename.clone(),
-                records_parsed,
-                records_new,
-                records_skipped,
-                date_min: stats.date_min,
-                date_max: stats.date_max,
-                parquet_files: Vec::new(),
-            };
-
-            if !new_records.is_empty() {
-                let write_stats =
-                    parquet_writer::write_cotahist_parquet(&new_records, &output_dir)?;
-                tracing::info!(
-                    task_id = %task_id,
-                    file = %file.filename,
-                    records = new_records.len(),
-                    files = write_stats.len(),
-                    "Parquet gravado"
-                );
-                file_result.parquet_files = write_stats;
-                Self::update_ledger(&ledger, &new_records)?;
-                wrote_any = true;
-            }
-
-            result.file_results.push(file_result);
-            result.files_processed += 1;
-            result.total_records_parsed += records_parsed;
-            result.total_records_new += records_new;
-            result.total_records_skipped += records_skipped;
-        }
-
-        if wrote_any {
-            let rt = tokio::runtime::Handle::try_current();
-            if let Ok(handle) = rt {
+    fn finalize(self, data_loader: &Arc<DataLoader>) -> Result<IngestResult, IngestError> {
+        if self.wrote_any {
+            if let Ok(handle) = tokio::runtime::Handle::try_current() {
                 let loader = Arc::clone(data_loader);
                 handle.spawn(async move {
                     if let Err(e) = loader.reload().await {
@@ -233,54 +359,14 @@ impl IngestService {
         }
 
         tracing::info!(
-            task_id = %task_id,
-            files = result.files_processed,
-            parsed = result.total_records_parsed,
-            new = result.total_records_new,
-            skipped = result.total_records_skipped,
+            task_id = %self.result.task_id,
+            files = self.result.files_processed,
+            parsed = self.result.total_records_parsed,
+            new = self.result.total_records_new,
+            skipped = self.result.total_records_skipped,
             "Ingestão concluída"
         );
 
-        Ok(result)
-    }
-
-    fn update_ledger(ledger: &Ledger, records: &[CotahistRecord]) -> Result<(), IngestError> {
-        let new_dates: HashSet<NaiveDate> = records.iter().map(|r| r.date).collect();
-        for date in &new_dates {
-            ledger
-                .insert_ingested_date("cotahist", "ingested", *date)
-                .map_err(|e| IngestError::Ledger(e.to_string()))?;
-        }
-
-        let mut unique_tickers: HashMap<&str, (Option<&str>, Option<&str>, NaiveDate)> =
-            HashMap::new();
-        for record in records {
-            unique_tickers
-                .entry(&record.ticker)
-                .and_modify(|e| {
-                    if record.date > e.2 {
-                        e.2 = record.date;
-                        if record.isin.is_some() {
-                            e.0 = record.isin.as_deref();
-                        }
-                        if record.company_name.is_some() {
-                            e.1 = record.company_name.as_deref();
-                        }
-                    }
-                })
-                .or_insert((
-                    record.isin.as_deref(),
-                    record.company_name.as_deref(),
-                    record.date,
-                ));
-        }
-
-        for (ticker, (isin, company_name, date)) in unique_tickers {
-            ledger
-                .upsert_ticker(ticker, isin, company_name, date)
-                .map_err(|e| IngestError::Ledger(e.to_string()))?;
-        }
-
-        Ok(())
+        Ok(self.result)
     }
 }

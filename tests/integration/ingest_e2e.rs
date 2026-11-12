@@ -111,3 +111,50 @@ async fn test_e2e_zip_ingestion() {
     assert_eq!(result2.total_records_new, 0);
     assert_eq!(result2.total_records_skipped, result.total_records_parsed);
 }
+
+#[tokio::test]
+async fn test_e2e_zip_path_ingestion_and_ticker_recovery() {
+    let temp = TempDir::new().unwrap();
+    let data_dir = temp.path().to_path_buf();
+
+    std::fs::create_dir_all(data_dir.join("processed/cotahist")).unwrap();
+    std::fs::create_dir_all(data_dir.join("ledger")).unwrap();
+    std::fs::create_dir_all(data_dir.join("tmp")).unwrap();
+
+    let zip_data = create_test_cotahist_zip();
+    let zip_path = data_dir.join("tmp/upload-test.zip");
+    std::fs::write(&zip_path, &zip_data).unwrap();
+
+    // Simulate a previous interrupted ingestion where `ingested_dates` had 2026-01-02
+    // committed before `tickers` was populated.
+    let ledger_path = data_dir.join("ledger/tucano.db");
+    let ledger = tucano_b3::ledger::Ledger::open(&ledger_path).unwrap();
+    ledger
+        .insert_ingested_date(
+            "cotahist",
+            "ingested",
+            chrono::NaiveDate::from_ymd_opt(2026, 1, 2).unwrap(),
+        )
+        .unwrap();
+
+    let config = tucano_b3::config::DataConfig {
+        dir: data_dir.clone(),
+        reload_interval_seconds: 0,
+    };
+    let data_loader =
+        std::sync::Arc::new(tucano_b3::data::reload::DataLoader::new_standalone(&config).unwrap());
+
+    let result = tucano_b3::ingest::service::IngestService::ingest_zip_path(
+        &zip_path,
+        &data_dir,
+        &data_loader,
+    )
+    .unwrap();
+
+    assert_eq!(result.total_records_new, 0);
+    assert_eq!(result.total_records_skipped, 1);
+
+    // Verify that `tickers` in the ledger was self-healed by `record_ingestion_batch`.
+    let registry = tucano_b3::data::ticker_registry::TickerRegistry::load(&ledger_path).unwrap();
+    assert!(registry.exists("VALE3"));
+}

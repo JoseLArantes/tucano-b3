@@ -91,10 +91,14 @@ probes:
     path: /health
     initialDelaySeconds: 15
     periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
   readiness:
     path: /api/v1/health
     initialDelaySeconds: 5
     periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
 
 resources:
   requests:

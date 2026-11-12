@@ -4,4 +4,4 @@
 
 pub mod connection;
 
-pub use connection::{Ledger, LedgerError};
+pub use connection::{Ledger, LedgerError, TickerBatchEntry};

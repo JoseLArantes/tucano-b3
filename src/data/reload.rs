@@ -23,6 +23,9 @@ pub enum ReloadError {
 
     #[error("Failed to reload ticker registry: {0}")]
     TickerRegistry(#[from] crate::data::ticker_registry::TickerRegistryError),
+
+    #[error("Blocking reload task failed: {0}")]
+    TaskJoin(String),
 }
 
 /// Shared data state that can be reloaded.
@@ -59,26 +62,30 @@ impl DataLoader {
 
     /// Reload all data files.
     ///
-    /// This acquires a write lock on the query service, so concurrent
-    /// reads will block until the reload completes.
+    /// Synchronous filesystem discovery, DataFusion table registration, and SQLite
+    /// ticker registry loading run on a blocking thread before swapping the handle.
     pub async fn reload(&self) -> Result<(), ReloadError> {
         tracing::info!("Recarregando dados...");
 
-        // Discover new files
-        let files = discover_files(&self.data_config)?;
+        let data_config = self.data_config.clone();
+        let ticker_registry = Arc::clone(&self.ticker_registry);
 
-        // Create new query service
-        let new_service = QueryService::new(files)?;
+        let new_service =
+            tokio::task::spawn_blocking(move || -> Result<QueryService, ReloadError> {
+                let files = discover_files(&data_config)?;
+                let service = QueryService::new(files)?;
+                let ledger_path = data_config.dir.join("ledger/tucano.db");
+                ticker_registry.reload(&ledger_path)?;
+                Ok(service)
+            })
+            .await
+            .map_err(|e| ReloadError::TaskJoin(e.to_string()))??;
 
         // Swap the query service
         {
             let mut service = self.query_service.write().await;
             *service = Arc::new(new_service);
         }
-
-        // Reload ticker registry
-        let ledger_path = self.data_config.dir.join("ledger/tucano.db");
-        self.ticker_registry.reload(&ledger_path)?;
 
         // Purge cache on reload
         self.cache.purge();

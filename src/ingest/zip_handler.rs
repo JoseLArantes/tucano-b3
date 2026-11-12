@@ -33,6 +33,23 @@ pub struct ExtractedFile {
     pub content: Vec<u8>,
 }
 
+/// Check if a ZIP archive entry path is a valid COTAHIST `.TXT` file and return its base filename.
+pub fn cotahist_entry_filename(entry_name: &str) -> Option<String> {
+    if entry_name.ends_with('/') {
+        return None;
+    }
+    let upper = entry_name.to_uppercase();
+    if !upper.contains("COTAHIST") || !upper.ends_with(".TXT") {
+        return None;
+    }
+    Some(
+        Path::new(entry_name)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| entry_name.to_string()),
+    )
+}
+
 /// Extract COTAHIST files from a ZIP archive.
 ///
 /// Only extracts files matching COTAHIST patterns:
@@ -57,30 +74,15 @@ pub fn extract_cotahist_from_zip(data: &[u8]) -> Result<Vec<ExtractedFile>, ZipE
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
-        let filename = file.name().to_string();
-
-        // Skip directories
-        if filename.ends_with('/') {
+        let Some(filename) = cotahist_entry_filename(file.name()) else {
             continue;
-        }
-
-        // Only process COTAHIST files
-        let upper = filename.to_uppercase();
-        if !upper.contains("COTAHIST") || !upper.ends_with(".TXT") {
-            continue;
-        }
+        };
 
         // Read file content
         let mut content = Vec::new();
         file.read_to_end(&mut content)?;
 
-        extracted.push(ExtractedFile {
-            filename: Path::new(&filename)
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or(filename),
-            content,
-        });
+        extracted.push(ExtractedFile { filename, content });
     }
 
     if extracted.is_empty() {
