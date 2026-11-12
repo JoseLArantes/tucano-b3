@@ -48,6 +48,35 @@ async fn test_upload_without_file_returns_400() {
 }
 
 #[tokio::test]
+async fn test_upload_over_default_body_limit_is_not_rejected() {
+    let app = test_app();
+
+    // Axum's default body limit is 2 MB. COTAHIST ZIPs are larger than that.
+    let payload = vec![b'x'; 2 * 1024 * 1024 + 64 * 1024];
+    let mut body = Vec::new();
+    body.extend_from_slice(
+        b"--test\r\nContent-Disposition: form-data; name=\"file\"; filename=\"COTAHIST.zip\"\r\nContent-Type: application/zip\r\n\r\n",
+    );
+    body.extend_from_slice(&payload);
+    body.extend_from_slice(b"\r\n--test--\r\n");
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/ingest/upload")
+                .header("content-type", "multipart/form-data; boundary=test")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_ne!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    assert!(response.status().is_client_error() || response.status().is_server_error());
+}
+
+#[tokio::test]
 async fn test_folder_not_found_returns_error() {
     let app = test_app();
 

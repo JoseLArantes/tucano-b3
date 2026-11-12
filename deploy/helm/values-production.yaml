@@ -15,6 +15,13 @@ ingress:
   className: nginx
   host: b3-tucano.beakcloud.com
   # TLS terminates upstream of this Ingress on bos-k (same pattern as tmqa).
+  # Dedicated ingest Ingress: nginx default client_max_body_size is 1m and
+  # returns 413 for COTAHIST ZIPs (~90 MB). 500m matches the app limit.
+  ingest:
+    path: /api/v1/ingest
+    proxyBodySize: "500m"
+    proxyReadTimeout: "600"
+    proxySendTimeout: "600"
   tls:
     enabled: false
     secretName: tucano-b3-tls

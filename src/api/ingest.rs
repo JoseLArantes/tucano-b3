@@ -3,15 +3,16 @@
 //! POST /api/v1/ingest/upload  — Upload ZIP file
 //! POST /api/v1/ingest/folder  — Ingest from local folder
 
-use axum::extract::{Multipart, State};
+use axum::extract::{DefaultBodyLimit, Multipart, State};
 use axum::routing::post;
 use axum::{Json, Router};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::api::health::AppState;
 use crate::error::{AppError, AppResult};
 use crate::ingest::service::IngestService;
+use crate::ingest::zip_handler::MAX_ZIP_SIZE;
 use crate::models::envelope::ApiResponse;
 pub use crate::models::ingest::{FolderIngestRequest, IngestResponse, UploadFileRequest};
 
@@ -179,10 +180,22 @@ pub(crate) async fn folder_handler(
     )))
 }
 
+/// Multipart framing on top of a ZIP at `MAX_ZIP_SIZE`.
+const UPLOAD_BODY_LIMIT: usize = MAX_ZIP_SIZE + 1024 * 1024;
+
+/// Annual COTAHIST archives take longer than the default API timeout to upload and parse.
+pub const INGEST_REQUEST_TIMEOUT: Duration = Duration::from_secs(600);
+
 /// Build ingest routes.
+///
+/// The upload route accepts bodies up to 500 MB plus multipart overhead. Axum's
+/// default limit is 2 MB, which rejects COTAHIST ZIPs before the handler runs.
 pub fn routes(state: Arc<AppState>) -> Router {
     Router::new()
-        .route("/ingest/upload", post(upload_handler))
+        .route(
+            "/ingest/upload",
+            post(upload_handler).layer(DefaultBodyLimit::max(UPLOAD_BODY_LIMIT)),
+        )
         .route("/ingest/folder", post(folder_handler))
         .with_state(state)
 }

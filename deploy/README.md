@@ -47,7 +47,8 @@ brew install argoproj/tap/kubectl-argo-rollouts
 [Edge / Istio public-gateway + nginx Ingress]
         │
         ▼
-[Ingress: tucano-b3-ingress]  (ingressClassName: nginx)
+[Ingress: tucano-b3-ingress]  (ingressClassName: nginx, default 1m body)
+[Ingress: tucano-b3-ingress-ingest]  path /api/v1/ingest, proxy-body-size 500m
         │
         ▼
 [Service: tucano-b3]  ClusterIP :8080
@@ -148,4 +149,9 @@ kubectl get pods -n tucano-services -l app=tucano-b3
 kubectl logs -n tucano-services -l app=tucano-b3 -f
 kubectl get ingress -n tucano-services
 kubectl describe ingress tucano-b3-ingress -n tucano-services
+kubectl describe ingress tucano-b3-ingress-ingest -n tucano-services
 ```
+
+`POST /api/v1/ingest/upload` accepts ZIP archives up to **500 MB** (the application limit). `tucano-b3-ingress-ingest` sets `nginx.ingress.kubernetes.io/proxy-body-size: 500m` and 600s proxy read/send timeouts for `/api/v1/ingest` only. The main Ingress keeps nginx's default 1 MB body limit.
+
+A `413` HTML page from nginx on that path means the request was rejected before the pod. If TLS terminates on another nginx in front of this Ingress, that hop needs `client_max_body_size 500m` as well.

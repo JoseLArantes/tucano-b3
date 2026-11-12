@@ -17,6 +17,13 @@ ingress:
   className: nginx
   host: b3-tucano.beakcloud.com
   annotations: {}
+  # Annual COTAHIST ZIPs are tens to hundreds of MB. The ingest Ingress
+  # matches the application limit (500 MB) and allows the parse to finish.
+  ingest:
+    path: /api/v1/ingest
+    proxyBodySize: "500m"
+    proxyReadTimeout: "600"
+    proxySendTimeout: "600"
   tls:
     enabled: false
     secretName: tucano-b3-tls

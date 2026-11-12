@@ -40,8 +40,21 @@ pub fn build_router(
         cache.clone(),
     ));
 
+    let request_timeout = Duration::from_secs(config.server.request_timeout_seconds);
+
+    // Query routes keep the short timeout. Ingest is merged beside them so an
+    // annual COTAHIST upload is not aborted while the body is still being read.
     let api_routes = crate::api::routes(data_loader, cache.clone())
-        .merge(crate::api::metrics::routes(metrics.clone(), start_time));
+        .merge(crate::api::metrics::routes(metrics.clone(), start_time))
+        .layer(TimeoutLayer::with_status_code(
+            axum::http::StatusCode::REQUEST_TIMEOUT,
+            request_timeout,
+        ));
+    let ingest_routes =
+        crate::api::ingest::routes(health_state.clone()).layer(TimeoutLayer::with_status_code(
+            axum::http::StatusCode::REQUEST_TIMEOUT,
+            crate::api::ingest::INGEST_REQUEST_TIMEOUT,
+        ));
 
     Router::new()
         // Public health check alias at root
@@ -49,8 +62,6 @@ pub fn build_router(
             "/health",
             axum::routing::get(crate::api::health::health_handler).with_state(health_state),
         )
-        // API routes nested under /api/v1
-        .nest("/api/v1", api_routes)
         // Standalone metrics endpoint (standard Prometheus scrape /metrics)
         .merge(crate::api::metrics::routes(metrics.clone(), start_time))
         // Swagger UI (also serves /api/docs/openapi.json)
@@ -61,8 +72,10 @@ pub fn build_router(
         )
         .layer(TimeoutLayer::with_status_code(
             axum::http::StatusCode::REQUEST_TIMEOUT,
-            Duration::from_secs(config.server.request_timeout_seconds),
+            request_timeout,
         ))
+        // Added after the short timeout, with its own per-router limits.
+        .nest("/api/v1", api_routes.merge(ingest_routes))
         .layer(CorsLayer::permissive())
         .layer(CacheLayer::new(cache, metrics.clone()))
         .layer(CompressionLayer::new())

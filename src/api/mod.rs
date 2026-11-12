@@ -16,7 +16,10 @@ use crate::data::reload::DataLoader;
 use axum::Router;
 use std::sync::Arc;
 
-/// Build all API routes.
+/// Build API routes except ingestion.
+///
+/// Ingest routes are mounted separately so they can accept large ZIP bodies
+/// and a longer request timeout.
 pub fn routes(data_loader: Arc<DataLoader>, cache: Arc<CacheStore>) -> Router {
     let state = Arc::new(health::AppState::new(data_loader, cache));
 
@@ -25,6 +28,5 @@ pub fn routes(data_loader: Arc<DataLoader>, cache: Arc<CacheStore>) -> Router {
         .merge(info::routes(state.clone()))
         .merge(cotahist::routes(state.clone()))
         .merge(cotahist_analytics::routes(state.clone()))
-        .merge(ibov::routes(state.clone()))
-        .merge(ingest::routes(state))
+        .merge(ibov::routes(state))
 }
