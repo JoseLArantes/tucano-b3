@@ -176,10 +176,11 @@ impl CotahistParser {
 
         // Record type (bytes 0-1)
         let tipo_reg = &line[0..2];
+        // B3 trailers are commonly "99"; some layouts also document "02".
         let record_type = match tipo_reg {
             "00" => RecordType::Header,
             "01" => RecordType::Quote,
-            "02" => RecordType::Trailer,
+            "02" | "99" => RecordType::Trailer,
             _ => {
                 return Err(CotahistParseError::UnknownRecordType {
                     line: line_num,

@@ -75,6 +75,14 @@ resources:
   limits:
     memory: 8Gi
 
+# bos-debian-worker-2 is tainted mem=large:NoSchedule for memory-heavy pods.
+# Without this toleration the 4Gi request stays Pending on the small worker.
+tolerations:
+  - key: mem
+    operator: Equal
+    value: large
+    effect: NoSchedule
+
 metrics:
   enabled: true
   serviceMonitor:

@@ -80,7 +80,7 @@ async fn test_e2e_zip_ingestion() {
         std::sync::Arc::new(tucano_b3::data::reload::DataLoader::new(&config, cache).unwrap());
 
     let result =
-        tucano_b3::ingest::service::IngestService::ingest_zip(&zip_data, &data_dir, &data_loader);
+        tucano_b3::ingest::service::IngestService::ingest_zip(zip_data.clone(), &data_dir, &data_loader);
 
     assert!(result.is_ok());
     let result = result.unwrap();
@@ -96,7 +96,7 @@ async fn test_e2e_zip_ingestion() {
 
     // Verify idempotency: re-ingest same ZIP
     let result2 =
-        tucano_b3::ingest::service::IngestService::ingest_zip(&zip_data, &data_dir, &data_loader);
+        tucano_b3::ingest::service::IngestService::ingest_zip(zip_data.clone(), &data_dir, &data_loader);
 
     assert!(result2.is_ok());
     let result2 = result2.unwrap();

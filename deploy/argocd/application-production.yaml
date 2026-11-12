@@ -23,21 +23,24 @@ spec:
   syncPolicy:
     syncOptions:
       - CreateNamespace=true
-      - ServerSideApply=true
+      # Replace avoids SSA no-ops on Rollout.spec.template containers.resources
+      # that left production stuck at 2Gi while git already requested 8Gi.
+      - Replace=true
       - RespectIgnoreDifferences=true
     # Tip: Start with automated sync disabled to verify adoption safely.
     # Enable once initial sync is verified green.
     # automated:
     #   prune: true
     #   selfHeal: true
-  # Required because Rollouts is a CRD (not a native Kubernetes resource)
+  # Rollouts mutates restartAt and Service selectors during canary traffic.
+  # Do not ignore container resources: that hid memory-limit updates and left
+  # production on 2Gi while git already requested 8Gi.
   ignoreDifferences:
     - group: argoproj.io
       kind: Rollout
       jsonPointers:
         - /spec/restartAt
       jqPathExpressions:
-        - .spec.template.spec.containers[].resources
         - .spec.template.spec.containers[].ports[].protocol
     - group: ""
       kind: Service

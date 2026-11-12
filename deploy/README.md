@@ -134,7 +134,31 @@ kubectl argo rollouts get rollout tucano-b3 -n tucano-services --watch
 
 ---
 
-## 5. Argo CD
+## 5. Deploy updates (Argo CD)
+
+Automated sync is off. To ship a Helm/values change:
+
+1. Commit and push to `master` (the Application `targetRevision`).
+2. Refresh and sync the app:
+
+```bash
+kubectl apply -f deploy/argocd/application-production.yaml
+argocd app get tucano-b3
+argocd app sync tucano-b3 --prune
+# or in the Argo CD UI: Refresh → Sync
+```
+
+3. Watch the canary Rollout finish, then confirm the live pod picked up the change:
+
+```bash
+kubectl argo rollouts get rollout tucano-b3 -n tucano-services --watch
+kubectl get pods -n tucano-services -l app=tucano-b3 \
+  -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.containers[0].resources}{"\n"}{end}'
+```
+
+A values-only memory change updates the Rollout only if Argo is allowed to diff `resources`. That path must not be listed under `ignoreDifferences`.
+
+## 6. Argo CD manifests
 
 Manifests live under `deploy/argocd/`:
 
@@ -160,7 +184,7 @@ Automated sync is commented out until the first manual sync is green (same tip a
 
 ---
 
-## 6. Rollout operations
+## 7. Rollout operations
 
 ```bash
 kubectl argo rollouts get rollout tucano-b3 -n tucano-services --watch
@@ -171,7 +195,7 @@ kubectl argo rollouts restart tucano-b3 -n tucano-services
 
 ---
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 ```bash
 kubectl describe rollout tucano-b3 -n tucano-services

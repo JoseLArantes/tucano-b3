@@ -1,7 +1,7 @@
 services:
   # Serviço de produção da API REST
   api:
-    image: registry.beakcloud.com/tucano-b3-api:latest
+    image: ghcr.io/joselarantes/tucano-b3:latest
     platform: linux/amd64
     container_name: tucano_b3_api
     ports:

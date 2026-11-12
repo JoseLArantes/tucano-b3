@@ -3,6 +3,9 @@
 //! Writes parsed COTAHIST records to Parquet files.
 //! Output schema matches src/data/schema.rs::cotahist_schema().
 //! Uses zstd compression and 1M row groups.
+//!
+//! Annual files are written in chunks and existing year data is streamed so the
+//! process does not hold a full-year Arrow batch plus the record Vec at once.
 
 use crate::data::schema::cotahist_schema;
 use crate::ingest::cotahist_parser::CotahistRecord;
@@ -15,6 +18,9 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 use thiserror::Error;
+
+/// Rows per Arrow batch while writing. Keeps peak memory bounded on small nodes.
+const WRITE_CHUNK_ROWS: usize = 100_000;
 
 /// Errors during Parquet writing.
 #[derive(Error, Debug)]
@@ -50,27 +56,25 @@ pub fn write_cotahist_parquet(
     records: &[CotahistRecord],
     output_dir: &Path,
 ) -> Result<Vec<WriteStats>, ParquetWriteError> {
-    // Group records by year
-    let mut by_year: std::collections::HashMap<i32, Vec<&CotahistRecord>> =
-        std::collections::HashMap::new();
-
-    for record in records {
-        by_year.entry(record.year).or_default().push(record);
+    // Group record indexes by year to avoid cloning records.
+    let mut by_year: std::collections::HashMap<i32, Vec<usize>> = std::collections::HashMap::new();
+    for (idx, record) in records.iter().enumerate() {
+        by_year.entry(record.year).or_default().push(idx);
     }
 
     let mut results = Vec::new();
 
-    for (year, year_records) in &by_year {
+    for (year, indexes) in &by_year {
         let file_path = output_dir.join(format!("cotahist-{}.parquet", year));
 
-        // Create output directory if needed
         if let Some(parent) = file_path.parent() {
             fs::create_dir_all(parent).map_err(|_| ParquetWriteError::DirCreate {
                 path: parent.display().to_string(),
             })?;
         }
 
-        let stats = write_year_parquet(year_records, &file_path)?;
+        let year_records: Vec<&CotahistRecord> = indexes.iter().map(|&i| &records[i]).collect();
+        let stats = write_year_parquet(&year_records, &file_path)?;
         results.push(stats);
     }
 
@@ -83,38 +87,61 @@ fn write_year_parquet(
     file_path: &Path,
 ) -> Result<WriteStats, ParquetWriteError> {
     let schema = cotahist_schema();
+    let temp_path = file_path.with_extension("tmp");
+    let file = fs::File::create(&temp_path)?;
+    let props = WriterProperties::builder()
+        .set_compression(parquet::basic::Compression::ZSTD(Default::default()))
+        .set_max_row_group_size(1_000_000)
+        .set_writer_version(WriterVersion::PARQUET_2_0)
+        .build();
 
-    // If file exists, read existing batches to preserve prior data for this year
-    let existing_batches = if file_path.exists() {
-        let file = fs::File::open(file_path)?;
-        let builder = ParquetRecordBatchReaderBuilder::try_new(file)?;
+    let mut writer = ArrowWriter::try_new(file, schema.clone(), Some(props))?;
+    let mut existing_rows = 0usize;
+
+    // Stream prior year data one batch at a time (do not retain all batches).
+    if file_path.exists() {
+        let existing = fs::File::open(file_path)?;
+        let builder = ParquetRecordBatchReaderBuilder::try_new(existing)?;
         let reader = builder.build()?;
-        let mut batches = Vec::new();
         for batch in reader {
-            batches.push(batch?);
+            let batch = batch?;
+            existing_rows += batch.num_rows();
+            writer.write(&batch)?;
         }
-        batches
-    } else {
-        Vec::new()
-    };
+    }
 
-    let existing_rows: usize = existing_batches.iter().map(|b| b.num_rows()).sum();
+    for chunk in records.chunks(WRITE_CHUNK_ROWS) {
+        let batch = records_to_batch(chunk, schema.clone())?;
+        writer.write(&batch)?;
+    }
 
-    // Build Arrow arrays from records
+    writer.close()?;
+    fs::rename(&temp_path, file_path)?;
+
+    let file_size = fs::metadata(file_path)?.len();
+    Ok(WriteStats {
+        rows_written: existing_rows + records.len(),
+        file_path: file_path.display().to_string(),
+        file_size_bytes: file_size,
+    })
+}
+
+fn records_to_batch(
+    records: &[&CotahistRecord],
+    schema: Arc<arrow::datatypes::Schema>,
+) -> Result<RecordBatch, ParquetWriteError> {
     let ticker_arr = StringArray::from(
         records
             .iter()
             .map(|r| r.ticker.as_str())
             .collect::<Vec<_>>(),
     );
-
     let isin_arr = StringArray::from(
         records
             .iter()
             .map(|r| r.isin.as_deref())
             .collect::<Vec<_>>(),
     );
-
     let company_name_arr = StringArray::from(
         records
             .iter()
@@ -129,36 +156,23 @@ fn write_year_parquet(
             .map(|r| r.date.signed_duration_since(epoch).num_days() as i32)
             .collect::<Vec<_>>(),
     );
-
     let year_arr = Int32Array::from(records.iter().map(|r| r.year).collect::<Vec<_>>());
-
     let market_type_arr =
         UInt8Array::from(records.iter().map(|r| r.market_type).collect::<Vec<_>>());
-
     let pre_abr_arr = Float64Array::from(records.iter().map(|r| r.pre_abr).collect::<Vec<_>>());
-
     let pre_max_arr = Float64Array::from(records.iter().map(|r| r.pre_max).collect::<Vec<_>>());
-
     let pre_min_arr = Float64Array::from(records.iter().map(|r| r.pre_min).collect::<Vec<_>>());
-
     let pre_med_arr = Float64Array::from(records.iter().map(|r| r.pre_med).collect::<Vec<_>>());
-
     let pre_ult_arr = Float64Array::from(records.iter().map(|r| r.pre_ult).collect::<Vec<_>>());
-
     let pre_ofe_compra_arr =
         Float64Array::from(records.iter().map(|r| r.pre_ofe_compra).collect::<Vec<_>>());
-
     let pre_ofe_venda_arr =
         Float64Array::from(records.iter().map(|r| r.pre_ofe_venda).collect::<Vec<_>>());
-
     let tot_neg_arr = UInt32Array::from(records.iter().map(|r| r.tot_neg).collect::<Vec<_>>());
-
     let quat_tot_arr = UInt64Array::from(records.iter().map(|r| r.quat_tot).collect::<Vec<_>>());
-
     let vol_tot_arr = Float64Array::from(records.iter().map(|r| r.vol_tot).collect::<Vec<_>>());
 
-    // Build RecordBatch
-    let batch = RecordBatch::try_new(
+    Ok(RecordBatch::try_new(
         schema.clone(),
         vec![
             Arc::new(ticker_arr),
@@ -167,7 +181,7 @@ fn write_year_parquet(
             Arc::new(date_arr),
             Arc::new(year_arr),
             Arc::new(market_type_arr),
-            arrow::array::new_null_array(schema.field(6).data_type(), records.len()), // mod_ref
+            arrow::array::new_null_array(schema.field(6).data_type(), records.len()),
             Arc::new(pre_abr_arr),
             Arc::new(pre_max_arr),
             Arc::new(pre_min_arr),
@@ -178,39 +192,12 @@ fn write_year_parquet(
             Arc::new(tot_neg_arr),
             Arc::new(quat_tot_arr),
             Arc::new(vol_tot_arr),
-            arrow::array::new_null_array(schema.field(17).data_type(), records.len()), // schema_version
-            arrow::array::new_null_array(schema.field(18).data_type(), records.len()), // _ingested_at
-            arrow::array::new_null_array(schema.field(19).data_type(), records.len()), // _source_file
-            arrow::array::new_null_array(schema.field(20).data_type(), records.len()), // _source_hash
+            arrow::array::new_null_array(schema.field(17).data_type(), records.len()),
+            arrow::array::new_null_array(schema.field(18).data_type(), records.len()),
+            arrow::array::new_null_array(schema.field(19).data_type(), records.len()),
+            arrow::array::new_null_array(schema.field(20).data_type(), records.len()),
         ],
-    )?;
-
-    // Write to a temporary file in the same directory then atomically rename
-    let temp_path = file_path.with_extension("tmp");
-    let file = fs::File::create(&temp_path)?;
-    let props = WriterProperties::builder()
-        .set_compression(parquet::basic::Compression::ZSTD(Default::default()))
-        .set_max_row_group_size(1_000_000)
-        .set_writer_version(WriterVersion::PARQUET_2_0)
-        .build();
-
-    let mut writer = ArrowWriter::try_new(file, schema, Some(props))?;
-    for existing in &existing_batches {
-        writer.write(existing)?;
-    }
-    writer.write(&batch)?;
-    writer.close()?;
-
-    fs::rename(&temp_path, file_path)?;
-
-    let file_size = fs::metadata(file_path)?.len();
-    let total_rows = existing_rows + records.len();
-
-    Ok(WriteStats {
-        rows_written: total_rows,
-        file_path: file_path.display().to_string(),
-        file_size_bytes: file_size,
-    })
+    )?)
 }
 
 #[cfg(test)]
@@ -256,7 +243,6 @@ mod tests {
         let file_path = temp.path().join("cotahist-2026.parquet");
         assert!(file_path.exists());
 
-        // Validate schema using existing schema validator
         let file = fs::File::open(&file_path).unwrap();
         let builder = ParquetRecordBatchReaderBuilder::try_new(file).unwrap();
         let file_schema = builder.schema();
@@ -288,6 +274,16 @@ mod tests {
 
         let records_day2 = vec![make_test_record("VALE3", 2026, 3)];
         let stats2 = write_cotahist_parquet(&records_day2, temp.path()).unwrap();
-        assert_eq!(stats2[0].rows_written, 2); // 1 existing + 1 new = 2
+        assert_eq!(stats2[0].rows_written, 2);
+    }
+
+    #[test]
+    fn test_write_cotahist_parquet_chunked_large_input() {
+        let temp = TempDir::new().unwrap();
+        let records: Vec<_> = (1..=250_000)
+            .map(|i| make_test_record("PETR4", 2026, ((i % 28) + 1) as u32))
+            .collect();
+        let stats = write_cotahist_parquet(&records, temp.path()).unwrap();
+        assert_eq!(stats[0].rows_written, 250_000);
     }
 }

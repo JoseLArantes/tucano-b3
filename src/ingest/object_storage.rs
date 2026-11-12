@@ -281,7 +281,7 @@ impl S3ObjectStorage {
             }
 
             let result =
-                IngestService::ingest_zip(&bytes, data_dir, data_loader).map_err(|source| {
+                IngestService::ingest_zip(bytes, data_dir, data_loader).map_err(|source| {
                     ObjectStorageError::Ingest {
                         key: object.key.clone(),
                         source,

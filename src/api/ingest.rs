@@ -82,7 +82,7 @@ pub(crate) async fn upload_handler(
 
     // Run ingestion
     let data_dir = state.data_loader.data_config.dir.clone();
-    let result = IngestService::ingest_zip(&data, &data_dir, &state.data_loader)
+    let result = IngestService::ingest_zip(data, &data_dir, &state.data_loader)
         .map_err(|e| AppError::Internal(anyhow::anyhow!("{}", e)))?;
 
     let elapsed = start.elapsed().as_secs_f64() * 1000.0;
