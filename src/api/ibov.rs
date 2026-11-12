@@ -58,7 +58,7 @@ fn default_per_page() -> u32 {
         IbovHistoryParams,
     ),
     responses(
-        (status = 200, description = "Série histórica retornada", body = ApiResponse<IbovHistoryResponse>),
+        (status = 200, description = "Série histórica retornada", body = IbovHistoryApiResponse),
         (status = 400, description = "Data inválida", body = ErrorResponse),
         (status = 404, description = "Nenhum dado encontrado", body = ErrorResponse),
         (status = 429, description = "Limite de requisições excedido", body = ErrorResponse),
@@ -123,7 +123,7 @@ pub(crate) async fn history_handler(
     path = "/ibov/latest",
     tag = "ibov",
     responses(
-        (status = 200, description = "Dado mais recente retornado", body = ApiResponse<IbovLatestResponse>),
+        (status = 200, description = "Dado mais recente retornado", body = IbovLatestApiResponse),
         (status = 404, description = "Nenhum dado encontrado", body = ErrorResponse),
         (status = 429, description = "Limite de requisições excedido", body = ErrorResponse),
         (status = 500, description = "Erro interno do servidor", body = ErrorResponse),

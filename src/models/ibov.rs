@@ -3,6 +3,8 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use crate::models::pagination::PaginationMeta;
+
 /// A single IBOV historical data point.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct IbovHistoryEntry {
@@ -27,7 +29,7 @@ pub struct IbovHistoryResponse {
     pub codigo: String,
     pub nome: String,
     pub history: Vec<IbovHistoryEntry>,
-    pub paginacao: crate::models::pagination::PaginationMeta,
+    pub paginacao: PaginationMeta,
 }
 
 /// Response for GET /api/v1/ibov/latest

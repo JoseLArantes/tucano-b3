@@ -54,7 +54,7 @@ fn default_true() -> bool {
         ListTickersParams,
     ),
     responses(
-        (status = 200, description = "Lista de tickers retornada com sucesso", body = ApiResponse<TickerListResponse>),
+        (status = 200, description = "Lista de tickers retornada com sucesso", body = TickerListApiResponse),
         (status = 429, description = "Limite de requisições excedido", body = ErrorResponse),
         (status = 500, description = "Erro interno do servidor", body = ErrorResponse),
     ),
@@ -101,7 +101,7 @@ pub(crate) async fn list_tickers_handler(
         ("ticker" = String, Path, description = "Código do ticker (ex: VALE3, PETR4)"),
     ),
     responses(
-        (status = 200, description = "Ticker encontrado", body = ApiResponse<TickerDetailResponse>),
+        (status = 200, description = "Ticker encontrado", body = TickerDetailApiResponse),
         (status = 404, description = "Ticker não encontrado", body = ErrorResponse),
         (status = 429, description = "Limite de requisições excedido", body = ErrorResponse),
         (status = 500, description = "Erro interno do servidor", body = ErrorResponse),
@@ -169,7 +169,7 @@ fn default_per_page_quotes() -> u32 {
         QuoteHistoryParams,
     ),
     responses(
-        (status = 200, description = "Cotações retornadas com sucesso", body = ApiResponse<QuoteListResponse>),
+        (status = 200, description = "Cotações retornadas com sucesso", body = QuoteListApiResponse),
         (status = 400, description = "Data inválida ou intervalo invertido", body = ErrorResponse),
         (status = 404, description = "Ticker não encontrado", body = ErrorResponse),
         (status = 429, description = "Limite de requisições excedido", body = ErrorResponse),
@@ -229,7 +229,7 @@ pub(crate) async fn get_quotes_handler(
         ("ticker" = String, Path, description = "Código do ticker"),
     ),
     responses(
-        (status = 200, description = "Cotação mais recente retornada", body = ApiResponse<LatestQuoteResponse>),
+        (status = 200, description = "Cotação mais recente retornada", body = LatestQuoteApiResponse),
         (status = 404, description = "Ticker não encontrado ou sem dados", body = ErrorResponse),
         (status = 429, description = "Limite de requisições excedido", body = ErrorResponse),
         (status = 500, description = "Erro interno do servidor", body = ErrorResponse),
@@ -270,7 +270,7 @@ pub(crate) async fn get_latest_handler(
         PaginationParams,
     ),
     responses(
-        (status = 200, description = "Cotações da data retornadas", body = ApiResponse<DateQuotesResponse>),
+        (status = 200, description = "Cotações da data retornadas", body = DateQuotesApiResponse),
         (status = 400, description = "Formato de data inválido", body = ErrorResponse),
         (status = 404, description = "Nenhum dado encontrado para a data", body = ErrorResponse),
         (status = 429, description = "Limite de requisições excedido", body = ErrorResponse),

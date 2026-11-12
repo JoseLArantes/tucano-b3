@@ -3,4 +3,5 @@
 pub mod cotahist;
 pub mod envelope;
 pub mod ibov;
+pub mod ingest;
 pub mod pagination;

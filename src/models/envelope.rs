@@ -6,8 +6,25 @@
 use serde::Serialize;
 use utoipa::ToSchema;
 
+use crate::models::cotahist::{
+    DateQuotesResponse, LatestQuoteResponse, QuoteListResponse, TickerDetailResponse,
+    TickerListResponse,
+};
+use crate::models::ibov::{IbovHistoryResponse, IbovLatestResponse};
+use crate::models::ingest::IngestResponse;
+
 /// Standard response envelope for all successful API responses.
 #[derive(Debug, Serialize, ToSchema)]
+#[aliases(
+    TickerListApiResponse = ApiResponse<TickerListResponse>,
+    TickerDetailApiResponse = ApiResponse<TickerDetailResponse>,
+    QuoteListApiResponse = ApiResponse<QuoteListResponse>,
+    LatestQuoteApiResponse = ApiResponse<LatestQuoteResponse>,
+    DateQuotesApiResponse = ApiResponse<DateQuotesResponse>,
+    IbovHistoryApiResponse = ApiResponse<IbovHistoryResponse>,
+    IbovLatestApiResponse = ApiResponse<IbovLatestResponse>,
+    IngestApiResponse = ApiResponse<IngestResponse>,
+)]
 pub struct ApiResponse<T: Serialize> {
     pub data: T,
     pub meta: ResponseMeta,

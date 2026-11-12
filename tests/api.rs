@@ -14,3 +14,5 @@ mod ibov_history;
 mod ibov_latest;
 #[path = "api/metrics.rs"]
 mod metrics;
+#[path = "api/openapi.rs"]
+mod openapi;

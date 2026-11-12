@@ -68,8 +68,15 @@ impl Modify for SecurityAddon {
     ),
     components(
         schemas(
-            // Envelope
-            ApiResponse<String>,
+            // Envelope aliases
+            TickerListApiResponse,
+            TickerDetailApiResponse,
+            QuoteListApiResponse,
+            LatestQuoteApiResponse,
+            DateQuotesApiResponse,
+            IbovHistoryApiResponse,
+            IbovLatestApiResponse,
+            IngestApiResponse,
             ResponseMeta,
             ErrorResponse,
             crate::error::ErrorDetail,
@@ -88,9 +95,9 @@ impl Modify for SecurityAddon {
             IbovHistoryResponse,
             IbovLatestResponse,
             // Ingest
-            crate::api::ingest::IngestResponse,
-            crate::api::ingest::FolderIngestRequest,
-            crate::api::ingest::UploadFileRequest,
+            crate::models::ingest::IngestResponse,
+            crate::models::ingest::FolderIngestRequest,
+            crate::models::ingest::UploadFileRequest,
             // Health
             crate::api::health::HealthResponse,
             crate::api::info::InfoResponse,

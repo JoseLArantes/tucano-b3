@@ -6,42 +6,14 @@
 use axum::extract::{Multipart, State};
 use axum::routing::post;
 use axum::{Json, Router};
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
-use utoipa::ToSchema;
 
 use crate::api::health::AppState;
 use crate::error::{AppError, AppResult};
 use crate::ingest::service::IngestService;
 use crate::models::envelope::ApiResponse;
-
-/// Response for upload/folder ingestion.
-#[derive(Debug, Serialize, ToSchema)]
-pub struct IngestResponse {
-    pub task_id: String,
-    pub files_processed: usize,
-    pub total_records_parsed: usize,
-    pub total_records_new: usize,
-    pub total_records_skipped: usize,
-    pub success: bool,
-    pub message: String,
-}
-
-/// Request body for folder ingestion.
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct FolderIngestRequest {
-    /// Absolute path to the folder containing COTAHIST files
-    pub caminho: String,
-}
-
-/// Request body para upload de arquivo COTAHIST (Swagger UI / OpenAPI).
-#[derive(Debug, ToSchema)]
-pub struct UploadFileRequest {
-    /// Arquivo ZIP contendo arquivos COTAHIST (.TXT) da B3
-    #[schema(value_type = String, format = Binary)]
-    pub file: String,
-}
+pub use crate::models::ingest::{FolderIngestRequest, IngestResponse, UploadFileRequest};
 
 /// Upload de arquivo ZIP para ingestão
 ///
@@ -58,7 +30,7 @@ pub struct UploadFileRequest {
         description = "Arquivo ZIP do COTAHIST (.ZIP) para upload",
     ),
     responses(
-        (status = 200, description = "Ingestão concluída com sucesso", body = ApiResponse<IngestResponse>),
+        (status = 200, description = "Ingestão concluída com sucesso", body = IngestApiResponse),
         (status = 400, description = "Arquivo inválido ou muito grande", body = ErrorResponse),
         (status = 429, description = "Limite de requisições excedido", body = ErrorResponse),
         (status = 500, description = "Erro interno do servidor", body = ErrorResponse),
@@ -142,7 +114,7 @@ pub(crate) async fn upload_handler(
     tag = "ingest",
     request_body = FolderIngestRequest,
     responses(
-        (status = 200, description = "Ingestão concluída", body = ApiResponse<IngestResponse>),
+        (status = 200, description = "Ingestão concluída", body = IngestApiResponse),
         (status = 400, description = "Caminho inválido", body = ErrorResponse),
         (status = 404, description = "Pasta não encontrada", body = ErrorResponse),
         (status = 429, description = "Limite de requisições excedido", body = ErrorResponse),

@@ -48,8 +48,8 @@ pub fn build_router(
             Duration::from_secs(config.server.request_timeout_seconds),
         ))
         .layer(CorsLayer::permissive())
-        .layer(CompressionLayer::new())
         .layer(CacheLayer::new(cache, metrics.clone()))
+        .layer(CompressionLayer::new())
         .layer(RateLimitLayer::new(rate_limit_state, metrics.clone()))
         .layer(RequestLoggingLayer::new())
         .layer(RequestIdLayer::new())

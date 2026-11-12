@@ -43,4 +43,6 @@ fn test_is_cacheable() {
     assert!(!is_cacheable("/api/v1/metrics"));
     assert!(!is_cacheable("/api/v1/info"));
     assert!(!is_cacheable("/metrics"));
+    assert!(!is_cacheable("/api/docs"));
+    assert!(!is_cacheable("/api/docs/openapi.json"));
 }

@@ -3,6 +3,8 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use crate::models::pagination::PaginationMeta;
+
 /// A single COTAHIST quote record.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct QuoteResponse {
@@ -51,7 +53,7 @@ pub struct TickerDetailResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct TickerListResponse {
     pub tickers: Vec<TickerResponse>,
-    pub paginacao: crate::models::pagination::PaginationMeta,
+    pub paginacao: PaginationMeta,
 }
 
 /// Response for the quotes endpoint.
@@ -59,7 +61,7 @@ pub struct TickerListResponse {
 pub struct QuoteListResponse {
     pub ticker: String,
     pub quotes: Vec<QuoteResponse>,
-    pub paginacao: crate::models::pagination::PaginationMeta,
+    pub paginacao: PaginationMeta,
 }
 
 /// Response for the latest quote endpoint.
@@ -86,5 +88,5 @@ pub struct LatestQuoteResponse {
 pub struct DateQuotesResponse {
     pub date: String,
     pub quotes: Vec<QuoteResponse>,
-    pub paginacao: crate::models::pagination::PaginationMeta,
+    pub paginacao: PaginationMeta,
 }
