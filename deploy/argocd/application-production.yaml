@@ -1,0 +1,46 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tucano-b3
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: tucano-services
+  source:
+    # Public repository — HTTPS clone needs no Argo CD repo credentials.
+    repoURL: "https://github.com/JoseLArantes/tucano-b3.git"
+    targetRevision: master
+    path: deploy/helm
+    helm:
+      releaseName: tucano-b3
+      valueFiles:
+        - values.yaml
+        - values-production.yaml
+  destination:
+    server: "https://kubernetes.default.svc"
+    namespace: tucano-services
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+    # Tip: Start with automated sync disabled to verify adoption safely.
+    # Enable once initial sync is verified green.
+    # automated:
+    #   prune: true
+    #   selfHeal: true
+  # Required because Rollouts is a CRD (not a native Kubernetes resource)
+  ignoreDifferences:
+    - group: argoproj.io
+      kind: Rollout
+      jsonPointers:
+        - /spec/restartAt
+      jqPathExpressions:
+        - .spec.template.spec.containers[].resources
+        - .spec.template.spec.containers[].ports[].protocol
+    - group: ""
+      kind: Service
+      jsonPointers:
+        - /spec/selector
+        - /spec/ports

@@ -444,7 +444,7 @@ impl CotahistService {
     }
 
     /// Validate `desde` (required) and optional `ate`, including inverted ranges.
-    fn validate_period(desde: &str, ate: Option<&str>) -> AppResult<()> {
+    pub fn validate_period(desde: &str, ate: Option<&str>) -> AppResult<()> {
         Self::validate_date(desde)?;
         if let Some(a) = ate {
             Self::validate_date(a)?;
@@ -456,12 +456,42 @@ impl CotahistService {
     }
 
     /// Build a WHERE clause for ticker + period filters.
+    pub fn period_where_public(ticker: &str, desde: &str, ate: Option<&str>) -> String {
+        Self::period_where(ticker, desde, ate)
+    }
+
+    /// Build a WHERE clause for ticker + period filters.
     fn period_where(ticker: &str, desde: &str, ate: Option<&str>) -> String {
         let mut where_clause = format!("WHERE ticker = '{ticker}' AND date >= '{desde}'");
         if let Some(a) = ate {
             where_clause.push_str(&format!(" AND date <= '{a}'"));
         }
         where_clause
+    }
+
+    /// Public count extractor for sibling analytics services.
+    pub fn extract_count_public(batches: &[RecordBatch]) -> usize {
+        Self::extract_count(batches)
+    }
+
+    pub fn get_str_public(batch: &RecordBatch, row: usize, col_name: &str) -> Option<String> {
+        Self::get_str(batch, row, col_name)
+    }
+
+    pub fn get_f64_public(batch: &RecordBatch, row: usize, col_name: &str) -> Option<f64> {
+        Self::get_f64(batch, row, col_name)
+    }
+
+    pub fn get_u32_public(batch: &RecordBatch, row: usize, col_name: &str) -> Option<u32> {
+        Self::get_u32(batch, row, col_name)
+    }
+
+    pub fn get_u64_public(batch: &RecordBatch, row: usize, col_name: &str) -> Option<u64> {
+        Self::get_u64(batch, row, col_name)
+    }
+
+    pub fn get_u8_public(batch: &RecordBatch, row: usize, col_name: &str) -> Option<u8> {
+        Self::get_u8(batch, row, col_name)
     }
 
     /// Validate a date string in YYYY-MM-DD format.
@@ -637,6 +667,25 @@ impl CotahistService {
         }
         if let Some(arr) = col.as_any().downcast_ref::<Int64Array>() {
             return Some(arr.value(row) as u64);
+        }
+        None
+    }
+
+    fn get_u8(batch: &RecordBatch, row: usize, col_name: &str) -> Option<u8> {
+        let schema = batch.schema();
+        let idx = schema.index_of(col_name).ok()?;
+        let col = batch.column(idx);
+        if col.is_null(row) {
+            return None;
+        }
+        if let Some(arr) = col.as_any().downcast_ref::<UInt8Array>() {
+            return Some(arr.value(row));
+        }
+        if let Some(arr) = col.as_any().downcast_ref::<UInt32Array>() {
+            return Some(arr.value(row) as u8);
+        }
+        if let Some(arr) = col.as_any().downcast_ref::<Int64Array>() {
+            return Some(arr.value(row) as u8);
         }
         None
     }

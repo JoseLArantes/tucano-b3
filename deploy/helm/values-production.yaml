@@ -1,0 +1,63 @@
+# Production values for bos-k (nginx Ingress + Istio public-gateway at the edge).
+# Keep at 1 while persistence.accessMode is ReadWriteOnce (single-node PVC attach).
+replicaCount: 1
+
+image:
+  tag: "latest"
+
+service:
+  type: ClusterIP
+  port: 8080
+  targetPort: 8080
+
+ingress:
+  enabled: true
+  className: nginx
+  host: b3-tucano.beakcloud.com
+  # TLS terminates upstream of this Ingress on bos-k (same pattern as tmqa).
+  tls:
+    enabled: false
+    secretName: tucano-b3-tls
+
+# cert-manager is not installed on bos-k.
+certificate:
+  enabled: false
+  issuerRef:
+    kind: ClusterIssuer
+    name: letsencrypt-prod
+
+secrets:
+  existingSecret: "tucano-b3-secret"
+
+config:
+  serverHost: "0.0.0.0"
+  serverPort: "8080"
+  dataDir: "/data"
+  logLevel: "info"
+  logFormat: "json"
+  cacheEnabled: "true"
+  cacheTtl: "300"
+  cacheMaxEntries: "10000"
+
+persistence:
+  enabled: true
+  size: 50Gi
+  accessMode: ReadWriteOnce
+  mountPath: /data
+
+vault:
+  enabled: false
+  role: "tucano-services-role"
+  secretPath: "tucano/b3/production"
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    memory: 2Gi
+
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: false

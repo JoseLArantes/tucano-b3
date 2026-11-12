@@ -5,7 +5,7 @@ class TucanoB3 < Formula
   desc "API REST de alta performance para dados de mercado da B3"
   homepage "https://github.com/tucano-b3/tucano-b3"
   version "0.1.0"
-  license "MIT OR Apache-2.0"
+  license "MIT"
 
   on_macos do
     if Hardware::CPU.arm?

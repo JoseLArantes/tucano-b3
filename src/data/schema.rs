@@ -1,17 +1,14 @@
 //! Parquet schema definitions for tucano-b3.
 //!
-//! These schemas MUST match exactly what tucano-b3-cli produces.
-//! Any mismatch causes a startup failure (fail-fast).
-//!
-//! Reference: tucano-b3-cli PRODUCT.md § Data Models
+//! These schemas MUST match the Parquet files written by this service's
+//! ingestion pipeline. Any mismatch causes a startup failure (fail-fast).
 
 use arrow::datatypes::{DataType, Field, Schema};
 use std::sync::Arc;
 
 /// Build the Arrow schema for COTAHIST Parquet files.
 ///
-/// This schema matches the output of `tucano-b3-cli` COTAHIST parser.
-/// Field order and names must be identical.
+/// Field order and names must match the COTAHIST Parquet writer.
 pub fn cotahist_schema() -> Arc<Schema> {
     Arc::new(Schema::new(vec![
         Field::new("ticker", DataType::Utf8, false),
@@ -44,7 +41,6 @@ pub fn cotahist_schema() -> Arc<Schema> {
 
 /// Build the Arrow schema for IBOV historical Parquet files.
 ///
-/// This schema matches the output of `tucano-b3-cli` IBOV parser.
 /// Includes nullable bid/ask fields for forward compatibility.
 pub fn ibov_schema() -> Arc<Schema> {
     Arc::new(Schema::new(vec![

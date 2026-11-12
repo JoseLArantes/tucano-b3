@@ -7,6 +7,7 @@ use utoipa::{Modify, OpenApi};
 
 use crate::error::ErrorResponse;
 use crate::models::cotahist::*;
+use crate::models::cotahist_analytics::*;
 use crate::models::envelope::*;
 use crate::models::ibov::*;
 use crate::models::pagination::*;
@@ -45,13 +46,31 @@ impl Modify for SecurityAddon {
     info(
         title = "tucano-b3",
         version = "0.1.0",
-        description = "API REST de alta performance para dados de mercado da B3 (Brasil, Bolsa, Balcão).\n\nEsta API serve dados históricos de cotações (COTAHIST) e a série histórica do IBOVESPA, ingeridos via `tucano-b3-cli`.",
+        description = "API REST de alta performance para dados oficiais de mercado da B3 (Brasil, Bolsa, Balcão).\n\n\
+## Capabilidades\n\n\
+### COTAHIST — cotações históricas\n\
+- Descoberta de instrumentos (`/cotahist/tickers`, detalhe por ticker).\n\
+- Histórico OHLCV paginado, cotação mais recente e cross-section por data de pregão.\n\
+- Série compacta para gráficos (`/series`: `date_ms`, `pre_ult`, `vol_tot`, `tot_neg`) e extremos de fechamento (`/pre-ult/min`, `/pre-ult/max`).\n\n\
+### Analytics derivadas (preços nominais)\n\
+Indicadores calculados sobre PREULT/OHLCV COTAHIST — **não** são séries oficiais publicadas pela B3. Toda resposta analítica inclui o campo `aviso`.\n\
+- Retorno e anualização (`/returns`), cartão estatístico (`/stats`), drawdown (`/drawdown`), posição no intervalo (`/range-position`).\n\
+- Performance relativa vs IBOV (`/relative`), movers do pregão (`/dates/{date}/movers`), tela de liquidez (`/liquidity`).\n\
+- Gaps de abertura (`/gaps`), indicadores móveis SMA/EMA/vol/ADV (`/rolling`), spread compra/venda (`/spread`), comparação normalizada base 100 (`/compare`).\n\n\
+### IBOV\n\
+Série histórica e ponto mais recente do índice IBOVESPA.\n\n\
+### Ingestão e operações\n\
+Upload/pasta de arquivos COTAHIST (`.ZIP`/`.TXT`) com idempotência por data de pregão, health, info do dataset e métricas Prometheus.\n\n\
+### Contratos e limitações\n\
+- Preços COTAHIST são **nominais** (sem ajuste retroativo por eventos corporativos).\n\
+- Autenticação Bearer / API Key nas rotas protegidas; `/health` e `/api/docs` são públicos.\n\
+- Envelope padrão `{ data, meta }` em respostas de sucesso; erros tipados em português.",
         contact(
             name = "tucano-b3",
             url = "https://github.com/tucano-b3/tucano-b3",
         ),
         license(
-            name = "MIT OR Apache-2.0",
+            name = "MIT",
         ),
     ),
     servers(
@@ -71,6 +90,18 @@ impl Modify for SecurityAddon {
         crate::api::cotahist::get_pre_ult_min_handler,
         crate::api::cotahist::get_pre_ult_max_handler,
         crate::api::cotahist::get_date_quotes_handler,
+        // COTAHIST analytics
+        crate::api::cotahist_analytics::get_returns_handler,
+        crate::api::cotahist_analytics::get_stats_handler,
+        crate::api::cotahist_analytics::get_drawdown_handler,
+        crate::api::cotahist_analytics::get_range_position_handler,
+        crate::api::cotahist_analytics::get_relative_handler,
+        crate::api::cotahist_analytics::get_movers_handler,
+        crate::api::cotahist_analytics::get_liquidity_handler,
+        crate::api::cotahist_analytics::get_gaps_handler,
+        crate::api::cotahist_analytics::get_rolling_handler,
+        crate::api::cotahist_analytics::get_spread_handler,
+        crate::api::cotahist_analytics::get_compare_handler,
         // IBOV endpoints
         crate::api::ibov::history_handler,
         crate::api::ibov::latest_handler,
@@ -91,6 +122,17 @@ impl Modify for SecurityAddon {
             DateQuotesApiResponse,
             SeriesApiResponse,
             PreUltExtremeApiResponse,
+            ReturnsApiResponse,
+            StatsApiResponse,
+            DrawdownApiResponse,
+            RangePositionApiResponse,
+            RelativeApiResponse,
+            MoversApiResponse,
+            LiquidityScreenApiResponse,
+            GapsApiResponse,
+            RollingApiResponse,
+            SpreadApiResponse,
+            CompareApiResponse,
             IbovHistoryApiResponse,
             IbovLatestApiResponse,
             IngestApiResponse,
@@ -110,6 +152,24 @@ impl Modify for SecurityAddon {
             SeriesPoint,
             SeriesResponse,
             PreUltExtremeResponse,
+            // COTAHIST analytics
+            ReturnsResponse,
+            StatsResponse,
+            DrawdownResponse,
+            RangePositionResponse,
+            RelativeResponse,
+            MoverItem,
+            MoversResponse,
+            LiquidityItem,
+            LiquidityScreenResponse,
+            GapItem,
+            GapsResponse,
+            RollingPoint,
+            RollingResponse,
+            SpreadPoint,
+            SpreadResponse,
+            CompareSeries,
+            CompareResponse,
             // IBOV
             IbovHistoryEntry,
             IbovHistoryResponse,

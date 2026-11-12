@@ -1,6 +1,6 @@
 # Documentação do Tucano B3
 
-Este diretório contém o site Docusaurus para consumidores da API, operadores e pessoas que contribuem com o Tucano B3. As páginas descrevem o comportamento implementado e identificam separadamente recursos previstos no PRD que ainda não fazem parte do contrato publicado.
+Este diretório contém o site Docusaurus para consumidores da API, operadores e pessoas que contribuem com o Tucano B3. As páginas descrevem o comportamento implementado e verificado; propósito e escopo do produto estão em `PRODUCT.md` na raiz do repositório.
 
 ## Desenvolvimento local
 
@@ -37,6 +37,6 @@ O workflow .github/workflows/deploy-docs.yml publica o build no GitHub Pages ap�
 - Escreva documentação pública em português brasileiro e preserve os identificadores técnicos.
 - Use o OpenAPI servido pelo binário em /openapi.json como referência de contrato legível por máquina. A rota /docs do serviço serve a Swagger UI interativa ligada a esse documento; ela não substitui este site nem as permissões Bearer das operações.
 - Descreva todos os métodos, parâmetros, limites, permissões, respostas e campos relevantes nas páginas de endpoint e schema.
-- Mantenha cada afirmação alinhada a código, testes e estado publicado. Escopo do PRD não significa que uma fonte esteja habilitada ou disponível ao consumidor.
+- Mantenha cada afirmação alinhada a código, testes e estado publicado. Escopo em `PRODUCT.md` não significa, por si só, que uma fonte esteja habilitada ou disponível ao consumidor.
 - Ao alterar contrato, atualize a descrição Utoipa/OpenAPI e as páginas correspondentes de endpoint e schema no mesmo trabalho.
 - Antes de entregar mudanças no site, execute npm --prefix docusaurus run build e corrija links internos quebrados.

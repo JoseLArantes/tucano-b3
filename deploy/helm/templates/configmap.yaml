@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Release.Name }}
+data:
+  TUCANO_SERVER_HOST: {{ .Values.config.serverHost | quote }}
+  TUCANO_SERVER_PORT: {{ .Values.config.serverPort | quote }}
+  TUCANO_DATA_DIR: {{ .Values.config.dataDir | quote }}
+  TUCANO_LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  TUCANO_LOG_FORMAT: {{ .Values.config.logFormat | quote }}
+  TUCANO_CACHE_ENABLED: {{ .Values.config.cacheEnabled | quote }}
+  TUCANO_CACHE_TTL: {{ .Values.config.cacheTtl | quote }}
+  TUCANO_CACHE_MAX_ENTRIES: {{ .Values.config.cacheMaxEntries | quote }}

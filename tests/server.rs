@@ -64,9 +64,23 @@ async fn test_cotahist_and_ibov_routes_registered() {
             StatusCode::NOT_FOUND,
         ),
         (
+            "/api/v1/cotahist/tickers/NONEXISTENT99/returns?desde=2026-01-01",
+            StatusCode::NOT_FOUND,
+        ),
+        (
+            "/api/v1/cotahist/tickers/NONEXISTENT99/stats?desde=2026-01-01",
+            StatusCode::NOT_FOUND,
+        ),
+        (
             "/api/v1/cotahist/dates/2026-01-01/quotes",
             StatusCode::NOT_FOUND,
         ),
+        (
+            "/api/v1/cotahist/dates/not-a-date/movers",
+            StatusCode::BAD_REQUEST,
+        ),
+        // Avoid full-universe liquidity scan against ./data in this smoke test.
+        ("/api/v1/cotahist/liquidity", StatusCode::BAD_REQUEST),
         ("/api/v1/ibov/history", StatusCode::NOT_FOUND),
         ("/api/v1/ibov/latest", StatusCode::NOT_FOUND),
     ];
@@ -118,32 +132,6 @@ async fn test_method_not_allowed() {
             "Route {} should reject POST with 405",
             path
         );
-    }
-}
-
-#[tokio::test]
-async fn test_redoc_endpoints_return_200() {
-    let router = test_router();
-
-    for path in ["/redoc", "/api/redoc"] {
-        let app = router.clone();
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri(path)
-                    .body(Body::empty())
-                    .expect("failed to build request"),
-            )
-            .await
-            .expect("request failed");
-
-        assert_eq!(response.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let html = String::from_utf8_lossy(&bytes);
-        assert!(html.contains("redoc"));
-        assert!(html.contains("/api/docs/openapi.json"));
     }
 }
 
@@ -256,15 +244,15 @@ async fn test_protected_endpoints_require_token_when_configured() {
         .unwrap();
     assert_eq!(res_health.status(), StatusCode::OK);
 
-    // 6. Redoc bypasses token -> 200 OK
-    let res_redoc = router
+    // 6. Swagger / OpenAPI docs bypass token -> 200 OK
+    let res_docs = router
         .oneshot(
             Request::builder()
-                .uri("/redoc")
+                .uri("/api/docs/openapi.json")
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(res_redoc.status(), StatusCode::OK);
+    assert_eq!(res_docs.status(), StatusCode::OK);
 }

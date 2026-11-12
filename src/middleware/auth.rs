@@ -1,7 +1,7 @@
 //! Authentication middleware for tucano-b3.
 //!
 //! Validates Bearer token or API key against configured tokens.
-//! Public endpoints (/health, /api/v1/health, /redoc, /api/docs) bypass authentication.
+//! Public endpoints (/health, /api/v1/health, /api/docs) bypass authentication.
 
 use axum::body::Body;
 use axum::http::header::{self, HeaderName, HeaderValue};
@@ -23,8 +23,6 @@ pub const TOKEN_HEADER: &str = "X-Token";
 pub fn is_public_path(path: &str) -> bool {
     path == "/health"
         || path == "/api/v1/health"
-        || path == "/redoc"
-        || path == "/api/redoc"
         || path == "/api/docs"
         || path.starts_with("/api/docs/")
         || path == "/openapi.json"

@@ -23,7 +23,7 @@ src/
 ├── error.rs                # Unified AppError -> HTTP status & localized JSON ErrorResponse
 ├── locale/                 # Brazilian Portuguese user-facing messages
 ├── config/                 # Layered config loader (Defaults -> config.toml -> .env / TUCANO_*)
-├── server/                 # Axum router assembly, middleware wiring, Swagger UI & ReDoc hosting
+├── server/                 # Axum router assembly, middleware wiring, Swagger UI hosting
 ├── api/                    # HTTP transport adapters & Utoipa OpenAPI 3.0 specification
 │   ├── cotahist.rs         # Tickers, quotes, latest, compact series, min/max, date quotes
 │   ├── ibov.rs             # IBOVESPA history and latest point handlers
@@ -78,7 +78,7 @@ Requests traverse the Tower layer stack from outer to inner on ingress, and inne
 1. **`MetricsLayer`**: Captures request arrival, normalizes dynamic URL parameters (e.g., `/cotahist/tickers/{ticker}`), and records status codes and execution duration histograms in Prometheus.
 2. **`RequestIdLayer`**: Reads an incoming `x-request-id` header or generates a new UUID v4, attaching it to both the request and response.
 3. **`RequestLoggingLayer`**: Emits structured `tracing` events containing method, path, status, latency, cache status, and `request_id`.
-4. **`AuthLayer`**: Enforces token authentication configured via `TUCANO_B3_TOKEN` (and optional `TUCANO_B3_READ_TOKEN` / `TUCANO_B3_ADMIN_TOKEN`). Public routes (`/health`, `/api/v1/health`, `/api/docs/*`, `/redoc`, `/api/redoc`) bypass validation; all other routes require a valid token via `Authorization: Bearer <token>`, `X-API-Key`, or `X-Token`.
+4. **`AuthLayer`**: Enforces token authentication configured via `TUCANO_B3_TOKEN` (and optional `TUCANO_B3_READ_TOKEN` / `TUCANO_B3_ADMIN_TOKEN`). Public routes (`/health`, `/api/v1/health`, `/api/docs/*`) bypass validation; all other routes require a valid token via `Authorization: Bearer <token>`, `X-API-Key`, or `X-Token`.
 5. **`RateLimitLayer`**: Applies a thread-safe Token Bucket algorithm per client IP (`default_requests_per_minute`) or per registered API key (`api_keys.toml`), returning `429 Too Many Requests` with `Retry-After` when exhausted.
 6. **`CompressionLayer`**: Compresses outgoing payloads (`gzip`, `br`, `zstd`, `deflate`) negotiated via the client's `Accept-Encoding` header. Because it wraps `CacheLayer`, cached payloads are stored uncompressed and compressed per client on egress.
 7. **`CacheLayer`**: Intercepts cacheable `GET` requests, computes a deterministic `BLAKE3(method | path | sorted_query)` key, and serves sub-millisecond `HIT` responses from `CacheStore`.
@@ -106,7 +106,7 @@ When `POST /api/v1/ingest/upload` or `POST /api/v1/ingest/folder` is invoked:
 ```mermaid
 flowchart TD
     subgraph Clients["Clients & Consumers"]
-        Browser["Browser (Swagger UI / ReDoc)"]
+        Browser["Browser (Swagger UI)"]
         AppClient["Scripts / Dashboards / Backend Services"]
         Prometheus["Prometheus Scraper"]
     end
@@ -126,7 +126,7 @@ flowchart TD
         end
 
         subgraph Routes["REST API & Documentation Routes"]
-            DocsRoutes["Public Docs & Health (/health, /api/docs, /redoc)"]
+            DocsRoutes["Public Docs & Health (/health, /api/docs)"]
             CotahistRoutes["COTAHIST Routes (/api/v1/cotahist/*)"]
             IbovRoutes["IBOV Routes (/api/v1/ibov/*)"]
             IngestRoutes["Ingest Routes (/api/v1/ingest/upload & /folder)"]

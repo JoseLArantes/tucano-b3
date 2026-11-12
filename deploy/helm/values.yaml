@@ -1,0 +1,103 @@
+image:
+  repository: ghcr.io/joselarantes/tucano-b3
+  pullPolicy: Always
+  tag: "latest"
+  pullSecrets:
+    - name: registry-cred
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 8080
+  targetPort: 8080
+
+ingress:
+  enabled: true
+  className: nginx
+  host: b3-tucano.beakcloud.com
+  annotations: {}
+  tls:
+    enabled: false
+    secretName: tucano-b3-tls
+
+certificate:
+  enabled: false
+  issuerRef:
+    kind: ClusterIssuer
+    name: letsencrypt-prod
+
+secrets:
+  existingSecret: "tucano-b3-secret"
+
+config:
+  serverHost: "0.0.0.0"
+  serverPort: "8080"
+  dataDir: "/data"
+  logLevel: "info"
+  logFormat: "json"
+  cacheEnabled: "true"
+  cacheTtl: "300"
+  cacheMaxEntries: "10000"
+
+persistence:
+  enabled: true
+  existingClaim: ""
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 20Gi
+  mountPath: /data
+
+vault:
+  enabled: false
+  server: "https://192.168.15.6:8200"
+  mountPath: "bos-secrets"
+  kvVersion: "v2"
+  refreshInterval: "1h"
+  serviceAccount: "default"
+  role: "tucano-services-role"
+  secretPath: "tucano/b3/production"
+  caBundle: ""
+
+rollout:
+  enabled: true
+  strategy:
+    canary:
+      trafficRouting:
+        enabled: false
+      steps:
+        - setWeight: 50
+        - pause: { duration: 1m }
+        - setWeight: 100
+
+probes:
+  liveness:
+    path: /health
+    initialDelaySeconds: 15
+    periodSeconds: 10
+  readiness:
+    path: /api/v1/health
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1Gi
+
+metrics:
+  enabled: true
+  path: /metrics
+  serviceMonitor:
+    enabled: false
+    interval: 15s
+    scrapeTimeout: 10s
+    bearerTokenSecret:
+      enabled: false
+      key: METRICS_TOKEN
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

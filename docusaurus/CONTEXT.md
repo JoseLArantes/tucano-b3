@@ -13,7 +13,7 @@ Este contexto cobre o site Docusaurus, os guias públicos da API, os schemas nar
 ## Fontes da verdade
 
 - O comportamento implementado, os testes e o OpenAPI gerado descrevem o contrato atual.
-- docs/b3_prd.md define escopo e comportamento-alvo, mas não comprova que uma capacidade esteja implementada ou habilitada.
+- PRODUCT.md define propósito, escopo e princípios do produto; não substitui o contrato publicado nem comprova por si só que uma capacidade esteja habilitada.
 - docs/domain/CONTEXT.md define vocabulário do domínio.
 - docs/consumer_api.md e a documentação operacional na raiz permanecem referências textuais do projeto; o Docusaurus organiza os guias para consumidores e operadores.
 

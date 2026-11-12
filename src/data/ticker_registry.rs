@@ -1,6 +1,6 @@
 //! Ticker registry for tucano-b3.
 //!
-//! Loads ticker metadata from the SQLite ledger produced by tucano-b3-cli.
+//! Loads ticker metadata from the SQLite ledger maintained by this service.
 //! Provides O(1) ticker existence checks for API validation.
 
 use rusqlite::{Connection, OpenFlags};

@@ -10,6 +10,11 @@ use crate::models::cotahist::{
     DateQuotesResponse, LatestQuoteResponse, PreUltExtremeResponse, QuoteListResponse,
     SeriesResponse, TickerDetailResponse, TickerListResponse,
 };
+use crate::models::cotahist_analytics::{
+    CompareResponse, DrawdownResponse, GapsResponse, LiquidityScreenResponse, MoversResponse,
+    RangePositionResponse, RelativeResponse, ReturnsResponse, RollingResponse, SpreadResponse,
+    StatsResponse,
+};
 use crate::models::ibov::{IbovHistoryResponse, IbovLatestResponse};
 use crate::models::ingest::IngestResponse;
 
@@ -23,6 +28,17 @@ use crate::models::ingest::IngestResponse;
     DateQuotesApiResponse = ApiResponse<DateQuotesResponse>,
     SeriesApiResponse = ApiResponse<SeriesResponse>,
     PreUltExtremeApiResponse = ApiResponse<PreUltExtremeResponse>,
+    ReturnsApiResponse = ApiResponse<ReturnsResponse>,
+    StatsApiResponse = ApiResponse<StatsResponse>,
+    DrawdownApiResponse = ApiResponse<DrawdownResponse>,
+    RangePositionApiResponse = ApiResponse<RangePositionResponse>,
+    RelativeApiResponse = ApiResponse<RelativeResponse>,
+    MoversApiResponse = ApiResponse<MoversResponse>,
+    LiquidityScreenApiResponse = ApiResponse<LiquidityScreenResponse>,
+    GapsApiResponse = ApiResponse<GapsResponse>,
+    RollingApiResponse = ApiResponse<RollingResponse>,
+    SpreadApiResponse = ApiResponse<SpreadResponse>,
+    CompareApiResponse = ApiResponse<CompareResponse>,
     IbovHistoryApiResponse = ApiResponse<IbovHistoryResponse>,
     IbovLatestApiResponse = ApiResponse<IbovLatestResponse>,
     IngestApiResponse = ApiResponse<IngestResponse>,

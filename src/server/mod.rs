@@ -24,39 +24,6 @@ use tower_http::timeout::TimeoutLayer;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
-const REDOC_HTML: &str = r#"<!DOCTYPE html>
-<html>
-  <head>
-    <title>tucano-b3 API - ReDoc</title>
-    <meta charset="utf-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="shortcut icon" href="https://redocly.com/favicon.png">
-    <link href="https://fonts.googleapis.com/css?family=Montserrat:300,400,700|Roboto:300,400,700" rel="stylesheet">
-    <style>
-      body {
-        margin: 0;
-        padding: 0;
-      }
-    </style>
-  </head>
-  <body>
-    <div id="redoc-container"></div>
-    <script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"></script>
-    <script>
-      Redoc.init('/api/docs/openapi.json', {
-        scrollYOffset: 50,
-        expandResponses: "200,201",
-        requiredPropsFirst: true,
-        sortPropsAlphabetically: true
-      }, document.getElementById('redoc-container'))
-    </script>
-  </body>
-</html>"#;
-
-async fn redoc_handler() -> axum::response::Html<&'static str> {
-    axum::response::Html(REDOC_HTML)
-}
-
 /// Build the axum Router with all routes and middleware.
 ///
 /// This function is called once at startup and returns a fully-configured router.
@@ -82,9 +49,6 @@ pub fn build_router(
             "/health",
             axum::routing::get(crate::api::health::health_handler).with_state(health_state),
         )
-        // Interactive API documentation via ReDoc
-        .route("/redoc", axum::routing::get(redoc_handler))
-        .route("/api/redoc", axum::routing::get(redoc_handler))
         // API routes nested under /api/v1
         .nest("/api/v1", api_routes)
         // Standalone metrics endpoint (standard Prometheus scrape /metrics)

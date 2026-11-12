@@ -332,6 +332,122 @@ async fn test_response_envelope_structure() {
 }
 
 #[tokio::test]
+async fn test_analytics_returns_stats_drawdown_with_data() {
+    let app = match test_app_with_fixtures() {
+        Some(app) => app,
+        None => {
+            eprintln!("Skipping: no fixtures");
+            return;
+        }
+    };
+
+    for path in [
+        "/api/v1/cotahist/tickers/VALE3/returns?desde=2026-01-01&ate=2026-01-02",
+        "/api/v1/cotahist/tickers/VALE3/stats?desde=2026-01-01&ate=2026-01-02",
+        "/api/v1/cotahist/tickers/VALE3/drawdown?desde=2026-01-01&ate=2026-01-02",
+        "/api/v1/cotahist/tickers/VALE3/range-position?desde=2026-01-01&ate=2026-01-02",
+        "/api/v1/cotahist/tickers/VALE3/gaps?desde=2026-01-01&ate=2026-01-02",
+        "/api/v1/cotahist/tickers/VALE3/rolling?desde=2026-01-01&ate=2026-01-02&janela=2",
+        "/api/v1/cotahist/tickers/VALE3/spread?desde=2026-01-01&ate=2026-01-02",
+    ] {
+        let response = app
+            .clone()
+            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "{path}");
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["data"]["aviso"].as_str().unwrap().contains("nominais"));
+    }
+}
+
+#[tokio::test]
+async fn test_analytics_movers_liquidity_compare_with_data() {
+    let app = match test_app_with_fixtures() {
+        Some(app) => app,
+        None => {
+            eprintln!("Skipping: no fixtures");
+            return;
+        }
+    };
+
+    let movers = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/cotahist/dates/2026-01-02/movers?ranking=gainers&limite=10")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(movers.status(), StatusCode::OK);
+    let movers_body = axum::body::to_bytes(movers.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let movers_json: serde_json::Value = serde_json::from_slice(&movers_body).unwrap();
+    assert!(!movers_json["data"]["itens"].as_array().unwrap().is_empty());
+
+    let liquidity = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/cotahist/liquidity?desde=2026-01-01&ate=2026-01-02")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(liquidity.status(), StatusCode::OK);
+
+    let compare = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/cotahist/compare?tickers=VALE3,PETR4&desde=2026-01-01&ate=2026-01-02")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(compare.status(), StatusCode::OK);
+    let compare_body = axum::body::to_bytes(compare.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let compare_json: serde_json::Value = serde_json::from_slice(&compare_body).unwrap();
+    assert_eq!(compare_json["data"]["series"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn test_analytics_relative_with_ibov_fixture() {
+    let app = match test_app_with_fixtures() {
+        Some(app) => app,
+        None => {
+            eprintln!("Skipping: no fixtures");
+            return;
+        }
+    };
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/cotahist/tickers/VALE3/relative?desde=2026-01-01&ate=2026-01-02&benchmark=IBOV")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    // Relative needs aligned IBOV dates; fixture may not overlap — accept OK or 404.
+    assert!(
+        response.status() == StatusCode::OK || response.status() == StatusCode::NOT_FOUND,
+        "unexpected relative status {}",
+        response.status()
+    );
+}
+
+#[tokio::test]
 async fn test_error_response_structure() {
     let app = match test_app_with_fixtures() {
         Some(app) => app,

@@ -1,0 +1,24 @@
+{{- if and .Values.metrics .Values.metrics.enabled .Values.metrics.serviceMonitor .Values.metrics.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Release.Name }}-metrics
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Release.Name }}
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  endpoints:
+    - port: http
+      path: {{ .Values.metrics.path | default "/metrics" }}
+      interval: {{ .Values.metrics.serviceMonitor.interval | default "15s" }}
+      scrapeTimeout: {{ .Values.metrics.serviceMonitor.scrapeTimeout | default "10s" }}
+      {{- if and .Values.metrics.serviceMonitor.bearerTokenSecret .Values.metrics.serviceMonitor.bearerTokenSecret.enabled }}
+      bearerTokenSecret:
+        name: {{ .Values.metrics.serviceMonitor.bearerTokenSecret.name | default .Values.secrets.existingSecret }}
+        key: {{ .Values.metrics.serviceMonitor.bearerTokenSecret.key | default "METRICS_TOKEN" }}
+      {{- end }}
+{{- end }}

@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: tucano-services
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Tucano market-data services (B3, CVM, and related APIs)
+  sourceRepos:
+    - "https://github.com/JoseLArantes/tucano-b3.git"
+    - "https://github.com/JoseLArantes/*"
+  destinations:
+    - namespace: tucano-services
+      server: https://kubernetes.default.svc
+    - namespace: tucano-front
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+  orphanedResources:
+    warn: true

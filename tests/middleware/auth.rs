@@ -10,8 +10,6 @@ fn test_app(auth_config: AuthConfig) -> Router {
     Router::new()
         .route("/health", get(|| async { "healthy" }))
         .route("/api/v1/health", get(|| async { "healthy" }))
-        .route("/redoc", get(|| async { "redoc" }))
-        .route("/api/redoc", get(|| async { "redoc" }))
         .route("/api/docs", get(|| async { "swagger" }))
         .route("/api/docs/openapi.json", get(|| async { "{}" }))
         .route("/api/v1/cotahist/tickers", get(|| async { "tickers" }))
@@ -22,12 +20,12 @@ fn test_app(auth_config: AuthConfig) -> Router {
 fn test_is_public_path() {
     assert!(is_public_path("/health"));
     assert!(is_public_path("/api/v1/health"));
-    assert!(is_public_path("/redoc"));
-    assert!(is_public_path("/api/redoc"));
     assert!(is_public_path("/api/docs"));
     assert!(is_public_path("/api/docs/openapi.json"));
     assert!(is_public_path("/api/docs/index.html"));
 
+    assert!(!is_public_path("/redoc"));
+    assert!(!is_public_path("/api/redoc"));
     assert!(!is_public_path("/api/v1/cotahist/tickers"));
     assert!(!is_public_path("/api/v1/cotahist/tickers/VALE3/quotes"));
     assert!(!is_public_path("/api/v1/ibov/history"));
@@ -224,7 +222,7 @@ async fn test_public_health_bypasses_auth() {
 }
 
 #[tokio::test]
-async fn test_public_redoc_bypasses_auth() {
+async fn test_public_docs_bypass_auth() {
     let auth = AuthConfig {
         token: Some("secret123".to_string()),
         allowed_tokens: vec![],
@@ -234,7 +232,7 @@ async fn test_public_redoc_bypasses_auth() {
     let res = app
         .oneshot(
             Request::builder()
-                .uri("/redoc")
+                .uri("/api/docs/openapi.json")
                 .body(Body::empty())
                 .unwrap(),
         )

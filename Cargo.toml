@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.82"
 description = "API REST de alta performance para dados de mercado da B3"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 repository = "https://github.com/tucano-b3/tucano-b3"
 documentation = "https://github.com/tucano-b3/tucano-b3"
 homepage = "https://github.com/tucano-b3/tucano-b3"
@@ -29,13 +29,13 @@ hyper = { version = "1.0", features = ["full"] }
 # Async runtime
 tokio = { version = "1", features = ["full"] }
 
-# Data layer (will be used in M1+, included now to avoid dependency churn)
+# Data layer
 datafusion = "42"
 arrow = "53"
 parquet = "53"
 rusqlite = { version = "0.32", features = ["bundled", "chrono"] }
 
-# Cache (will be used in M4+)
+# Cache
 dashmap = "6"
 lru = "0.12"
 
@@ -43,7 +43,7 @@ lru = "0.12"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# OpenAPI (will be used in M6+)
+# OpenAPI
 utoipa = { version = "4", features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "7", features = ["axum"] }
 

@@ -5,6 +5,8 @@ use utoipa::ToSchema;
 
 use crate::models::pagination::PaginationMeta;
 
+pub use crate::models::cotahist_analytics::*;
+
 /// A single COTAHIST quote record.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct QuoteResponse {

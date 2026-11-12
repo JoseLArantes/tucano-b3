@@ -1,0 +1,16 @@
+{{- if and .Values.certificate.enabled .Values.ingress.tls.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ .Release.Name }}-tls
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  secretName: {{ .Values.ingress.tls.secretName }}
+  dnsNames:
+    - {{ .Values.ingress.host | quote }}
+  issuerRef:
+    kind: {{ .Values.certificate.issuerRef.kind }}
+    name: {{ .Values.certificate.issuerRef.name }}
+{{- end }}

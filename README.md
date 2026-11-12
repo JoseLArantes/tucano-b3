@@ -102,7 +102,7 @@ O Tucano-B3 foi desenhado sob a filosofia *Zero External Dependencies* em tempo 
 - **Ideal para:** Notebooks Python/R/Julia (via requisições HTTP simples), backtesting local de estratégias, carteiras pessoais e automações domésticas.
 
 ### 🟡 Médio Porte (Fintechs, Portais Financeiros e Dashboards Analíticos)
-- **Endpoints Especializados para Gráficos:** Oferece rotas como `/series` (que retorna apenas `date_ms`, `pre_ult`, `vol_tot` e `tot_neg` ordenados cronologicamente sem overhead de paginação) e `/pre-ult/min` e `/pre-ult/max` para alimentar gráficos *candlestick* ou *line charts* (TradingView, ECharts, Recharts) instantaneamente.
+- **Endpoints para Gráficos e Analytics:** `/series` (série enxuta `date_ms`/`pre_ult`/`vol_tot`/`tot_neg`), extremos `/pre-ult/min|max`, além de retornos, stats, drawdown, relative vs IBOV, movers, liquidez, gaps, rolling e compare — prontos para dashboards e *line charts* (TradingView, ECharts, Recharts).
 - **Segurança e Controle de Tráfego Nativos:** Possui autenticação via **Bearer Token** / **API Key** e *Rate Limiting* (*Token Bucket*) configurável por IP e por chave de API.
 - **Cache Concorrente:** O cache `DashMap` + `LRU` absorve picos de leitura em ativos populares (`PETR4`, `VALE3`, `ITUB4`) respondendo em frações de milissegundo.
 
@@ -271,7 +271,7 @@ curl -X POST "http://localhost:8080/api/v1/ingest/upload" \
 
 ### Autenticação
 
-Todas as rotas da API — **exceto** `/health`, `/api/v1/health`, `/api/docs/*` e `/redoc` — exigem o envio do token configurado em `TUCANO_B3_TOKEN` através de um dos cabeçalhos abaixo:
+Todas as rotas da API — **exceto** `/health`, `/api/v1/health` e `/api/docs/*` — exigem o envio do token configurado em `TUCANO_B3_TOKEN` através de um dos cabeçalhos abaixo:
 
 - **Bearer Token (Recomendado):** `Authorization: Bearer <TUCANO_B3_TOKEN>`
 - **API Key Header:** `X-API-Key: <TUCANO_B3_TOKEN>`
@@ -289,12 +289,25 @@ Todas as rotas da API — **exceto** `/health`, `/api/v1/health`, `/api/docs/*` 
 | `GET` | `/api/v1/cotahist/tickers/{ticker}/series` | Protegida | Série enxuta (`date_ms`, `pre_ult`, `vol_tot`, `tot_neg`) para gráficos |
 | `GET` | `/api/v1/cotahist/tickers/{ticker}/pre-ult/min` | Protegida | Menor preço de fechamento (`pre_ult`) do ticker no período |
 | `GET` | `/api/v1/cotahist/tickers/{ticker}/pre-ult/max` | Protegida | Maior preço de fechamento (`pre_ult`) do ticker no período |
+| `GET` | `/api/v1/cotahist/tickers/{ticker}/returns` | Protegida | Retorno absoluto/percentual e anualizado no período (preços nominais) |
+| `GET` | `/api/v1/cotahist/tickers/{ticker}/stats` | Protegida | Cartão estatístico: extremos, vol realizada, ATR proxy, ADV |
+| `GET` | `/api/v1/cotahist/tickers/{ticker}/drawdown` | Protegida | Drawdown máximo e drawdown atual sobre `pre_ult` |
+| `GET` | `/api/v1/cotahist/tickers/{ticker}/range-position` | Protegida | Posição do fechamento no intervalo mín–máx do período |
+| `GET` | `/api/v1/cotahist/tickers/{ticker}/relative` | Protegida | Performance relativa vs IBOV em datas alinhadas |
+| `GET` | `/api/v1/cotahist/tickers/{ticker}/gaps` | Protegida | Gaps de abertura vs fechamento anterior |
+| `GET` | `/api/v1/cotahist/tickers/{ticker}/rolling` | Protegida | SMA/EMA, volatilidade e ADV móveis (`janela`) |
+| `GET` | `/api/v1/cotahist/tickers/{ticker}/spread` | Protegida | Spread compra/venda a partir das ofertas COTAHIST |
 | `GET` | `/api/v1/cotahist/dates/{date}/quotes` | Protegida | Todas as cotações de todos os ativos negociados em uma data (`AAAA-MM-DD`) |
+| `GET` | `/api/v1/cotahist/dates/{date}/movers` | Protegida | Maiores altas/baixas e líderes de volume/negócios do pregão |
+| `GET` | `/api/v1/cotahist/liquidity` | Protegida | Tela cross-sectional de liquidez (ADV / negócios), paginada |
+| `GET` | `/api/v1/cotahist/compare` | Protegida | Comparação normalizada (base 100) entre até 10 tickers |
 | `GET` | `/api/v1/ibov/history` | Protegida | Série histórica paginada do índice IBOVESPA |
 | `GET` | `/api/v1/ibov/latest` | Protegida | Ponto mais recente disponível do índice IBOVESPA |
 | `POST` | `/api/v1/ingest/upload` | Protegida | Upload e ingestão incremental de arquivo `.ZIP` do COTAHIST |
 | `POST` | `/api/v1/ingest/folder` | Protegida | Varredura e ingestão incremental de pasta local no servidor |
 | `GET` | `/metrics` ou `/api/v1/metrics` | Protegida | Métricas no formato texto do Prometheus |
+
+> **Analytics COTAHIST:** retornos, stats, drawdown, relative, movers, gaps, rolling, spread, liquidity e compare são **indicadores derivados** de preços nominais. Não possuem ajuste por eventos corporativos e não são séries oficiais da B3.
 
 ### Exemplos Práticos com `curl`
 
@@ -329,17 +342,30 @@ curl -s -H "Authorization: Bearer $TOKEN" \
   "http://localhost:8080/api/v1/cotahist/tickers/PETR4/pre-ult/min?desde=2025-01-01&ate=2025-12-31" | jq
 curl -s -H "Authorization: Bearer $TOKEN" \
   "http://localhost:8080/api/v1/cotahist/tickers/PETR4/pre-ult/max?desde=2025-01-01&ate=2025-12-31" | jq
+
+# 8. Retorno, stats e performance relativa vs IBOV
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8080/api/v1/cotahist/tickers/PETR4/returns?desde=2025-01-01&ate=2025-12-31" | jq
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8080/api/v1/cotahist/tickers/PETR4/stats?desde=2025-01-01&ate=2025-12-31" | jq
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8080/api/v1/cotahist/tickers/PETR4/relative?desde=2025-01-01&ate=2025-12-31&benchmark=IBOV" | jq
+
+# 9. Movers do pregão e comparação normalizada
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8080/api/v1/cotahist/dates/2025-11-10/movers?ranking=gainers&limite=20" | jq
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8080/api/v1/cotahist/compare?tickers=PETR4,VALE3,ITUB4&desde=2025-01-01&ate=2025-12-31" | jq
 ```
 
 ---
 
-## Swagger UI e ReDoc
+## Swagger UI / OpenAPI
 
-Com o servidor em execução, a especificação **OpenAPI 3.0** e duas interfaces visuais estão disponíveis publicamente:
+Com o servidor em execução, a especificação **OpenAPI 3.0** e o playground interativo estão disponíveis publicamente:
 
 - **Swagger UI (Playground Interativo):** [http://localhost:8080/api/docs/](http://localhost:8080/api/docs/)
   - Clique no botão **Authorize** no topo da página, cole seu `TUCANO_B3_TOKEN` em `BearerAuth` (ou `ApiKeyAuth`) e clique em **Authorize**. A sessão ficará salva automaticamente no navegador (`persistAuthorization`).
-- **ReDoc (Documentação de Referência):** [http://localhost:8080/redoc](http://localhost:8080/redoc) (ou `/api/redoc`)
 - **Especificação OpenAPI JSON Bruta:** [http://localhost:8080/api/docs/openapi.json](http://localhost:8080/api/docs/openapi.json)
 
 ---
@@ -368,4 +394,4 @@ cargo bench
 
 ## Licença
 
-Distribuído sob dupla licença **MIT**.
+Distribuído sob a licença **MIT**.

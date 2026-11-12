@@ -67,7 +67,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 # Labels
 LABEL org.opencontainers.image.title="tucano-b3" \
       org.opencontainers.image.description="API REST de alta performance para dados de mercado da B3" \
-      org.opencontainers.image.licenses="MIT OR Apache-2.0" \
+      org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.vendor="tucano-b3"
 
 ENTRYPOINT ["tucano-b3"]
