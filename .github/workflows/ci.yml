@@ -31,8 +31,9 @@ env:
   REGISTRY: ghcr.io
 
 permissions:
-  contents: read
+  contents: write
   packages: write
+  pull-requests: write
 
 jobs:
   fmt:
@@ -69,6 +70,30 @@ jobs:
         run: mkdir -p data
       - name: Run Tests
         run: cargo test --all-targets --all-features
+
+  release-please:
+    name: Release Please
+    needs: [fmt, clippy, test]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.major }}.${{ steps.release.outputs.minor }}.${{ steps.release.outputs.patch }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Release Please
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: .github/workflows/release-please-config.json
+          manifest-file: .release-please-manifest.json
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   docker-deps:
     name: Dependency image
@@ -128,7 +153,14 @@ jobs:
 
   docker:
     name: Build & Push Container Image
-    needs: [fmt, clippy, test, docker-deps]
+    needs: [fmt, clippy, test, docker-deps, release-please]
+    if: |
+      always() &&
+      needs.fmt.result == 'success' &&
+      needs.clippy.result == 'success' &&
+      needs.test.result == 'success' &&
+      needs.docker-deps.result == 'success' &&
+      (needs.release-please.result == 'success' || needs.release-please.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -155,6 +187,8 @@ jobs:
             type=sha,prefix=,format=short
             type=sha,prefix=,format=long
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' }}
+            type=raw,value=${{ needs.release-please.outputs.tag_name }},enable=${{ needs.release-please.outputs.release_created == 'true' }}
+            type=raw,value=${{ needs.release-please.outputs.version }},enable=${{ needs.release-please.outputs.release_created == 'true' }}
 
       - name: Build and Push Docker Image
         uses: docker/build-push-action@v6
