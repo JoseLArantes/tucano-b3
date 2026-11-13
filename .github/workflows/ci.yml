@@ -31,12 +31,18 @@ env:
   REGISTRY: ghcr.io
 
 permissions:
-  contents: read
+  contents: write
   packages: write
+  pull-requests: write
 
 jobs:
   fmt:
     name: Code Formatting
+    if: |
+      !startsWith(github.event.head_commit.message, 'chore(master): release') &&
+      !startsWith(github.event.head_commit.message, 'chore(main): release') &&
+      !startsWith(github.event.head_commit.message, 'chore: release') &&
+      !contains(github.event.head_commit.message, 'release-please--branches--')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -48,6 +54,11 @@ jobs:
 
   clippy:
     name: Clippy Linter
+    if: |
+      !startsWith(github.event.head_commit.message, 'chore(master): release') &&
+      !startsWith(github.event.head_commit.message, 'chore(main): release') &&
+      !startsWith(github.event.head_commit.message, 'chore: release') &&
+      !contains(github.event.head_commit.message, 'release-please--branches--')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -60,6 +71,11 @@ jobs:
 
   test:
     name: Test Suite
+    if: |
+      !startsWith(github.event.head_commit.message, 'chore(master): release') &&
+      !startsWith(github.event.head_commit.message, 'chore(main): release') &&
+      !startsWith(github.event.head_commit.message, 'chore: release') &&
+      !contains(github.event.head_commit.message, 'release-please--branches--')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -70,8 +86,44 @@ jobs:
       - name: Run Tests
         run: cargo test --all-targets --all-features
 
+  release-please:
+    name: Release Please
+    needs: [fmt, clippy, test]
+    if: |
+      always() &&
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') &&
+      (
+        (needs.fmt.result == 'success' && needs.clippy.result == 'success' && needs.test.result == 'success') ||
+        (needs.fmt.result == 'skipped' && needs.clippy.result == 'skipped' && needs.test.result == 'skipped')
+      )
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.major }}.${{ steps.release.outputs.minor }}.${{ steps.release.outputs.patch }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Release Please
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: .github/workflows/release-please-config.json
+          manifest-file: .release-please-manifest.json
+          token: ${{ secrets.GITHUB_TOKEN }}
+
   docker-deps:
     name: Dependency image
+    if: |
+      !startsWith(github.event.head_commit.message, 'chore(master): release') &&
+      !startsWith(github.event.head_commit.message, 'chore(main): release') &&
+      !startsWith(github.event.head_commit.message, 'chore: release') &&
+      !contains(github.event.head_commit.message, 'release-please--branches--')
     runs-on: ubuntu-latest
     outputs:
       image: ${{ steps.meta.outputs.image }}
