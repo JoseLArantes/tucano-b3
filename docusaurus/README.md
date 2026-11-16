@@ -22,13 +22,9 @@ O workflow .github/workflows/deploy-docs.yml publica o build no GitHub Pages ap�
 
 ## Organização
 
-- docs/getting-started: configuração, credenciais e primeira consulta;
-- docs/concepts: identidade temporal, revisões e proveniência;
-- docs/data-sources: semântica e limites das famílias oficiais;
-- docs/api-endpoints: métodos, filtros, autenticação, respostas e exemplos;
-- docs/operations: descoberta, jobs, revisão, inspeção e falhas;
-- docs/schemas: campos e formatos dos contratos REST;
-- docs/reference: MCP, erros, glossário e changelog;
+- docs/api-endpoints: métodos, filtros, autenticação, respostas e exemplos de ações e units;
+- docs/operations: cobertura e atualização do dataset de ações verificado;
+- docs/schemas: campos e formatos dos contratos de listagem e preço;
 - docusaurus.config.js e sidebars.js: configuração e navegação;
 - src/ e static/: página inicial, estilos e marca do site.
 

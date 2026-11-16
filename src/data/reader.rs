@@ -4,7 +4,9 @@
 //! and provides metadata for DataFusion registration.
 
 use crate::config::DataConfig;
-use crate::data::schema::{cotahist_schema, ibov_schema, validate_schema, SchemaValidationError};
+use crate::data::schema::{
+    cotahist_schema, equities_schema, ibov_schema, validate_schema, SchemaValidationError,
+};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -15,6 +17,8 @@ use thiserror::Error;
 pub struct DiscoveredFiles {
     /// COTAHIST Parquet files (one per year)
     pub cotahist_files: Vec<ParquetFileInfo>,
+    /// Versioned COTAHIST rows used to verify listed equities and per-share quotes.
+    pub equity_files: Vec<ParquetFileInfo>,
     /// IBOV Parquet file (single historical file)
     pub ibov_file: Option<ParquetFileInfo>,
 }
@@ -75,6 +79,7 @@ pub fn discover_files(data_config: &DataConfig) -> Result<DiscoveredFiles, Reade
 
     let mut result = DiscoveredFiles {
         cotahist_files: Vec::new(),
+        equity_files: Vec::new(),
         ibov_file: None,
     };
 
@@ -94,6 +99,21 @@ pub fn discover_files(data_config: &DataConfig) -> Result<DiscoveredFiles, Reade
             let info = read_parquet_metadata(&path)?;
             validate_cotahist_file(&path)?;
             result.cotahist_files.push(info);
+        }
+    }
+
+    let equity_dir = data_dir.join("processed/equities-v1");
+    if equity_dir.exists() {
+        let mut entries: Vec<PathBuf> = fs::read_dir(&equity_dir)?
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().is_some_and(|ext| ext == "parquet"))
+            .collect();
+        entries.sort();
+        for path in entries {
+            let info = read_parquet_metadata(&path)?;
+            validate_equities_file(&path)?;
+            result.equity_files.push(info);
         }
     }
 
@@ -149,6 +169,23 @@ fn validate_cotahist_file(path: &Path) -> Result<(), ReaderError> {
 
     validate_schema(file_schema, &expected, &path.display().to_string())?;
 
+    Ok(())
+}
+
+/// Validate a versioned verified-equity Parquet file against its own schema.
+fn validate_equities_file(path: &Path) -> Result<(), ReaderError> {
+    let file = fs::File::open(path)?;
+    let builder =
+        ParquetRecordBatchReaderBuilder::try_new(file).map_err(|e| ReaderError::MetadataRead {
+            file: path.display().to_string(),
+            source: e,
+        })?;
+
+    validate_schema(
+        builder.schema(),
+        &equities_schema(),
+        &path.display().to_string(),
+    )?;
     Ok(())
 }
 

@@ -1,5 +1,18 @@
 # Frontend API changelog
 
+## 2026-11-16
+
+### Added
+
+- Rotas autenticadas para picker e cotações verificadas de ações ON/PN e units:
+  - `GET /api/v1/cotahist/equities` com busca por prefixo, paginação, filtro de listagem ativa e intervalo de cobertura.
+  - `GET /api/v1/cotahist/equities/{ticker}` para consultar uma listagem atual por ticker.
+  - `GET /api/v1/cotahist/equities/by-isin/{isin}/latest` para o último fechamento nominal disponível.
+  - `GET /api/v1/cotahist/equities/by-isin/{isin}/quotes` para o histórico com intervalo obrigatório de até um ano.
+  - A listagem mostra ticker e ISIN juntos para resolver a identidade; inclui apenas mercado `010`, BDI `02`, BRL, ISIN válido e classe `ON`, `PN` ou `UNT`. Unidades de ETF/FII são excluídas.
+  - Preços usam `PREULT / 100 / FATCOT`, são decimais exatos e não recebem ajustes retroativos por eventos corporativos.
+  - Compatibilidade: aditivo; rotas legadas de ticker e quote não mudaram.
+
 ## 2026-11-12
 
 ### Added

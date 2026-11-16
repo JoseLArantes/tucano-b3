@@ -39,6 +39,32 @@ pub fn cotahist_schema() -> Arc<Schema> {
     ]))
 }
 
+/// Build the independently versioned schema for verified spot-market equities.
+///
+/// The legacy COTAHIST schema stays unchanged so existing Parquet files and
+/// published ticker routes remain readable while `equities-v1` is rebuilt.
+pub fn equities_schema() -> Arc<Schema> {
+    let mut fields = cotahist_schema()
+        .fields()
+        .iter()
+        .cloned()
+        .collect::<Vec<_>>();
+    fields.extend(
+        [
+            Field::new("raw_ticker", DataType::Utf8, true),
+            Field::new("bdi_code", DataType::Utf8, true),
+            Field::new("market_code", DataType::Utf8, true),
+            Field::new("security_specification", DataType::Utf8, true),
+            Field::new("currency_code", DataType::Utf8, true),
+            Field::new("quotation_factor", DataType::UInt32, true),
+            Field::new("pre_ult_raw", DataType::UInt64, true),
+        ]
+        .into_iter()
+        .map(Arc::new),
+    );
+    Arc::new(Schema::new(fields))
+}
+
 /// Build the Arrow schema for IBOV historical Parquet files.
 ///
 /// Includes nullable bid/ask fields for forward compatibility.

@@ -17,13 +17,13 @@ fn create_test_cotahist_zip() -> Vec<u8> {
         let mut line = String::new();
         line.push_str("01"); // TIPOREG (0..2)
         line.push_str("20260102"); // DATA_PREGAO (2..10)
-        line.push_str("  "); // CODBDI (10..12)
+        line.push_str("02"); // CODBDI (10..12)
         line.push_str("VALE3       "); // CODNEG (12..24)
         line.push_str("010"); // TPMERC (24..27)
         line.push_str("VALE S.A.   "); // NOMRES (27..39)
         line.push_str("ON        "); // ESPECI (39..49)
         line.push_str("   "); // PRAZOT (49..52)
-        line.push_str(" 2  "); // FAT_COTACAO (52..56)
+        line.push_str("R$  "); // MODREF (52..56)
         line.push_str("0000000006205"); // PREABR (56..69)
         line.push_str("0000000006289"); // PREMAX (69..82)
         line.push_str("0000000006172"); // PREMIN (82..95)
@@ -34,8 +34,13 @@ fn create_test_cotahist_zip() -> Vec<u8> {
         line.push_str("00245"); // TOTNEG (147..152)
         line.push_str("000000000029847362"); // QUATOT (152..170)
         line.push_str("000000184729344000"); // VOLTOT (170..188)
-        line.push_str("   "); // FILLER (188..191)
-        line.push_str("BRVALEACNPA3"); // CODISIN (191..203)
+        line.push_str("             "); // PREEXE (188..201)
+        line.push(' '); // INDOPC (201..202)
+        line.push_str("00000000"); // DATVEN (202..210)
+        line.push_str("0000001"); // FATCOT (210..217)
+        line.push_str("             "); // PTOEXE (217..230)
+        line.push_str("BRVALEACNOR0"); // CODISI (230..242)
+        line.push_str("001"); // DISMES (242..245)
         while line.len() < 249 {
             line.push(' ');
         }

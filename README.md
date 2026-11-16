@@ -326,6 +326,10 @@ Todas as rotas da API — **exceto** `/health`, `/api/v1/health` e `/api/docs/*`
 | `GET` | `/api/v1/cotahist/tickers/{ticker}/gaps` | Protegida | Gaps de abertura vs fechamento anterior |
 | `GET` | `/api/v1/cotahist/tickers/{ticker}/rolling` | Protegida | SMA/EMA, volatilidade e ADV móveis (`janela`) |
 | `GET` | `/api/v1/cotahist/tickers/{ticker}/spread` | Protegida | Spread compra/venda a partir das ofertas COTAHIST |
+| `GET` | `/api/v1/cotahist/equities` | Protegida | Picker de ações ON/PN e units spot verificadas, com ticker, ISIN, atividade e cobertura |
+| `GET` | `/api/v1/cotahist/equities/{ticker}` | Protegida | Detalhe da listagem ativa elegível por ticker |
+| `GET` | `/api/v1/cotahist/equities/by-isin/{isin}/latest` | Protegida | Último fechamento nominal disponível para o ISIN |
+| `GET` | `/api/v1/cotahist/equities/by-isin/{isin}/quotes` | Protegida | Fechamentos por ISIN entre `desde` e `ate`, em intervalo de até um ano |
 | `GET` | `/api/v1/cotahist/dates/{date}/quotes` | Protegida | Todas as cotações de todos os ativos negociados em uma data (`AAAA-MM-DD`) |
 | `GET` | `/api/v1/cotahist/dates/{date}/movers` | Protegida | Maiores altas/baixas e líderes de volume/negócios do pregão |
 | `GET` | `/api/v1/cotahist/liquidity` | Protegida | Tela cross-sectional de liquidez (ADV / negócios), paginada |
@@ -338,6 +342,8 @@ Todas as rotas da API — **exceto** `/health`, `/api/v1/health` e `/api/docs/*`
 | `GET` | `/metrics` ou `/api/v1/metrics` | Protegida | Métricas no formato texto do Prometheus |
 
 > **Analytics COTAHIST:** retornos, stats, drawdown, relative, movers, gaps, rolling, spread, liquidity e compare são **indicadores derivados** de preços nominais. Não possuem ajuste por eventos corporativos e não são séries oficiais da B3.
+
+> **Picker de ações e units:** usa o conjunto versionado `equities-v1`. Inclui mercado spot `010`, BDI `02`, moeda BRL, ISIN válido e especificação ON, PN ou UNT; filtros ocorrem antes da paginação. ETFs e FIIs ficam fora. O fechamento por unidade aplica o `FATCOT` do registro e permanece nominal, sem ajuste retroativo por eventos corporativos. Confira `coverage` para o período efetivamente verificado.
 
 ### Exemplos Práticos com `curl`
 

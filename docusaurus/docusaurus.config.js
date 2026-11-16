@@ -79,16 +79,16 @@ const config = {
           title: 'Começar',
           items: [
             { label: 'Introdução', to: '/docs/intro' },
-            { label: 'Autenticação', to: '/docs/getting-started/authentication' },
-            { label: 'Consulta COTAHIST', to: '/docs/getting-started/quickstart' },
+            { label: 'Consulta de ações e units', to: '/docs/api-endpoints/equities' },
+            { label: 'Cobertura verificada', to: '/docs/operations/equity-data' },
           ],
         },
         {
           title: 'Referência',
           items: [
-            { label: 'Endpoints', to: '/docs/api-endpoints/common-patterns' },
-            { label: 'Schemas', to: '/docs/schemas/common' },
-            { label: 'Operação', to: '/docs/operations/overview' },
+            { label: 'Endpoints', to: '/docs/api-endpoints/equities' },
+            { label: 'Schemas', to: '/docs/schemas/equities' },
+            { label: 'Operação', to: '/docs/operations/equity-data' },
           ],
         },
         {

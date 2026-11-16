@@ -7,8 +7,9 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::models::cotahist::{
-    DateQuotesResponse, LatestQuoteResponse, PreUltExtremeResponse, QuoteListResponse,
-    SeriesResponse, TickerDetailResponse, TickerListResponse,
+    DateQuotesResponse, EquityListResponse, EquityQuoteResponse, EquityResponse,
+    LatestQuoteResponse, PreUltExtremeResponse, QuoteListResponse, SeriesResponse,
+    TickerDetailResponse, TickerListResponse,
 };
 use crate::models::cotahist_analytics::{
     CompareResponse, DrawdownResponse, GapsResponse, LiquidityScreenResponse, MoversResponse,
@@ -42,6 +43,10 @@ use crate::models::ingest::IngestResponse;
     IbovHistoryApiResponse = ApiResponse<IbovHistoryResponse>,
     IbovLatestApiResponse = ApiResponse<IbovLatestResponse>,
     IngestApiResponse = ApiResponse<IngestResponse>,
+    EquityListApiResponse = ApiResponse<EquityListResponse>,
+    EquityApiResponse = ApiResponse<EquityResponse>,
+    EquityQuoteApiResponse = ApiResponse<EquityQuoteResponse>,
+    EquityQuotesApiResponse = ApiResponse<Vec<EquityQuoteResponse>>,
 )]
 pub struct ApiResponse<T: Serialize> {
     pub data: T,

@@ -83,6 +83,10 @@ Upload, pasta local ou bucket S3 compatível (Cloudflare R2) de arquivos COTAHIS
     paths(
         // COTAHIST endpoints
         crate::api::cotahist::list_tickers_handler,
+        crate::api::cotahist::list_equities_handler,
+        crate::api::cotahist::get_equity_handler,
+        crate::api::cotahist::latest_equity_quote_handler,
+        crate::api::cotahist::equity_quotes_handler,
         crate::api::cotahist::get_ticker_handler,
         crate::api::cotahist::get_quotes_handler,
         crate::api::cotahist::get_latest_handler,
@@ -117,6 +121,14 @@ Upload, pasta local ou bucket S3 compatível (Cloudflare R2) de arquivos COTAHIS
         schemas(
             // Envelope aliases
             TickerListApiResponse,
+            EquityListApiResponse,
+            EquityApiResponse,
+            EquityQuoteApiResponse,
+            EquityQuotesApiResponse,
+            EquityResponse,
+            EquityQuoteResponse,
+            EquityCoverage,
+            EquityListResponse,
             TickerDetailApiResponse,
             QuoteListApiResponse,
             LatestQuoteApiResponse,
