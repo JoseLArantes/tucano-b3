@@ -15,6 +15,7 @@ use utoipa::ToSchema;
 use crate::cache::store::CacheStore;
 use crate::config::ObjectStorageConfig;
 use crate::data::reload::DataLoader;
+use crate::ingest::index_metrics::IndexIngestor;
 
 /// Shared application state.
 ///
@@ -27,17 +28,26 @@ pub struct AppState {
     pub cache: Arc<CacheStore>,
     /// S3-compatible bucket used by `POST /api/v1/ingest/bucket`.
     pub object_storage: ObjectStorageConfig,
+    pub index_ingestor: Arc<IndexIngestor>,
+    pub auth_enabled: bool,
 }
 
 impl AppState {
     /// Create a new AppState initialized with current time, package version, DataLoader, and CacheStore.
-    pub fn new(data_loader: Arc<DataLoader>, cache: Arc<CacheStore>) -> Self {
+    pub fn new(
+        data_loader: Arc<DataLoader>,
+        cache: Arc<CacheStore>,
+        index_ingestor: Arc<IndexIngestor>,
+        auth_enabled: bool,
+    ) -> Self {
         Self {
             start_time: Instant::now(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             data_loader,
             cache,
             object_storage: ObjectStorageConfig::default(),
+            index_ingestor,
+            auth_enabled,
         }
     }
 }

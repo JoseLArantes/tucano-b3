@@ -4,7 +4,7 @@
 //! This is the primary data access layer used by all API endpoints.
 
 use crate::data::reader::DiscoveredFiles;
-use crate::data::schema::{cotahist_schema, equities_schema, ibov_schema};
+use crate::data::schema::{cotahist_schema, equities_schema, ibov_schema, index_metrics_schema};
 use arrow::array::RecordBatch;
 use datafusion::datasource::file_format::parquet::ParquetFormat;
 use datafusion::datasource::listing::{
@@ -146,6 +146,28 @@ impl QueryService {
             ctx.register_table("ibov", Arc::new(table))?;
 
             tracing::info!("Tabela 'ibov' registrada");
+        }
+
+        if !files.index_metric_files.is_empty() {
+            let listing_options = ListingOptions::new(Arc::new(ParquetFormat::default()))
+                .with_file_extension(".parquet");
+            let urls = files
+                .index_metric_files
+                .iter()
+                .map(|file| {
+                    ListingTableUrl::parse(file.path.to_string_lossy()).map_err(|e| {
+                        QueryError::DataFusion(datafusion::error::DataFusionError::External(
+                            Box::new(e),
+                        ))
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let table = ListingTable::try_new(
+                ListingTableConfig::new_with_multi_paths(urls)
+                    .with_listing_options(listing_options)
+                    .with_schema(index_metrics_schema()),
+            )?;
+            ctx.register_table("index_metrics", Arc::new(table))?;
         }
 
         Ok(Self { ctx, files })

@@ -31,7 +31,7 @@ async fn test_ibov_history_no_data() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/api/v1/ibov/history")
+                .uri("/api/v1/metrics/ibov/history")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -48,7 +48,7 @@ async fn test_ibov_history_invalid_date() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/api/v1/ibov/history?desde=not-a-date")
+                .uri("/api/v1/metrics/ibov/history?desde=not-a-date")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -65,7 +65,7 @@ async fn test_ibov_history_with_dias() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/api/v1/ibov/history?dias=5")
+                .uri("/api/v1/metrics/ibov/history?dias=5")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -82,7 +82,7 @@ async fn test_ibov_history_pagination() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/api/v1/ibov/history?pagina=1&por_pagina=10")
+                .uri("/api/v1/metrics/ibov/history?pagina=1&por_pagina=10")
                 .body(Body::empty())
                 .unwrap(),
         )

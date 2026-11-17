@@ -15,7 +15,60 @@ use std::sync::Arc;
 fn generate_all_fixtures() {
     generate_cotahist_fixture();
     generate_ibov_fixture();
+    generate_index_metrics_fixture();
     generate_sqlite_fixture();
+}
+
+fn generate_index_metrics_fixture() {
+    let dir = Path::new("tests/fixtures/processed/indices");
+    fs::create_dir_all(dir).unwrap();
+    let schema = tucano_b3::data::schema::index_metrics_schema();
+    for index in ["IBOV", "IDIV", "IFIX"] {
+        let (dates, closes) = if index == "IBOV" {
+            // These dates overlap the legacy IBOV fixture, with distinct values
+            // so endpoint tests prove that the official CSV values take priority.
+            (vec![20454, 20455], vec![13_000_000_i64, 13_100_000_i64])
+        } else {
+            (
+                vec![
+                    (chrono::NaiveDate::from_ymd_opt(2025, 1, 2).unwrap()
+                        - chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap())
+                    .num_days() as i32,
+                    (chrono::NaiveDate::from_ymd_opt(2025, 1, 3).unwrap()
+                        - chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap())
+                    .num_days() as i32,
+                ],
+                vec![12_890_000_i64, 12_950_000_i64],
+            )
+        };
+        let dates = arrow::array::Date32Array::from(dates);
+        let batch = arrow::record_batch::RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(StringArray::from(vec![index, index])),
+                Arc::new(dates),
+                Arc::new(Int64Array::from(closes)),
+                Arc::new(TimestampNanosecondArray::from(vec![
+                    Some(
+                        1767355200000000000
+                    );
+                    2
+                ])),
+                Arc::new(StringArray::from(vec![format!("B3:{index}:2025"); 2])),
+                Arc::new(StringArray::from(vec!["fixture-hash"; 2])),
+            ],
+        )
+        .unwrap();
+        let path = dir.join(format!("{}-2025.parquet", index.to_ascii_lowercase()));
+        let mut writer = ArrowWriter::try_new(
+            fs::File::create(path).unwrap(),
+            schema.clone(),
+            Some(WriterProperties::builder().build()),
+        )
+        .unwrap();
+        writer.write(&batch).unwrap();
+        writer.close().unwrap();
+    }
 }
 
 fn generate_cotahist_fixture() {
@@ -281,6 +334,15 @@ fn generate_sqlite_fixture() {
         [],
     )
     .expect("Failed to insert tickers");
+
+    conn.execute_batch("CREATE TABLE index_partitions (index_code TEXT NOT NULL, year INTEGER NOT NULL, path TEXT NOT NULL, source_hash TEXT NOT NULL, row_count INTEGER NOT NULL, completed_at TEXT NOT NULL, PRIMARY KEY(index_code,year));").expect("Failed to create index partitions");
+    for index in ["IBOV", "IDIV", "IFIX"] {
+        let parquet_path = format!(
+            "tests/fixtures/processed/indices/{}-2025.parquet",
+            index.to_ascii_lowercase()
+        );
+        conn.execute("INSERT INTO index_partitions(index_code,year,path,source_hash,row_count,completed_at) VALUES(?1,2025,?2,'fixture-hash',2,'2026-11-17T00:00:00Z')",rusqlite::params![index,parquet_path]).expect("Failed to register index fixture");
+    }
 
     println!("Generated: {}", db_path.display());
 }

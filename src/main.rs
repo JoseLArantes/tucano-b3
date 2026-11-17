@@ -78,6 +78,11 @@ OPÇÕES:\n    \
         DataLoader::new(&config.data, cache.clone())
             .map_err(|e| anyhow::anyhow!("Failed to load data: {}", e))?,
     );
+    let index_ingestor = tucano_b3::ingest::index_metrics::IndexIngestor::new(
+        &config.data.dir,
+        data_loader.clone(),
+    )?;
+    tokio::spawn(index_ingestor.clone().scheduler());
 
     // Initialize API key registry
     let api_keys_path = Path::new("api_keys.toml");
@@ -121,6 +126,7 @@ OPÇÕES:\n    \
         rate_limit_state,
         metrics,
         start_time,
+        index_ingestor,
     )
     .await?;
 

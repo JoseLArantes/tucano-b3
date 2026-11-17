@@ -102,9 +102,12 @@ async fn test_openapi_has_all_endpoints() {
     assert!(paths.contains_key("/cotahist/liquidity"));
     assert!(paths.contains_key("/cotahist/compare"));
 
-    // IBOV endpoints
-    assert!(paths.contains_key("/ibov/history"));
-    assert!(paths.contains_key("/ibov/latest"));
+    assert!(paths.contains_key("/metrics/ibov/history"));
+    assert!(paths.contains_key("/metrics/ibov/latest"));
+    assert!(paths.contains_key("/metrics/idiv/history"));
+    assert!(paths.contains_key("/metrics/ifix/latest"));
+    assert!(paths.contains_key("/ingest/indices"));
+    assert!(!paths.contains_key("/ibov/history"));
 
     // System endpoints
     assert!(paths.contains_key("/health"));

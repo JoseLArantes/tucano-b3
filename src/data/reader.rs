@@ -5,7 +5,8 @@
 
 use crate::config::DataConfig;
 use crate::data::schema::{
-    cotahist_schema, equities_schema, ibov_schema, validate_schema, SchemaValidationError,
+    cotahist_schema, equities_schema, ibov_schema, index_metrics_schema, validate_schema,
+    SchemaValidationError,
 };
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use std::fs;
@@ -21,6 +22,8 @@ pub struct DiscoveredFiles {
     pub equity_files: Vec<ParquetFileInfo>,
     /// IBOV Parquet file (single historical file)
     pub ibov_file: Option<ParquetFileInfo>,
+    /// Official daily index CSV partitions.
+    pub index_metric_files: Vec<ParquetFileInfo>,
 }
 
 /// Metadata about a single Parquet file.
@@ -81,6 +84,7 @@ pub fn discover_files(data_config: &DataConfig) -> Result<DiscoveredFiles, Reade
         cotahist_files: Vec::new(),
         equity_files: Vec::new(),
         ibov_file: None,
+        index_metric_files: Vec::new(),
     };
 
     // Discover COTAHIST files
@@ -125,6 +129,53 @@ pub fn discover_files(data_config: &DataConfig) -> Result<DiscoveredFiles, Reade
         result.ibov_file = Some(info);
     }
 
+    let index_dir = data_dir.join("processed/indices");
+    if index_dir.exists() {
+        let ledger_path = data_dir.join("ledger/tucano.db");
+        let mut entries = Vec::new();
+        if ledger_path.exists() {
+            if let Ok(connection) = rusqlite::Connection::open(&ledger_path) {
+                let has_manifest=connection.query_row("SELECT 1 FROM sqlite_master WHERE type='table' AND name='index_partitions'",[],|_|Ok(())).is_ok();
+                if has_manifest {
+                    let mut statement = connection
+                        .prepare("SELECT path FROM index_partitions")
+                        .map_err(|e| ReaderError::Io(std::io::Error::other(e)))?;
+                    let rows = statement
+                        .query_map([], |row| row.get::<_, String>(0))
+                        .map_err(|e| ReaderError::Io(std::io::Error::other(e)))?;
+                    for row in rows {
+                        entries.push(PathBuf::from(
+                            row.map_err(|e| ReaderError::Io(std::io::Error::other(e)))?,
+                        ));
+                    }
+                } else {
+                    collect_parquet_files(&index_dir, &mut entries)?;
+                }
+            } else {
+                collect_parquet_files(&index_dir, &mut entries)?;
+            }
+        } else {
+            collect_parquet_files(&index_dir, &mut entries)?;
+        }
+        entries.sort();
+        for path in entries {
+            let info = read_parquet_metadata(&path)?;
+            let file = fs::File::open(&path)?;
+            let builder = ParquetRecordBatchReaderBuilder::try_new(file).map_err(|source| {
+                ReaderError::MetadataRead {
+                    file: path.display().to_string(),
+                    source,
+                }
+            })?;
+            validate_schema(
+                builder.schema(),
+                &index_metrics_schema(),
+                &path.display().to_string(),
+            )?;
+            result.index_metric_files.push(info);
+        }
+    }
+
     // Log summary
     tracing::info!(
         cotahist_files = result.cotahist_files.len(),
@@ -133,6 +184,18 @@ pub fn discover_files(data_config: &DataConfig) -> Result<DiscoveredFiles, Reade
     );
 
     Ok(result)
+}
+
+fn collect_parquet_files(dir: &Path, paths: &mut Vec<PathBuf>) -> Result<(), std::io::Error> {
+    for entry in fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path.is_dir() {
+            collect_parquet_files(&path, paths)?;
+        } else if path.extension().is_some_and(|ext| ext == "parquet") {
+            paths.push(path);
+        }
+    }
+    Ok(())
 }
 
 /// Read metadata from a Parquet file without loading data.

@@ -57,10 +57,10 @@ Indicadores calculados sobre PREULT/OHLCV COTAHIST — **não** são séries ofi
 - Retorno e anualização (`/returns`), cartão estatístico (`/stats`), drawdown (`/drawdown`), posição no intervalo (`/range-position`).\n\
 - Performance relativa vs IBOV (`/relative`), movers do pregão (`/dates/{date}/movers`), tela de liquidez (`/liquidity`).\n\
 - Gaps de abertura (`/gaps`), indicadores móveis SMA/EMA/vol/ADV (`/rolling`), spread compra/venda (`/spread`), comparação normalizada base 100 (`/compare`).\n\n\
-### IBOV\n\
-Série histórica e ponto mais recente do índice IBOVESPA.\n\n\
+### Índices B3\n\
+`/metrics/ibov/history` e `/metrics/ibov/latest` consultam a série oficial do IBOV. Também estão disponíveis `/metrics/idiv/history` e `/metrics/ifix/latest`. Os CSVs publicados pela B3 fornecem fechamento diário em pontos.\n\n\
 ### Ingestão e operações\n\
-Upload, pasta local ou bucket S3 compatível (Cloudflare R2) de arquivos COTAHIST (`.ZIP`/`.TXT`) com idempotência por data de pregão. A ingestão do bucket só ocorre em `POST /ingest/bucket`. Health, info do dataset e métricas Prometheus.\n\n\
+Upload, pasta local ou bucket S3 compatível (Cloudflare R2) de arquivos COTAHIST (`.ZIP`/`.TXT`) com idempotência por data de pregão. Os CSVs de IBOV, IDIV e IFIX são atualizados diariamente às 02:00 em `America/Sao_Paulo` e podem ser disparados por `POST /ingest/indices`. Health, info do dataset e métricas Prometheus.\n\n\
 ### Contratos e limitações\n\
 - Preços COTAHIST são **nominais** (sem ajuste retroativo por eventos corporativos).\n\
 - Autenticação Bearer / API Key nas rotas protegidas; `/health` e `/api/docs` são públicos.\n\
@@ -106,9 +106,14 @@ Upload, pasta local ou bucket S3 compatível (Cloudflare R2) de arquivos COTAHIS
         crate::api::cotahist_analytics::get_rolling_handler,
         crate::api::cotahist_analytics::get_spread_handler,
         crate::api::cotahist_analytics::get_compare_handler,
-        // IBOV endpoints
-        crate::api::ibov::history_handler,
-        crate::api::ibov::latest_handler,
+        // Official index metrics endpoints and manual ingestion
+        crate::api::index_metrics::ibov_history,
+        crate::api::index_metrics::ibov_latest,
+        crate::api::index_metrics::idiv_history,
+        crate::api::index_metrics::ifix_latest,
+        crate::api::index_metrics::start_ingest,
+        crate::api::index_metrics::ingest_status,
+        crate::api::index_metrics::ingestion_overview,
         // System endpoints
         crate::api::health::health_handler,
         crate::api::info::info_handler,
@@ -119,6 +124,12 @@ Upload, pasta local ou bucket S3 compatível (Cloudflare R2) de arquivos COTAHIS
     ),
     components(
         schemas(
+            crate::ingest::index_metrics::IndexCode,
+            crate::ingest::index_metrics::ManualIngestRequest,
+            crate::ingest::index_metrics::IngestJob,
+            crate::api::index_metrics::IndexIngestStatus,
+            crate::api::index_metrics::IngestJobResponse,
+            crate::api::index_metrics::IngestJobReceipt,
             // Envelope aliases
             TickerListApiResponse,
             EquityListApiResponse,
@@ -200,8 +211,8 @@ Upload, pasta local ou bucket S3 compatível (Cloudflare R2) de arquivos COTAHIS
     modifiers(&SecurityAddon),
     tags(
         (name = "cotahist", description = "Cotações históricas de ativos listados na B3"),
-        (name = "ibov", description = "Série histórica do índice IBOVESPA"),
-        (name = "ingest", description = "Ingestão de dados COTAHIST"),
+        (name = "índices", description = "Séries oficiais de índices da B3"),
+        (name = "ingestão", description = "Ingestão de dados COTAHIST e índices da B3"),
         (name = "sistema", description = "Endpoints de saúde e informações do serviço"),
     ),
 )]

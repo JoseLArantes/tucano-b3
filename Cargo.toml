@@ -34,6 +34,8 @@ datafusion = "42"
 arrow = "53"
 parquet = "53"
 rusqlite = { version = "0.32", features = ["bundled", "chrono"] }
+base64 = "0.22"
+csv = "1"
 
 # Cache
 dashmap = "6"

@@ -209,6 +209,8 @@ docker run -d \
 
 O Tucano-B3 possui três métodos integrados via API para ingerir arquivos `COTAHIST` da B3 (arquivos `.ZIP` e, na pasta local, também `.TXT` descompactados). Nenhum deles roda sozinho: a ingestão começa quando o endpoint correspondente é chamado.
 
+As séries IBOV, IDIV e IFIX são carregadas automaticamente a partir dos CSVs anuais da página de evolução diária da B3. O worker faz backfill na primeira inicialização e atualiza o ano corrente diariamente às 02:00 no fuso `America/Sao_Paulo`. Para disparar uma execução manual, chame `POST /api/v1/ingest/indices`; consulte `GET /api/v1/ingest/indices/{id}` para o resultado e `GET /api/v1/ingest/indices/status` para a última ingestão bem-sucedida e a última data de pregão carregada.
+
 ### Ingestão em Lote a partir de uma Pasta Local (`POST /api/v1/ingest/folder`)
 
 Coloque seus arquivos oficiais da B3 (ex.: `COTAHIST_A2025.ZIP`, `COTAHIST_A2026.ZIP`) dentro da pasta `./data` e execute:
@@ -334,12 +336,19 @@ Todas as rotas da API — **exceto** `/health`, `/api/v1/health` e `/api/docs/*`
 | `GET` | `/api/v1/cotahist/dates/{date}/movers` | Protegida | Maiores altas/baixas e líderes de volume/negócios do pregão |
 | `GET` | `/api/v1/cotahist/liquidity` | Protegida | Tela cross-sectional de liquidez (ADV / negócios), paginada |
 | `GET` | `/api/v1/cotahist/compare` | Protegida | Comparação normalizada (base 100) entre até 10 tickers |
-| `GET` | `/api/v1/ibov/history` | Protegida | Série histórica paginada do índice IBOVESPA |
-| `GET` | `/api/v1/ibov/latest` | Protegida | Ponto mais recente disponível do índice IBOVESPA |
+| `GET` | `/api/v1/metrics/ibov/history` | Protegida | Série diária oficial paginada do IBOV |
+| `GET` | `/api/v1/metrics/ibov/latest` | Protegida | Fechamento diário mais recente do IBOV |
+| `GET` | `/api/v1/metrics/idiv/history` | Protegida | Série diária oficial paginada do IDIV |
+| `GET` | `/api/v1/metrics/ifix/latest` | Protegida | Fechamento diário mais recente do IFIX |
+| `POST` | `/api/v1/ingest/indices` | Protegida | Enfileira ingestão manual dos CSVs anuais dos índices |
+| `GET` | `/api/v1/ingest/indices/{id}` | Protegida | Consulta estado e resultado por índice/ano |
+| `GET` | `/api/v1/ingest/indices/status` | Protegida | Último sucesso de ingestão e data de negociação mais recente |
 | `POST` | `/api/v1/ingest/upload` | Protegida | Upload e ingestão incremental de arquivo `.ZIP` do COTAHIST |
 | `POST` | `/api/v1/ingest/folder` | Protegida | Varredura e ingestão incremental de pasta local no servidor |
 | `POST` | `/api/v1/ingest/bucket` | Protegida | Ingestão sob demanda dos `.ZIP` COTAHIST em bucket S3 compatível (R2) |
 | `GET` | `/metrics` ou `/api/v1/metrics` | Protegida | Métricas no formato texto do Prometheus |
+
+Os antigos caminhos `/api/v1/ibov/history` e `/api/v1/ibov/latest` foram removidos. Consulte a página de operações para o agendamento diário e o fluxo de ingestão CSV da B3.
 
 > **Analytics COTAHIST:** retornos, stats, drawdown, relative, movers, gaps, rolling, spread, liquidity e compare são **indicadores derivados** de preços nominais. Não possuem ajuste por eventos corporativos e não são séries oficiais da B3.
 

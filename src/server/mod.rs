@@ -8,6 +8,7 @@ use crate::cache::store::CacheStore;
 use crate::config::AppConfig;
 use crate::data::reload::DataLoader;
 use crate::error::AppError;
+use crate::ingest::index_metrics::IndexIngestor;
 use crate::metrics::AppMetrics;
 use crate::middleware::{
     AuthLayer, CacheLayer, MetricsLayer, RateLimitLayer, RateLimitState, RequestIdLayer,
@@ -35,7 +36,34 @@ pub fn build_router(
     metrics: Arc<AppMetrics>,
     start_time: std::time::Instant,
 ) -> Router {
-    let mut app_state = crate::api::health::AppState::new(data_loader.clone(), cache.clone());
+    let index_ingestor = IndexIngestor::new(&config.data.dir, data_loader.clone())
+        .expect("index ingestion ledger must be available");
+    build_router_with_ingestor(
+        config,
+        data_loader,
+        cache,
+        rate_limit_state,
+        metrics,
+        start_time,
+        index_ingestor,
+    )
+}
+
+pub fn build_router_with_ingestor(
+    config: &AppConfig,
+    data_loader: Arc<DataLoader>,
+    cache: Arc<CacheStore>,
+    rate_limit_state: Arc<RateLimitState>,
+    metrics: Arc<AppMetrics>,
+    start_time: std::time::Instant,
+    index_ingestor: Arc<IndexIngestor>,
+) -> Router {
+    let mut app_state = crate::api::health::AppState::new(
+        data_loader.clone(),
+        cache.clone(),
+        index_ingestor.clone(),
+        config.auth.is_enabled(),
+    );
     app_state.object_storage = config.object_storage.clone();
     let health_state = Arc::new(app_state);
 
@@ -43,12 +71,17 @@ pub fn build_router(
 
     // Query routes keep the short timeout. Ingest is merged beside them so an
     // annual COTAHIST upload is not aborted while the body is still being read.
-    let api_routes = crate::api::routes(data_loader, cache.clone())
-        .merge(crate::api::metrics::routes(metrics.clone(), start_time))
-        .layer(TimeoutLayer::with_status_code(
-            axum::http::StatusCode::REQUEST_TIMEOUT,
-            request_timeout,
-        ));
+    let api_routes = crate::api::routes(
+        data_loader,
+        cache.clone(),
+        index_ingestor.clone(),
+        config.auth.is_enabled(),
+    )
+    .merge(crate::api::metrics::routes(metrics.clone(), start_time))
+    .layer(TimeoutLayer::with_status_code(
+        axum::http::StatusCode::REQUEST_TIMEOUT,
+        request_timeout,
+    ));
     let ingest_routes =
         crate::api::ingest::routes(health_state.clone()).layer(TimeoutLayer::with_status_code(
             axum::http::StatusCode::REQUEST_TIMEOUT,
@@ -96,14 +129,16 @@ pub async fn run(
     rate_limit_state: Arc<RateLimitState>,
     metrics: Arc<AppMetrics>,
     start_time: std::time::Instant,
+    index_ingestor: Arc<IndexIngestor>,
 ) -> Result<(), AppError> {
-    let router = build_router(
+    let router = build_router_with_ingestor(
         &config,
         data_loader,
         cache,
         rate_limit_state,
         metrics,
         start_time,
+        index_ingestor,
     );
 
     let addr: SocketAddr = format!("{}:{}", config.server.host, config.server.port)

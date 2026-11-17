@@ -31,7 +31,7 @@ async fn test_ibov_latest_no_data() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/api/v1/ibov/latest")
+                .uri("/api/v1/metrics/ibov/latest")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -47,7 +47,7 @@ async fn test_ibov_latest_error_structure() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/api/v1/ibov/latest")
+                .uri("/api/v1/metrics/ibov/latest")
                 .body(Body::empty())
                 .unwrap(),
         )

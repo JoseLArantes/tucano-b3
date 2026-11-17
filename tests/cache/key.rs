@@ -38,7 +38,7 @@ fn test_sorted_params_same_key() {
 #[test]
 fn test_is_cacheable() {
     assert!(is_cacheable("/api/v1/cotahist/tickers"));
-    assert!(is_cacheable("/api/v1/ibov/history"));
+    assert!(is_cacheable("/api/v1/metrics/ibov/history"));
     assert!(!is_cacheable("/api/v1/health"));
     assert!(!is_cacheable("/api/v1/metrics"));
     assert!(!is_cacheable("/api/v1/info"));

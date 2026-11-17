@@ -14,6 +14,139 @@ use arrow::record_batch::RecordBatch;
 pub struct IbovService;
 
 impl IbovService {
+    pub(crate) fn date_value(batch: &RecordBatch, row: usize, column: &str) -> Option<String> {
+        Self::get_str(batch, row, column)
+    }
+
+    pub async fn get_index_history(
+        query_service: &QueryService,
+        index: &str,
+        desde: Option<&str>,
+        ate: Option<&str>,
+        dias: Option<u32>,
+        ordem: &str,
+        pagination: &PaginationParams,
+    ) -> AppResult<(Vec<IbovHistoryEntry>, usize)> {
+        for date in [desde, ate].into_iter().flatten() {
+            Self::validate_date(date)?;
+        }
+        if let (Some(start), Some(end)) = (desde, ate) {
+            if start > end {
+                return Err(AppError::DateRangeInvalid);
+            }
+        }
+        let source = Self::index_source_sql(query_service, index)?;
+        let mut filters = Vec::new();
+        if let Some(d) = desde {
+            filters.push(format!("date >= DATE '{d}'"));
+        }
+        if let Some(d) = ate {
+            filters.push(format!("date <= DATE '{d}'"));
+        }
+        if let Some(n) = dias {
+            filters.push(format!(
+                "date IN (SELECT date FROM source ORDER BY date DESC LIMIT {n})"
+            ));
+        }
+        let where_sql = if filters.is_empty() {
+            "TRUE".to_string()
+        } else {
+            filters.join(" AND ")
+        };
+        let cte = format!(
+            "WITH source AS ({source}), series AS (SELECT date,index,close_cents,nome,tipo,pre_abr,pre_max,pre_min,pre_med,vol_tot,num_neg,qtd_tot,LAG(close_cents) OVER (PARTITION BY index ORDER BY date) previous FROM source), filtered AS (SELECT * FROM series WHERE {where_sql})"
+        );
+        let count = query_service
+            .execute_sql(&format!("{cte} SELECT COUNT(*) FROM filtered"))
+            .await
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("{e}")))?;
+        let total = Self::extract_count(&count);
+        if total == 0 {
+            return Err(AppError::NoDataInRange);
+        }
+        let direction = if ordem.eq_ignore_ascii_case("asc") {
+            "ASC"
+        } else {
+            "DESC"
+        };
+        let sql = format!(
+            "{cte} SELECT date,index codigo,nome,tipo,pre_abr,pre_max,pre_min,pre_med,close_cents/100.0 pre_ult,vol_tot,num_neg,qtd_tot,CASE WHEN previous IS NULL OR previous=0 THEN NULL ELSE ROUND((close_cents-previous)*100.0/previous,4) END var_pct FROM filtered ORDER BY date {direction} LIMIT {} OFFSET {}",
+            pagination.limit(),
+            pagination.offset()
+        );
+        let batches = query_service
+            .execute_sql(&sql)
+            .await
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("{e}")))?;
+        Ok((Self::extract_history(&batches), total))
+    }
+
+    pub async fn get_index_latest(
+        query_service: &QueryService,
+        index: &str,
+    ) -> AppResult<IbovLatestResponse> {
+        let source = Self::index_source_sql(query_service, index)?;
+        let sql = format!(
+            "WITH source AS ({source}),series AS (SELECT date,index,close_cents,nome,tipo,pre_abr,pre_max,pre_min,pre_med,vol_tot,num_neg,qtd_tot,LAG(close_cents) OVER (PARTITION BY index ORDER BY date) previous FROM source) SELECT date,index codigo,nome,tipo,pre_abr,pre_max,pre_min,pre_med,close_cents,vol_tot,num_neg,qtd_tot,previous FROM series ORDER BY date DESC LIMIT 1"
+        );
+        let batches = query_service
+            .execute_sql(&sql)
+            .await
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("{e}")))?;
+        let Some(batch) = batches.first().filter(|b| b.num_rows() > 0) else {
+            return Err(AppError::NoDataInRange);
+        };
+        let date = Self::get_str(batch, 0, "date").unwrap_or_default();
+        let code = Self::get_str(batch, 0, "codigo").unwrap_or_else(|| index.to_string());
+        let name = Self::get_str(batch, 0, "nome").unwrap_or_else(|| code.clone());
+        let close = batch.schema().index_of("close_cents").ok().and_then(|i| {
+            batch
+                .column(i)
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .map(|a| a.value(0) as f64 / 100.0)
+        });
+        let previous = batch.schema().index_of("previous").ok().and_then(|i| {
+            let values = batch.column(i).as_any().downcast_ref::<Int64Array>()?;
+            (!values.is_null(0)).then(|| values.value(0) as f64 / 100.0)
+        });
+        let number = |column: &str| Self::get_f64(batch, 0, column);
+        let num_neg = Self::get_u64(batch, 0, "num_neg");
+        let pct = match (close, previous) {
+            (Some(c), Some(p)) if p != 0.0 => {
+                Some(((c - p) / p * 100.0 * 10000.0).round() / 10000.0)
+            }
+            _ => None,
+        };
+        Ok(IbovLatestResponse {
+            codigo: code.clone(),
+            nome: name,
+            data: date,
+            pre_abr: number("pre_abr"),
+            pre_max: number("pre_max"),
+            pre_min: number("pre_min"),
+            pre_med: number("pre_med"),
+            pre_ult: close,
+            vol_tot: number("vol_tot"),
+            num_neg,
+            qtd_tot: number("qtd_tot"),
+            var_pct: pct,
+        })
+    }
+
+    fn index_source_sql(query_service: &QueryService, index: &str) -> AppResult<String> {
+        let has_official = query_service.has_table("index_metrics");
+        let has_legacy_ibov = index == "IBOV" && query_service.has_table("ibov");
+        let official = "SELECT index,date,close_cents,CASE WHEN index='IBOV' THEN 'IBOVESPA' ELSE index END AS nome,CAST(NULL AS VARCHAR) AS tipo,CAST(NULL AS DOUBLE) AS pre_abr,CAST(NULL AS DOUBLE) AS pre_max,CAST(NULL AS DOUBLE) AS pre_min,CAST(NULL AS DOUBLE) AS pre_med,CAST(NULL AS DOUBLE) AS vol_tot,CAST(NULL AS BIGINT) AS num_neg,CAST(NULL AS DOUBLE) AS qtd_tot FROM index_metrics";
+        let legacy = "SELECT 'IBOV' AS index,date,CAST(ROUND(pre_ult*100.0) AS BIGINT) AS close_cents,nome,tipo,pre_abr,pre_max,pre_min,pre_med,vol_tot,CAST(num_neg AS BIGINT) AS num_neg,qtd_tot FROM ibov WHERE pre_ult IS NOT NULL";
+        match (has_official, has_legacy_ibov) {
+            (true, true) => Ok(format!("SELECT * FROM ({official}) official WHERE index='IBOV' UNION ALL SELECT * FROM ({legacy}) legacy WHERE NOT EXISTS (SELECT 1 FROM index_metrics accepted WHERE accepted.index='IBOV' AND accepted.date=legacy.date)")),
+            (true, false) => Ok(format!("SELECT * FROM ({official}) official WHERE index='{index}'")),
+            (false, true) => Ok(legacy.to_string()),
+            (false, false) => Err(AppError::NoDataInRange),
+        }
+    }
+
     /// Get IBOV historical series with filters.
     pub async fn get_history(
         query_service: &QueryService,
@@ -166,7 +299,7 @@ impl IbovService {
     }
 
     /// Extract IBOV history entries from RecordBatches.
-    fn extract_history(batches: &[RecordBatch]) -> Vec<IbovHistoryEntry> {
+    pub(crate) fn extract_history(batches: &[RecordBatch]) -> Vec<IbovHistoryEntry> {
         let mut entries = Vec::new();
 
         for batch in batches {
@@ -193,7 +326,7 @@ impl IbovService {
     }
 
     /// Extract count from COUNT(*) result.
-    fn extract_count(batches: &[RecordBatch]) -> usize {
+    pub(crate) fn extract_count(batches: &[RecordBatch]) -> usize {
         if batches.is_empty() || batches[0].num_rows() == 0 {
             return 0;
         }
