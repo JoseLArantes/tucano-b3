@@ -521,6 +521,10 @@ impl IndexIngestor {
     }
 
     pub async fn scheduler(self: Arc<Self>) {
+        self.scheduler_with_daily_schedule(true).await;
+    }
+
+    pub async fn scheduler_with_daily_schedule(self: Arc<Self>, daily_schedule_enabled: bool) {
         if let Ok(jobs) = self.interrupted_jobs() {
             for (id, request) in jobs {
                 let now = Utc::now().with_timezone(&Sao_Paulo).year();
@@ -572,6 +576,12 @@ impl IndexIngestor {
                         .await;
                 }
             }
+        }
+        if !daily_schedule_enabled {
+            tracing::info!(
+                "Agendamento diário interno desativado; o disparo será feito pelo Kubernetes"
+            );
+            return;
         }
         loop {
             let now = Utc::now().with_timezone(&Sao_Paulo);

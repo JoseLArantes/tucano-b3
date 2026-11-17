@@ -1,28 +1,7 @@
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use std::sync::Arc;
-use tower::ServiceExt;
-
-fn test_app() -> axum::Router {
-    let config = tucano_b3::config::AppConfig::default();
-    let cache = Arc::new(tucano_b3::cache::CacheStore::new(&config.cache));
-    let data_loader =
-        Arc::new(tucano_b3::data::reload::DataLoader::new(&config.data, cache.clone()).unwrap());
-    let api_keys = Arc::new(tucano_b3::middleware::ApiKeyRegistry::empty());
-    let rate_limit_state = Arc::new(tucano_b3::middleware::RateLimitState::new(
-        api_keys,
-        config.rate_limit.clone(),
-    ));
-    let metrics = Arc::new(tucano_b3::metrics::AppMetrics::new());
-    let start_time = std::time::Instant::now();
-    tucano_b3::server::build_router(
-        &config,
-        data_loader,
-        cache,
-        rate_limit_state,
-        metrics,
-        start_time,
-    )
+fn test_app() -> crate::support::TestApp {
+    crate::support::empty_app()
 }
 
 #[tokio::test]

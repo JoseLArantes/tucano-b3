@@ -131,6 +131,9 @@ TUCANO_B3_TOKEN=seu_token_secreto_aqui
 # Opcional: Tokens adicionais permitidos (leitura / administração)
 TUCANO_B3_READ_TOKEN=token_secundario_leitura
 TUCANO_B3_ADMIN_TOKEN=token_secundario_admin
+
+# Opcional: use false quando um CronJob Kubernetes disparar /api/v1/ingest/indices
+TUCANO_INDEX_INGEST_DAILY_SCHEDULER_ENABLED=true
 ```
 
 2. **Revise o arquivo `config.toml`** (valores padrão já otimizados):

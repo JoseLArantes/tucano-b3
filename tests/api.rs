@@ -22,3 +22,5 @@ mod index_metrics;
 mod metrics;
 #[path = "api/openapi.rs"]
 mod openapi;
+#[path = "api/support.rs"]
+mod support;

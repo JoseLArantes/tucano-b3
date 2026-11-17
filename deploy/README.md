@@ -55,11 +55,37 @@ brew install argoproj/tap/kubectl-argo-rollouts
         │
         ▼
 [Pods] managed by Argo Rollout `tucano-b3`
+
+[CronJob: tucano-b3-index-ingestion] -- authenticated POST --> [Service: tucano-b3]
 ```
+
+The CronJob is only a scheduled trigger. The API's Tokio worker performs the B3 download and writes Parquet/SQLite, so the CronJob does not mount `/data` or create a second writer for the ReadWriteOnce volume.
 
 ---
 
-## 3. Secrets
+## 3. Index ingestion worker and CronJob
+
+Production schedules the authenticated `POST /api/v1/ingest/indices` request at `02:00` in `America/Sao_Paulo`. The API accepts the request and runs the job in its existing worker. Its embedded daily timer is disabled in Kubernetes to avoid two schedulers; startup resume/backfill and manual API triggers remain enabled.
+
+The CronJob retries while the API reports `409` (another worker job is active) or a transient HTTP/network error. It exits successfully once the API returns `202` and prints the job ID. Follow the actual ingestion with `GET /api/v1/ingest/indices/{id}` or the authenticated operational status endpoint. The CronJob uses `TUCANO_B3_TOKEN` from `tucano-b3-secret` and does not receive any data-volume mount.
+
+The chart uses `spec.timeZone`, supported by Kubernetes 1.27 and newer. Keep the API Rollout at one replica with the current `ReadWriteOnce` SQLite/Parquet volume.
+
+```bash
+kubectl get cronjob tucano-b3-index-ingestion -n tucano-services
+kubectl get jobs -n tucano-services -l app=tucano-b3,component=index-ingestion-trigger
+kubectl logs -n tucano-services job/<job-name>
+
+# Trigger the same one-shot Kubernetes request job manually.
+kubectl create job --from=cronjob/tucano-b3-index-ingestion \
+  tucano-b3-index-ingestion-manual-$(date +%s) -n tucano-services
+```
+
+`indexIngestion.dailySchedulerEnabled` controls the API's internal daily timer. `indexIngestion.cronJob.enabled` controls the Kubernetes CronJob. Production sets the former to `false` and the latter to `true`; the generic chart defaults keep the in-process scheduler enabled and the CronJob disabled.
+
+---
+
+## 4. Secrets
 
 ### Registry pull secret
 
@@ -109,7 +135,7 @@ Set the non-secret values in `deploy/helm/values-production.yaml` (`config.s3*`)
 
 ---
 
-## 4. Helm (manual)
+## 5. Helm (manual)
 
 ```bash
 # Lint / dry-run
@@ -134,7 +160,7 @@ kubectl argo rollouts get rollout tucano-b3 -n tucano-services --watch
 
 ---
 
-## 5. Deploy updates (Argo CD)
+## 6. Deploy updates (Argo CD)
 
 Automated sync is off. To ship a Helm/values change:
 
@@ -158,7 +184,7 @@ kubectl get pods -n tucano-services -l app=tucano-b3 \
 
 A values-only memory change updates the Rollout only if Argo is allowed to diff `resources`. That path must not be listed under `ignoreDifferences`.
 
-## 6. Argo CD manifests
+## 7. Argo CD manifests
 
 Manifests live under `deploy/argocd/`:
 
@@ -184,7 +210,7 @@ Automated sync is commented out until the first manual sync is green (same tip a
 
 ---
 
-## 7. Rollout operations
+## 8. Rollout operations
 
 ```bash
 kubectl argo rollouts get rollout tucano-b3 -n tucano-services --watch
@@ -195,7 +221,7 @@ kubectl argo rollouts restart tucano-b3 -n tucano-services
 
 ---
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 ```bash
 kubectl describe rollout tucano-b3 -n tucano-services

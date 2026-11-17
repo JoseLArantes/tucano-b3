@@ -82,7 +82,23 @@ OPÇÕES:\n    \
         &config.data.dir,
         data_loader.clone(),
     )?;
-    tokio::spawn(index_ingestor.clone().scheduler());
+    let daily_index_schedule_enabled = std::env::var("TUCANO_INDEX_INGEST_DAILY_SCHEDULER_ENABLED")
+        .map(|value| {
+            !matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "false" | "0" | "no" | "off"
+            )
+        })
+        .unwrap_or(true);
+    tracing::info!(
+        daily_index_schedule_enabled,
+        "Configuração do agendador diário de índices"
+    );
+    tokio::spawn(
+        index_ingestor
+            .clone()
+            .scheduler_with_daily_schedule(daily_index_schedule_enabled),
+    );
 
     // Initialize API key registry
     let api_keys_path = Path::new("api_keys.toml");

@@ -1,0 +1,91 @@
+{{- if .Values.indexIngestion.cronJob.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-index-ingestion
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Release.Name }}
+    component: index-ingestion-trigger
+spec:
+  schedule: {{ .Values.indexIngestion.cronJob.schedule | quote }}
+  timeZone: {{ .Values.indexIngestion.cronJob.timeZone | quote }}
+  concurrencyPolicy: {{ .Values.indexIngestion.cronJob.concurrencyPolicy | quote }}
+  startingDeadlineSeconds: {{ .Values.indexIngestion.cronJob.startingDeadlineSeconds }}
+  successfulJobsHistoryLimit: {{ .Values.indexIngestion.cronJob.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.indexIngestion.cronJob.failedJobsHistoryLimit }}
+  jobTemplate:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+        component: index-ingestion-trigger
+    spec:
+      backoffLimit: {{ .Values.indexIngestion.cronJob.backoffLimit }}
+      activeDeadlineSeconds: {{ .Values.indexIngestion.cronJob.activeDeadlineSeconds }}
+      template:
+        metadata:
+          labels:
+            app: {{ .Release.Name }}
+            component: index-ingestion-trigger
+        spec:
+          restartPolicy: Never
+          {{- with .Values.image.pullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          containers:
+            - name: trigger
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["/bin/sh", "-ec"]
+              args:
+                - |
+                  deadline=$(( $(date +%s) + {{ .Values.indexIngestion.cronJob.maxWaitSeconds }} ))
+                  current_year=$(date -u +%Y)
+                  if [ "$(date -u +%m%d)" = "0101" ]; then
+                    previous_year=$((current_year - 1))
+                    request_body="{\"ano_inicio\":${previous_year},\"ano_fim\":${current_year}}"
+                  else
+                    request_body='{}'
+                  fi
+                  while [ "$(date +%s)" -lt "$deadline" ]; do
+                    status=$(curl --silent --show-error --output /tmp/response.json \
+                      --write-out '%{http_code}' --connect-timeout 10 --max-time 30 \
+                      --request POST "$INDEX_INGEST_URL" \
+                      --header "Authorization: Bearer ${TUCANO_B3_TOKEN}" \
+                      --header "Content-Type: application/json" \
+                      --data "$request_body") || status=000
+                    case "$status" in
+                      202)
+                        cat /tmp/response.json
+                        exit 0
+                        ;;
+                      409|408|425|429|5??|000)
+                        echo "Index ingestion is busy or temporarily unavailable (HTTP $status); retrying."
+                        sleep {{ .Values.indexIngestion.cronJob.retryIntervalSeconds }}
+                        ;;
+                      *)
+                        echo "Index ingestion trigger failed (HTTP $status)."
+                        cat /tmp/response.json
+                        exit 1
+                        ;;
+                    esac
+                  done
+                  echo "Timed out waiting for the API to accept the index ingestion job."
+                  exit 1
+              env:
+                - name: INDEX_INGEST_URL
+                  value: "http://{{ .Release.Name }}{{ if and .Values.rollout.enabled .Values.rollout.strategy.canary.trafficRouting.enabled }}-stable{{ end }}:{{ .Values.service.port }}/api/v1/ingest/indices"
+                - name: TUCANO_B3_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.secrets.existingSecret }}
+                      key: {{ .Values.indexIngestion.cronJob.tokenSecretKey }}
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 16Mi
+                limits:
+                  cpu: 100m
+                  memory: 64Mi
+{{- end }}
