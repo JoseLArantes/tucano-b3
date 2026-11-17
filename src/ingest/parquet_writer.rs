@@ -7,7 +7,7 @@
 //! Annual files are written in chunks and existing year data is streamed so the
 //! process does not hold a full-year Arrow batch plus the record Vec at once.
 
-use crate::data::schema::cotahist_schema;
+use crate::data::schema::{cotahist_schema, equities_schema};
 use crate::ingest::cotahist_parser::CotahistRecord;
 use arrow::array::*;
 use arrow::compute::filter_record_batch;
@@ -139,21 +139,6 @@ impl YearChunkWriter {
         Ok(())
     }
 
-    fn write_slice<R: AsCotahistRecord>(
-        &mut self,
-        records: &[R],
-        schema: &Arc<arrow::datatypes::Schema>,
-    ) -> Result<(), ParquetWriteError> {
-        for chunk in records.chunks(WRITE_CHUNK_ROWS) {
-            let batch = records_to_batch(chunk, schema.clone(), &mut self.written_date_days)?;
-            if let Some(writer) = self.writer.as_mut() {
-                writer.write(&batch)?;
-            }
-            self.new_rows += chunk.len();
-        }
-        Ok(())
-    }
-
     fn finish(
         mut self,
         schema: &Arc<arrow::datatypes::Schema>,
@@ -235,17 +220,27 @@ impl Drop for YearChunkWriter {
 /// Streaming, year-partitioned Parquet writer that bounds memory to `WRITE_CHUNK_ROWS` per year.
 pub struct StreamingParquetWriter {
     output_dir: PathBuf,
+    equity_output_dir: PathBuf,
     schema: Arc<arrow::datatypes::Schema>,
+    equity_schema: Arc<arrow::datatypes::Schema>,
     writers: HashMap<i32, YearChunkWriter>,
+    equity_writers: HashMap<i32, YearChunkWriter>,
 }
 
 impl StreamingParquetWriter {
     /// Create a new streaming writer targeting `output_dir`.
     pub fn new(output_dir: &Path) -> Self {
+        let equity_output_dir = output_dir
+            .parent()
+            .unwrap_or(output_dir)
+            .join("equities-v1");
         Self {
             output_dir: output_dir.to_path_buf(),
+            equity_output_dir,
             schema: cotahist_schema(),
+            equity_schema: equities_schema(),
             writers: HashMap::new(),
+            equity_writers: HashMap::new(),
         }
     }
 
@@ -262,15 +257,35 @@ impl StreamingParquetWriter {
         Ok(())
     }
 
+    /// Push every parsed record into the independently versioned equity dataset.
+    pub fn push_equity(&mut self, record: CotahistRecord) -> Result<(), ParquetWriteError> {
+        let year = record.year;
+        if !self.equity_writers.contains_key(&year) {
+            let writer =
+                YearChunkWriter::new(year, &self.equity_output_dir, self.equity_schema.clone())?;
+            self.equity_writers.insert(year, writer);
+        }
+        if let Some(writer) = self.equity_writers.get_mut(&year) {
+            writer.push(record, &self.equity_schema)?;
+        }
+        Ok(())
+    }
+
     /// Flush all buffered chunks, merge non-overlapping existing year rows, and atomically rename files.
     pub fn finish(mut self) -> Result<Vec<WriteStats>, ParquetWriteError> {
+        let mut results = Vec::new();
         let mut years: Vec<i32> = self.writers.keys().copied().collect();
         years.sort_unstable();
-
-        let mut results = Vec::with_capacity(years.len());
         for year in years {
             if let Some(writer) = self.writers.remove(&year) {
                 results.push(writer.finish(&self.schema)?);
+            }
+        }
+        let mut years: Vec<i32> = self.equity_writers.keys().copied().collect();
+        years.sort_unstable();
+        for year in years {
+            if let Some(writer) = self.equity_writers.remove(&year) {
+                results.push(writer.finish(&self.equity_schema)?);
             }
         }
         Ok(results)
@@ -287,25 +302,12 @@ pub fn write_cotahist_parquet(
     records: &[CotahistRecord],
     output_dir: &Path,
 ) -> Result<Vec<WriteStats>, ParquetWriteError> {
-    let schema = cotahist_schema();
-    let mut by_year: HashMap<i32, Vec<&CotahistRecord>> = HashMap::new();
+    let mut equity_writer = StreamingParquetWriter::new(output_dir);
     for record in records {
-        by_year.entry(record.year).or_default().push(record);
+        equity_writer.push_equity(record.clone())?;
+        equity_writer.push(record.clone())?;
     }
-
-    let mut years: Vec<i32> = by_year.keys().copied().collect();
-    years.sort_unstable();
-
-    let mut results = Vec::with_capacity(years.len());
-    for year in years {
-        if let Some(year_records) = by_year.remove(&year) {
-            let mut writer = YearChunkWriter::new(year, output_dir, schema.clone())?;
-            writer.write_slice(&year_records, &schema)?;
-            results.push(writer.finish(&schema)?);
-        }
-    }
-
-    Ok(results)
+    equity_writer.finish()
 }
 
 fn records_to_batch<R: AsCotahistRecord>(
@@ -329,6 +331,48 @@ fn records_to_batch<R: AsCotahistRecord>(
         records
             .iter()
             .map(|r| r.as_record().company_name.as_deref())
+            .collect::<Vec<_>>(),
+    );
+    let raw_ticker_arr = StringArray::from(
+        records
+            .iter()
+            .map(|r| Some(r.as_record().raw_ticker.as_str()))
+            .collect::<Vec<_>>(),
+    );
+    let bdi_code_arr = StringArray::from(
+        records
+            .iter()
+            .map(|r| r.as_record().bdi_code.as_deref())
+            .collect::<Vec<_>>(),
+    );
+    let raw_market_code_arr = StringArray::from(
+        records
+            .iter()
+            .map(|r| Some(r.as_record().market_code.as_str()))
+            .collect::<Vec<_>>(),
+    );
+    let specification_arr = StringArray::from(
+        records
+            .iter()
+            .map(|r| r.as_record().security_specification.as_deref())
+            .collect::<Vec<_>>(),
+    );
+    let currency_code_arr = StringArray::from(
+        records
+            .iter()
+            .map(|r| r.as_record().currency_code.as_deref())
+            .collect::<Vec<_>>(),
+    );
+    let quotation_factor_arr = UInt32Array::from(
+        records
+            .iter()
+            .map(|r| r.as_record().quotation_factor)
+            .collect::<Vec<_>>(),
+    );
+    let pre_ult_raw_arr = UInt64Array::from(
+        records
+            .iter()
+            .map(|r| r.as_record().pre_ult_raw)
             .collect::<Vec<_>>(),
     );
 
@@ -415,32 +459,38 @@ fn records_to_batch<R: AsCotahistRecord>(
             .collect::<Vec<_>>(),
     );
 
-    Ok(RecordBatch::try_new(
-        schema.clone(),
-        vec![
-            Arc::new(ticker_arr),
-            Arc::new(isin_arr),
-            Arc::new(company_name_arr),
-            Arc::new(date_arr),
-            Arc::new(year_arr),
-            Arc::new(market_type_arr),
-            arrow::array::new_null_array(schema.field(6).data_type(), records.len()),
-            Arc::new(pre_abr_arr),
-            Arc::new(pre_max_arr),
-            Arc::new(pre_min_arr),
-            Arc::new(pre_med_arr),
-            Arc::new(pre_ult_arr),
-            Arc::new(pre_ofe_compra_arr),
-            Arc::new(pre_ofe_venda_arr),
-            Arc::new(tot_neg_arr),
-            Arc::new(quat_tot_arr),
-            Arc::new(vol_tot_arr),
-            arrow::array::new_null_array(schema.field(17).data_type(), records.len()),
-            arrow::array::new_null_array(schema.field(18).data_type(), records.len()),
-            arrow::array::new_null_array(schema.field(19).data_type(), records.len()),
-            arrow::array::new_null_array(schema.field(20).data_type(), records.len()),
-        ],
-    )?)
+    let mut arrays = vec![
+        Arc::new(ticker_arr) as ArrayRef,
+        Arc::new(isin_arr),
+        Arc::new(company_name_arr),
+        Arc::new(date_arr),
+        Arc::new(year_arr),
+        Arc::new(market_type_arr),
+        arrow::array::new_null_array(schema.field(6).data_type(), records.len()),
+        Arc::new(pre_abr_arr),
+        Arc::new(pre_max_arr),
+        Arc::new(pre_min_arr),
+        Arc::new(pre_med_arr),
+        Arc::new(pre_ult_arr),
+        Arc::new(pre_ofe_compra_arr),
+        Arc::new(pre_ofe_venda_arr),
+        Arc::new(tot_neg_arr),
+        Arc::new(quat_tot_arr),
+        Arc::new(vol_tot_arr),
+        arrow::array::new_null_array(schema.field(17).data_type(), records.len()),
+        arrow::array::new_null_array(schema.field(18).data_type(), records.len()),
+        arrow::array::new_null_array(schema.field(19).data_type(), records.len()),
+        arrow::array::new_null_array(schema.field(20).data_type(), records.len()),
+        Arc::new(raw_ticker_arr),
+        Arc::new(bdi_code_arr),
+        Arc::new(raw_market_code_arr),
+        Arc::new(specification_arr),
+        Arc::new(currency_code_arr),
+        Arc::new(quotation_factor_arr),
+        Arc::new(pre_ult_raw_arr),
+    ];
+    arrays.truncate(schema.fields().len());
+    Ok(RecordBatch::try_new(schema.clone(), arrays)?)
 }
 
 #[cfg(test)]
@@ -453,6 +503,13 @@ mod tests {
     fn make_test_record(ticker: &str, year: i32, day: u32) -> CotahistRecord {
         CotahistRecord {
             ticker: ticker.to_string(),
+            raw_ticker: ticker.to_string(),
+            bdi_code: Some("02".to_string()),
+            market_code: "010".to_string(),
+            security_specification: Some("ON".to_string()),
+            currency_code: Some("BRL".to_string()),
+            quotation_factor: Some(1),
+            pre_ult_raw: Some(1050),
             isin: Some(format!("BR{}001", ticker)),
             company_name: Some(format!("{} S.A.", ticker)),
             date: NaiveDate::from_ymd_opt(year, 1, day).unwrap(),
@@ -474,17 +531,22 @@ mod tests {
     #[test]
     fn test_write_cotahist_parquet_creates_file_with_valid_schema() {
         let temp = TempDir::new().unwrap();
+        let cotahist_dir = temp.path().join("processed/cotahist");
         let records = vec![
             make_test_record("PETR4", 2026, 2),
             make_test_record("VALE3", 2026, 2),
         ];
 
-        let stats = write_cotahist_parquet(&records, temp.path()).unwrap();
-        assert_eq!(stats.len(), 1);
+        let stats = write_cotahist_parquet(&records, &cotahist_dir).unwrap();
+        assert_eq!(stats.len(), 2);
         assert_eq!(stats[0].rows_written, 2);
 
-        let file_path = temp.path().join("cotahist-2026.parquet");
+        let file_path = cotahist_dir.join("cotahist-2026.parquet");
         assert!(file_path.exists());
+        let equity_path = temp
+            .path()
+            .join("processed/equities-v1/cotahist-2026.parquet");
+        assert!(equity_path.exists());
 
         let file = fs::File::open(&file_path).unwrap();
         let builder = ParquetRecordBatchReaderBuilder::try_new(file).unwrap();
@@ -496,37 +558,44 @@ mod tests {
     #[test]
     fn test_write_cotahist_parquet_partitioned_by_year() {
         let temp = TempDir::new().unwrap();
+        let cotahist_dir = temp.path().join("processed/cotahist");
         let records = vec![
             make_test_record("PETR4", 2025, 2),
             make_test_record("VALE3", 2026, 2),
         ];
 
-        let stats = write_cotahist_parquet(&records, temp.path()).unwrap();
-        assert_eq!(stats.len(), 2);
+        let stats = write_cotahist_parquet(&records, &cotahist_dir).unwrap();
+        assert_eq!(stats.len(), 4);
 
-        assert!(temp.path().join("cotahist-2025.parquet").exists());
-        assert!(temp.path().join("cotahist-2026.parquet").exists());
+        assert!(cotahist_dir.join("cotahist-2025.parquet").exists());
+        assert!(cotahist_dir.join("cotahist-2026.parquet").exists());
+        assert!(temp
+            .path()
+            .join("processed/equities-v1/cotahist-2026.parquet")
+            .exists());
     }
 
     #[test]
     fn test_write_cotahist_parquet_appends_to_existing_file() {
         let temp = TempDir::new().unwrap();
+        let cotahist_dir = temp.path().join("processed/cotahist");
         let records_day1 = vec![make_test_record("PETR4", 2026, 2)];
-        let stats1 = write_cotahist_parquet(&records_day1, temp.path()).unwrap();
+        let stats1 = write_cotahist_parquet(&records_day1, &cotahist_dir).unwrap();
         assert_eq!(stats1[0].rows_written, 1);
 
         let records_day2 = vec![make_test_record("VALE3", 2026, 3)];
-        let stats2 = write_cotahist_parquet(&records_day2, temp.path()).unwrap();
+        let stats2 = write_cotahist_parquet(&records_day2, &cotahist_dir).unwrap();
         assert_eq!(stats2[0].rows_written, 2);
     }
 
     #[test]
     fn test_write_cotahist_parquet_chunked_large_input() {
         let temp = TempDir::new().unwrap();
+        let cotahist_dir = temp.path().join("processed/cotahist");
         let records: Vec<_> = (1..=250_000)
             .map(|i| make_test_record("PETR4", 2026, ((i % 28) + 1) as u32))
             .collect();
-        let stats = write_cotahist_parquet(&records, temp.path()).unwrap();
+        let stats = write_cotahist_parquet(&records, &cotahist_dir).unwrap();
         assert_eq!(stats[0].rows_written, 250_000);
     }
 

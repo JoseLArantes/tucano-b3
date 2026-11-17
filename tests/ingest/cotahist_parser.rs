@@ -5,13 +5,13 @@ fn build_valid_quote_line() -> String {
     let mut line = String::new();
     line.push_str("01"); // TIPOREG (0..2)
     line.push_str("20260102"); // DATA_PREGAO (2..10)
-    line.push_str("  "); // CODBDI (10..12)
+    line.push_str("02"); // CODBDI (10..12)
     line.push_str("VALE3       "); // CODNEG (12..24)
     line.push_str("010"); // TPMERC (24..27)
     line.push_str("VALE S.A.   "); // NOMRES (27..39)
     line.push_str("ON        "); // ESPECI (39..49)
     line.push_str("   "); // PRAZOT (49..52)
-    line.push_str(" 2  "); // FAT_COTACAO (52..56, 52..53 has ' 2')
+    line.push_str("R$  "); // MODREF (52..56)
     line.push_str("0000000006205"); // PREABR (56..69)
     line.push_str("0000000006289"); // PREMAX (69..82)
     line.push_str("0000000006172"); // PREMIN (82..95)
@@ -22,9 +22,14 @@ fn build_valid_quote_line() -> String {
     line.push_str("00245"); // TOTNEG (147..152)
     line.push_str("000000000029847362"); // QUATOT (152..170)
     line.push_str("000000184729344000"); // VOLTOT (170..188)
-    line.push_str("   "); // FILLER (188..191)
-    line.push_str("BRVALEACNPA3"); // CODISIN (191..203)
-                                   // Pad to 249
+    line.push_str("             "); // PREEXE (188..201)
+    line.push(' '); // INDOPC (201..202)
+    line.push_str("00000000"); // DATVEN (202..210)
+    line.push_str("0000001"); // FATCOT (210..217)
+    line.push_str("             "); // PTOEXE (217..230)
+    line.push_str("BRVALEACNOR0"); // CODISI (230..242)
+    line.push_str("001"); // DISMES (242..245)
+                          // Pad to 249
     while line.len() < 249 {
         line.push(' ');
     }
@@ -74,7 +79,11 @@ fn test_parse_quote_line() {
     );
     assert_eq!(record.year, 2026);
     assert_eq!(record.company_name.as_deref(), Some("VALE S.A."));
-    assert_eq!(record.isin.as_deref(), Some("BRVALEACNPA3"));
+    assert_eq!(record.isin.as_deref(), Some("BRVALEACNOR0"));
+    assert_eq!(record.bdi_code.as_deref(), Some("02"));
+    assert_eq!(record.market_code, "010");
+    assert_eq!(record.currency_code.as_deref(), Some("BRL"));
+    assert_eq!(record.quotation_factor, Some(1));
     assert_eq!(record.market_type, Some(10));
     assert!(record.pre_ult.is_some());
     assert_eq!(record.pre_abr, Some(62.05));
@@ -86,7 +95,21 @@ fn test_parse_quote_line() {
     assert_eq!(record.pre_ofe_venda, Some(62.19));
     assert_eq!(record.tot_neg, Some(245));
     assert_eq!(record.quat_tot, Some(29847362));
-    assert_eq!(record.vol_tot, Some(184729344000.0));
+    assert_eq!(record.vol_tot, Some(1847293440.0));
+}
+
+#[test]
+fn latin1_company_name_does_not_shift_official_byte_fields() {
+    let mut line = build_valid_quote_line().into_bytes();
+    line[27..39].copy_from_slice(b"BANCO SA    ");
+    line[30] = 0xC7; // Latin-1 Ç occupies one byte in the official file.
+    let input = Cursor::new(line);
+    let (records, _) = CotahistParser::parse(input).unwrap();
+
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].company_name.as_deref(), Some("BANÇO SA"));
+    assert_eq!(records[0].isin.as_deref(), Some("BRVALEACNOR0"));
+    assert_eq!(records[0].pre_ult, Some(62.17));
 }
 
 #[test]

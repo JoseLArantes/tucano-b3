@@ -21,6 +21,13 @@ pub enum RecordType {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CotahistRecord {
     pub ticker: String,
+    pub raw_ticker: String,
+    pub bdi_code: Option<String>,
+    pub market_code: String,
+    pub security_specification: Option<String>,
+    pub currency_code: Option<String>,
+    pub quotation_factor: Option<u32>,
+    pub pre_ult_raw: Option<u64>,
     pub isin: Option<String>,
     pub company_name: Option<String>,
     pub date: NaiveDate,
@@ -127,23 +134,22 @@ impl CotahistParser {
             line_num += 1;
             stats.lines_total += 1;
 
-            // Safe conversion supporting UTF-8 and ISO-8859-1 (Latin-1) without allocating for UTF-8
-            let line: std::borrow::Cow<'_, str> = match std::str::from_utf8(&raw_bytes) {
-                Ok(s) => std::borrow::Cow::Borrowed(s.trim_end_matches(['\r', '\n'])),
-                Err(_) => {
-                    let s: String = raw_bytes.iter().map(|&b| b as char).collect();
-                    std::borrow::Cow::Owned(s.trim_end_matches(['\r', '\n']).to_string())
-                }
-            };
+            let mut line = raw_bytes.as_slice();
+            while line
+                .last()
+                .is_some_and(|byte| *byte == b'\r' || *byte == b'\n')
+            {
+                line = &line[..line.len() - 1];
+            }
 
             // Skip empty lines
-            if line.trim().is_empty() {
+            if line.iter().all(u8::is_ascii_whitespace) {
                 stats.lines_skipped += 1;
                 continue;
             }
 
             // Parse the line
-            match Self::parse_line(&line, line_num) {
+            match Self::parse_line_bytes(line, line_num) {
                 Ok(Some(record)) => {
                     if !stats.tickers_seen.contains(&record.ticker) {
                         stats.tickers_seen.insert(record.ticker.clone());
@@ -179,6 +185,20 @@ impl CotahistParser {
         line: &str,
         line_num: usize,
     ) -> Result<Option<CotahistRecord>, CotahistParseError> {
+        Self::parse_line_bytes(line.as_bytes(), line_num)
+    }
+
+    fn parse_line_bytes(
+        input: &[u8],
+        line_num: usize,
+    ) -> Result<Option<CotahistRecord>, CotahistParseError> {
+        let mut line = input;
+        while line
+            .last()
+            .is_some_and(|byte| *byte == b'\r' || *byte == b'\n')
+        {
+            line = &line[..line.len() - 1];
+        }
         // Minimum length check
         if line.len() < 11 {
             return Err(CotahistParseError::WrongLineLength {
@@ -188,7 +208,7 @@ impl CotahistParser {
         }
 
         // Record type (bytes 0-1)
-        let tipo_reg = &line[0..2];
+        let tipo_reg = field_ascii(line, 0, 2);
         // B3 trailers are commonly "99"; some layouts also document "02".
         let record_type = match tipo_reg {
             "00" => RecordType::Header,
@@ -219,22 +239,24 @@ impl CotahistParser {
         // Reference: B3 COTAHIST layout (V3, 2005+)
 
         // DATA_PREGAO (bytes 2-9, YYYYMMDD)
-        let date_str = line[2..10].trim();
+        let date_str = field_ascii(line, 2, 10).trim();
         let date = Self::parse_date(date_str, line_num)?;
 
-        // CODBDI (bytes 10-12) — skip
+        let bdi_code = Some(field_ascii(line, 10, 12).trim().to_string());
 
         // CODNEG (bytes 12-24) — ticker
-        let raw_ticker = line[12..24].trim();
-        let ticker = Self::normalize_ticker(raw_ticker);
+        let raw_ticker = field_ascii(line, 12, 24).trim().to_string();
+        let ticker = Self::normalize_ticker(&raw_ticker);
 
         // TPMERC (bytes 24-27) — market type
-        let market_type = line[24..27].trim().parse::<u8>().ok();
+        let market_code = field_ascii(line, 24, 27).trim().to_string();
+        let market_type = market_code.parse::<u8>().ok();
 
         // NOMRES (bytes 27-39) — company name (LATIN1)
         let company_name = {
             let raw = &line[27..39];
-            let name = raw.trim();
+            let name = decode_latin1(raw);
+            let name = name.trim();
             if name.is_empty() {
                 None
             } else {
@@ -242,54 +264,61 @@ impl CotahistParser {
             }
         };
 
-        // ESPECI (bytes 39-49) — specification (ON/PN/UNT)
+        let security_specification = {
+            let value = field_ascii(line, 39, 49).trim();
+            (!value.is_empty()).then(|| value.to_string())
+        };
 
-        // FAT_COTACAO (bytes 52-53) — decimal factor
-        let fat_cotacao: u8 = line
-            .get(52..53)
-            .and_then(|s| s.trim().parse().ok())
-            .unwrap_or(2);
+        let currency_code = Self::normalize_currency(field_ascii(line, 52, 56));
 
-        // PREABR (bytes 56-69) — opening price
-        let pre_abr = Self::parse_implicit_decimal(&line[56..69], fat_cotacao, line_num, "PREABR")?;
+        let quotation_factor = field_ascii(line, 210, 217).trim().parse::<u32>().ok();
+
+        // COTAHIST prices use two implied decimal places. FATCOT is the
+        // quotation unit (e.g. 1 share or a lot of 1,000), not a decimal scale.
+        let pre_abr =
+            Self::parse_implicit_decimal(field_ascii(line, 56, 69), 2, line_num, "PREABR")?;
 
         // PREMAX (bytes 69-82) — max price
-        let pre_max = Self::parse_implicit_decimal(&line[69..82], fat_cotacao, line_num, "PREMAX")?;
+        let pre_max =
+            Self::parse_implicit_decimal(field_ascii(line, 69, 82), 2, line_num, "PREMAX")?;
 
         // PREMIN (bytes 82-95) — min price
-        let pre_min = Self::parse_implicit_decimal(&line[82..95], fat_cotacao, line_num, "PREMIN")?;
+        let pre_min =
+            Self::parse_implicit_decimal(field_ascii(line, 82, 95), 2, line_num, "PREMIN")?;
 
         // PREMED (bytes 95-108) — average price
         let pre_med =
-            Self::parse_implicit_decimal(&line[95..108], fat_cotacao, line_num, "PREMED")?;
+            Self::parse_implicit_decimal(field_ascii(line, 95, 108), 2, line_num, "PREMED")?;
 
         // PREULT (bytes 108-121) — last/closing price
+        let pre_ult_raw = field_ascii(line, 108, 121).trim().parse::<u64>().ok();
         let pre_ult =
-            Self::parse_implicit_decimal(&line[108..121], fat_cotacao, line_num, "PREULT")?;
+            Self::parse_implicit_decimal(field_ascii(line, 108, 121), 2, line_num, "PREULT")?;
 
         // PREOFC (bytes 121-134) — buy offer price
         let pre_ofe_compra =
-            Self::parse_implicit_decimal(&line[121..134], fat_cotacao, line_num, "PREOFC")?;
+            Self::parse_implicit_decimal(field_ascii(line, 121, 134), 2, line_num, "PREOFC")?;
 
         // PREOFV (bytes 134-147) — sell offer price
         let pre_ofe_venda =
-            Self::parse_implicit_decimal(&line[134..147], fat_cotacao, line_num, "PREOFV")?;
+            Self::parse_implicit_decimal(field_ascii(line, 134, 147), 2, line_num, "PREOFV")?;
 
         // TOTNEG (bytes 147-152) — trade count
-        let tot_neg = line[147..152].trim().parse::<u32>().ok();
+        let tot_neg = field_ascii(line, 147, 152).trim().parse::<u32>().ok();
 
         // QUATOT (bytes 152-170) — volume (shares)
-        let quat_tot = line[152..170].trim().parse::<u64>().ok();
+        let quat_tot = field_ascii(line, 152, 170).trim().parse::<u64>().ok();
 
         // VOLTOT (bytes 170-188) — volume (BRL)
-        let vol_tot = Self::parse_implicit_decimal(&line[170..188], 0, line_num, "VOLTOT")?;
+        let vol_tot =
+            Self::parse_implicit_decimal(field_ascii(line, 170, 188), 2, line_num, "VOLTOT")?;
 
-        // CODISIN (bytes 191-203) — ISIN code
+        // CODISI (bytes 231-242) — ISIN code or B3 internal security code.
         let isin = {
-            let raw = if line.len() >= 203 {
-                &line[191..203]
+            let raw = if line.len() >= 242 {
+                field_ascii(line, 230, 242)
             } else {
-                ""
+                field_ascii(&[], 0, 0)
             };
             let code = raw.trim();
             if code.is_empty() {
@@ -301,6 +330,13 @@ impl CotahistParser {
 
         Ok(Some(CotahistRecord {
             ticker,
+            raw_ticker,
+            bdi_code,
+            market_code,
+            security_specification,
+            currency_code,
+            quotation_factor,
+            pre_ult_raw,
             isin,
             company_name,
             date,
@@ -317,6 +353,18 @@ impl CotahistParser {
             quat_tot,
             vol_tot,
         }))
+    }
+
+    fn normalize_currency(value: &str) -> Option<String> {
+        let raw = value.trim();
+        if raw.is_empty() {
+            return None;
+        }
+        match raw {
+            "R$" => Some("BRL".to_string()),
+            "US$" => Some("USD".to_string()),
+            _ => Some(raw.to_string()),
+        }
     }
 
     /// Parse date from YYYYMMDD format.
@@ -370,6 +418,16 @@ impl CotahistParser {
             trimmed
         }
     }
+}
+
+fn field_ascii(line: &[u8], start: usize, end: usize) -> &str {
+    line.get(start..end)
+        .and_then(|field| std::str::from_utf8(field).ok())
+        .unwrap_or("")
+}
+
+fn decode_latin1(field: &[u8]) -> String {
+    field.iter().map(|byte| char::from(*byte)).collect()
 }
 
 /// Detect COTAHIST file type from filename.

@@ -1,5 +1,18 @@
 # Consumers changelog
 
+## 2026-11-16
+
+### Added
+
+- Verificação e leitura de ações e units por meio do dataset versionado `equities-v1`:
+  - `GET /api/v1/cotahist/equities` — pesquisa paginada com prefixo `busca`, filtro `ativo` (padrão `true`) e cobertura verificada.
+  - `GET /api/v1/cotahist/equities/{ticker}` — detalhe da listagem ativa elegível.
+  - `GET /api/v1/cotahist/equities/by-isin/{isin}/latest` — último fechamento disponível dentro da cobertura (`404` quando não há observação).
+  - `GET /api/v1/cotahist/equities/by-isin/{isin}/quotes` — histórico com `desde` e `ate` obrigatórios e intervalo máximo de um ano (`200` com lista vazia quando não há pontos).
+  - Elegibilidade exige mercado spot `010`, BDI `02`, BRL, ISIN válido e especificação `ON`, `PN` ou `UNT`, filtrados antes da paginação. BOVA11 e demais ETFs não são listados.
+  - O fechamento por ação ou unit aplica o `FATCOT` ao `PREULT` com duas casas implícitas. Resposta preserva ticker, ISIN, BDI, TPMERC, data, fator, preço decimal exato e horário da consulta.
+  - Compatibilidade: aditivo. As rotas legadas de tickers e cotações mantêm seus schemas e dataset COTAHIST original. Preços novos são nominais e não ajustados por eventos corporativos.
+
 ## 2026-11-12
 
 ### Added

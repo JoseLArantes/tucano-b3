@@ -43,6 +43,167 @@ fn default_true() -> bool {
     true
 }
 
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct EquitySearchParams {
+    /// Prefixo do ticker; compara sem diferenciar maiúsculas e minúsculas.
+    pub busca: Option<String>,
+    /// Número da página, começando em 1.
+    #[serde(default = "default_page")]
+    pub pagina: u32,
+    /// Itens por página, limitado a 200.
+    #[serde(default = "default_per_page")]
+    pub por_pagina: u32,
+    /// Inclui apenas listagens ativas segundo o ledger local; padrão true.
+    #[serde(default = "default_true")]
+    pub ativo: bool,
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct EquityQuoteParams {
+    pub desde: String,
+    pub ate: String,
+}
+
+/// Lista pares ticker/ISIN observados no conjunto COTAHIST versionado. A elegibilidade exige mercado à vista `010`, BDI `02`, moeda BRL, ISIN válido e especificação ESPECI de ação ordinária, preferencial ou unit. Esses filtros são aplicados antes da paginação. `busca` é um prefixo de ticker; `ativo` usa o ledger local e é `true` por padrão. A resposta inclui a cobertura temporal verificada. Os dados são nominais e não ajustados por eventos corporativos.
+#[utoipa::path(
+    get,
+    path = "/cotahist/equities",
+    tag = "cotahist",
+    params(EquitySearchParams),
+    responses(
+        (status = 200, description = "Página de listagens elegíveis", body = EquityListApiResponse),
+        (status = 401, description = "Autenticação ausente ou inválida", body = ErrorResponse),
+        (status = 422, description = "Filtro ou paginação inválida", body = ErrorResponse)
+    ),
+    security(("BearerAuth" = []), ("ApiKeyAuth" = []))
+)]
+pub(crate) async fn list_equities_handler(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<EquitySearchParams>,
+) -> AppResult<Json<ApiResponse<EquityListResponse>>> {
+    let start = Instant::now();
+    let query_service = state.data_loader.get_query_service().await;
+    let page = params.pagina.max(1);
+    let per_page = params.por_pagina.clamp(1, 200);
+    let (equities, total, coverage) = CotahistService::list_equities(
+        &query_service,
+        &state.data_loader.ticker_registry,
+        params.busca.as_deref(),
+        params.ativo,
+        page,
+        per_page,
+    )
+    .await?;
+    Ok(Json(ApiResponse::new(
+        EquityListResponse {
+            equities,
+            paginacao: PaginationMeta::new(total, page, per_page),
+            coverage,
+        },
+        start.elapsed().as_secs_f64() * 1000.0,
+    )))
+}
+
+/// Resolve o ticker exato entre as listagens elegíveis ativas e retorna seu ISIN e especificação oficial. Uma listagem ausente, inativa ou fora dos filtros de ação/unit retorna 404. Um ticker pode ser reutilizado ao longo do tempo; confirme uma seleção com o par ticker/ISIN. Preços do conjunto COTAHIST são nominais e não ajustados por eventos corporativos.
+#[utoipa::path(
+    get,
+    path = "/cotahist/equities/{ticker}",
+    tag = "cotahist",
+    params(("ticker" = String, Path, description = "Ticker B3 exato, por exemplo `PETR3`")),
+    responses(
+        (status = 200, description = "Listagem ativa verificada", body = EquityApiResponse),
+        (status = 401, description = "Autenticação ausente ou inválida", body = ErrorResponse),
+        (status = 404, description = "Ticker sem listagem ativa elegível", body = ErrorResponse)
+    ),
+    security(("BearerAuth" = []), ("ApiKeyAuth" = []))
+)]
+pub(crate) async fn get_equity_handler(
+    State(state): State<Arc<AppState>>,
+    Path(ticker): Path<String>,
+) -> AppResult<Json<ApiResponse<EquityResponse>>> {
+    let start = Instant::now();
+    let query_service = state.data_loader.get_query_service().await;
+    let (rows, _, _) = CotahistService::list_equities(
+        &query_service,
+        &state.data_loader.ticker_registry,
+        Some(&ticker),
+        true,
+        1,
+        200,
+    )
+    .await?;
+    let equity = rows
+        .into_iter()
+        .find(|row| row.ticker.eq_ignore_ascii_case(&ticker))
+        .ok_or_else(|| crate::error::AppError::TickerNotFound { ticker })?;
+    Ok(Json(ApiResponse::new(
+        equity,
+        start.elapsed().as_secs_f64() * 1000.0,
+    )))
+}
+
+/// Retorna a observação mais recente disponível na cobertura verificada para o ISIN. O preço é PREULT com duas casas implícitas dividido pelo FATCOT oficial, representado como decimal exato por ação ou unit. A resposta inclui pregão, ticker e códigos BDI/TPMERC originais, horário de consulta e indicação de que o preço é nominal e não ajustado por eventos corporativos. Sem observação verificada, retorna 404.
+#[utoipa::path(
+    get,
+    path = "/cotahist/equities/by-isin/{isin}/latest",
+    tag = "cotahist",
+    params(("isin" = String, Path, description = "ISIN de 12 caracteres com dígito verificador válido", example = "BRPETRACNOR9")),
+    responses(
+        (status = 200, description = "Último fechamento disponível", body = EquityQuoteApiResponse),
+        (status = 401, description = "Autenticação ausente ou inválida", body = ErrorResponse),
+        (status = 404, description = "Nenhuma observação na cobertura verificada", body = ErrorResponse)
+    ),
+    security(("BearerAuth" = []), ("ApiKeyAuth" = []))
+)]
+pub(crate) async fn latest_equity_quote_handler(
+    State(state): State<Arc<AppState>>,
+    Path(isin): Path<String>,
+) -> AppResult<Json<ApiResponse<EquityQuoteResponse>>> {
+    let start = Instant::now();
+    let query_service = state.data_loader.get_query_service().await;
+    let quote = CotahistService::latest_equity_quote_by_isin(&query_service, &isin)
+        .await?
+        .ok_or(crate::error::AppError::NoDataInRange)?;
+    Ok(Json(ApiResponse::new(
+        quote,
+        start.elapsed().as_secs_f64() * 1000.0,
+    )))
+}
+
+/// Retorna observações COTAHIST spot por ISIN dentro do intervalo inclusivo informado. `desde` e `ate` são obrigatórios em `AAAA-MM-DD`; cada solicitação é limitada a no máximo um ano. Cada PREULT é convertido para valor exato por ação ou unit usando FATCOT. Preços nominais, sem ajuste retroativo por eventos corporativos.
+#[utoipa::path(
+    get,
+    path = "/cotahist/equities/by-isin/{isin}/quotes",
+    tag = "cotahist",
+    params(("isin" = String, Path, description = "ISIN de 12 caracteres com dígito verificador válido", example = "BRPETRACNOR9"), EquityQuoteParams),
+    responses(
+        (status = 200, description = "Fechamentos dentro da cobertura solicitada", body = EquityQuotesApiResponse),
+        (status = 400, description = "ISIN ou intervalo inválido", body = ErrorResponse),
+        (status = 401, description = "Autenticação ausente ou inválida", body = ErrorResponse)
+    ),
+    security(("BearerAuth" = []), ("ApiKeyAuth" = []))
+)]
+pub(crate) async fn equity_quotes_handler(
+    State(state): State<Arc<AppState>>,
+    Path(isin): Path<String>,
+    Query(params): Query<EquityQuoteParams>,
+) -> AppResult<Json<ApiResponse<Vec<EquityQuoteResponse>>>> {
+    let start = Instant::now();
+    let query_service = state.data_loader.get_query_service().await;
+    let quotes = CotahistService::equity_quotes_by_isin(
+        &query_service,
+        &isin,
+        &params.desde,
+        &params.ate,
+        400,
+    )
+    .await?;
+    Ok(Json(ApiResponse::new(
+        quotes,
+        start.elapsed().as_secs_f64() * 1000.0,
+    )))
+}
+
 /// Listar todos os tickers disponíveis
 ///
 /// Retorna uma lista paginada de todos os tickers disponíveis nos dados ingeridos. Suporta busca por prefixo e filtro por status ativo.
@@ -485,6 +646,16 @@ pub(crate) async fn get_pre_ult_max_handler(
 pub fn routes(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/cotahist/tickers", get(list_tickers_handler))
+        .route("/cotahist/equities", get(list_equities_handler))
+        .route("/cotahist/equities/:ticker", get(get_equity_handler))
+        .route(
+            "/cotahist/equities/by-isin/:isin/latest",
+            get(latest_equity_quote_handler),
+        )
+        .route(
+            "/cotahist/equities/by-isin/:isin/quotes",
+            get(equity_quotes_handler),
+        )
         .route("/cotahist/tickers/:ticker", get(get_ticker_handler))
         .route("/cotahist/tickers/:ticker/quotes", get(get_quotes_handler))
         .route("/cotahist/tickers/:ticker/latest", get(get_latest_handler))

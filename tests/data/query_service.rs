@@ -5,6 +5,7 @@ use tucano_b3::data::reader::DiscoveredFiles;
 fn test_query_service_empty_files() {
     let files = DiscoveredFiles {
         cotahist_files: vec![],
+        equity_files: vec![],
         ibov_file: None,
     };
     let service = QueryService::new(files);
@@ -18,6 +19,7 @@ fn test_query_service_empty_files() {
 async fn test_execute_sql_no_table() {
     let files = DiscoveredFiles {
         cotahist_files: vec![],
+        equity_files: vec![],
         ibov_file: None,
     };
     let service = QueryService::new(files).unwrap();
@@ -44,6 +46,7 @@ async fn test_execute_sql_simple() {
             column_count: 21,
             size_bytes: 1024,
         }],
+        equity_files: vec![],
         ibov_file: None,
     };
 

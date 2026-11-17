@@ -10,11 +10,209 @@ use crate::models::cotahist::*;
 use crate::models::pagination::PaginationParams;
 use arrow::array::*;
 use arrow::record_batch::RecordBatch;
+use std::collections::HashMap;
 
 /// Service for COTAHIST data operations.
 pub struct CotahistService;
 
 impl CotahistService {
+    /// List spot-market equities whose latest records identify a supported share class.
+    pub async fn list_equities(
+        query_service: &QueryService,
+        registry: &TickerRegistry,
+        prefix: Option<&str>,
+        active_only: bool,
+        page: u32,
+        per_page: u32,
+    ) -> AppResult<(Vec<EquityResponse>, usize, Option<EquityCoverage>)> {
+        if !query_service.has_table("equities_v1") {
+            return Ok((Vec::new(), 0, None));
+        }
+        let prefix = prefix.unwrap_or("").trim().to_ascii_uppercase();
+        if !prefix.is_empty() && !prefix.chars().all(|c| c.is_ascii_alphanumeric()) {
+            return Err(AppError::InvalidParam {
+                message: "O prefixo do ticker deve conter somente letras e números.".to_string(),
+            });
+        }
+        let sql = "SELECT ticker, raw_ticker, isin, bdi_code, market_code, company_name, security_specification, MIN(date) AS first_seen, MAX(date) AS last_seen FROM equities_v1 WHERE market_type = 10 AND bdi_code = '02' AND currency_code = 'BRL' AND quotation_factor > 0 AND isin IS NOT NULL AND length(isin) = 12 AND (security_specification LIKE 'ON%' OR security_specification LIKE 'PN%' OR security_specification LIKE 'UNT%') GROUP BY ticker, raw_ticker, isin, bdi_code, market_code, company_name, security_specification ORDER BY ticker, isin, last_seen DESC, raw_ticker DESC, security_specification DESC";
+        let batches = query_service
+            .execute_sql(sql)
+            .await
+            .map_err(anyhow::Error::new)?;
+        let mut rows = Vec::new();
+        let mut row_positions = HashMap::new();
+        let mut coverage_from: Option<chrono::NaiveDate> = None;
+        let mut coverage_to: Option<chrono::NaiveDate> = None;
+        for batch in &batches {
+            for idx in 0..batch.num_rows() {
+                let ticker = batch
+                    .column(0)
+                    .as_any()
+                    .downcast_ref::<StringArray>()
+                    .unwrap()
+                    .value(idx)
+                    .to_string();
+                let raw_ticker = batch
+                    .column(1)
+                    .as_any()
+                    .downcast_ref::<StringArray>()
+                    .unwrap()
+                    .value(idx)
+                    .to_string();
+                let isin = string_value(batch, 2, idx);
+                if !valid_isin(&isin) {
+                    continue;
+                }
+                let bdi_code = string_value(batch, 3, idx);
+                let market_code = string_value(batch, 4, idx);
+                let company_name = nullable_string_value(batch, 5, idx);
+                let security_specification = string_value(batch, 6, idx);
+                let first_seen = date32_string(batch, 7, idx);
+                let last_seen = date32_string(batch, 8, idx);
+                let first_day = chrono::NaiveDate::parse_from_str(&first_seen, "%Y-%m-%d").ok();
+                let last_day = chrono::NaiveDate::parse_from_str(&last_seen, "%Y-%m-%d").ok();
+                if let Some(day) = first_day {
+                    coverage_from = Some(coverage_from.map_or(day, |current| current.min(day)));
+                }
+                if let Some(day) = last_day {
+                    coverage_to = Some(coverage_to.map_or(day, |current| current.max(day)));
+                }
+                if !ticker.starts_with(&prefix) {
+                    continue;
+                }
+                let is_active = registry.get(&ticker).is_some_and(|v| {
+                    v.is_active
+                        && v.isin
+                            .as_deref()
+                            .is_some_and(|active_isin| active_isin.eq_ignore_ascii_case(&isin))
+                });
+                if active_only && !is_active {
+                    continue;
+                }
+                let candidate = EquityResponse {
+                    ticker,
+                    raw_ticker,
+                    isin,
+                    bdi_code,
+                    market_code,
+                    company_name,
+                    security_specification,
+                    first_seen,
+                    last_seen,
+                    is_active,
+                };
+                let key = (candidate.ticker.clone(), candidate.isin.clone());
+                if let Some(index) = row_positions.get(&key).copied() {
+                    let current: &mut EquityResponse = &mut rows[index];
+                    if candidate.first_seen < current.first_seen {
+                        current.first_seen = candidate.first_seen;
+                    }
+                    if candidate.last_seen > current.last_seen {
+                        current.last_seen = candidate.last_seen;
+                    }
+                } else {
+                    row_positions.insert(key, rows.len());
+                    rows.push(candidate);
+                }
+            }
+        }
+        let total = rows.len();
+        let offset = page
+            .max(1)
+            .saturating_sub(1)
+            .saturating_mul(per_page.max(1)) as usize;
+        let coverage = match (coverage_from, coverage_to) {
+            (Some(from), Some(to)) => Some(EquityCoverage {
+                from: from.format("%Y-%m-%d").to_string(),
+                to: to.format("%Y-%m-%d").to_string(),
+            }),
+            _ => None,
+        };
+        Ok((
+            rows.into_iter()
+                .skip(offset)
+                .take(per_page.clamp(1, 200) as usize)
+                .collect(),
+            total,
+            coverage,
+        ))
+    }
+
+    /// Load a closing quote by stable ISIN and an inclusive date range.
+    pub async fn equity_quotes_by_isin(
+        query_service: &QueryService,
+        isin: &str,
+        from: &str,
+        to: &str,
+        limit: u32,
+    ) -> AppResult<Vec<EquityQuoteResponse>> {
+        if !valid_isin(isin) {
+            return Err(AppError::TickerNotFound {
+                ticker: isin.to_string(),
+            });
+        }
+        Self::validate_date(from)?;
+        Self::validate_date(to)?;
+        if from > to
+            || (chrono::NaiveDate::parse_from_str(to, "%Y-%m-%d").unwrap()
+                - chrono::NaiveDate::parse_from_str(from, "%Y-%m-%d").unwrap())
+            .num_days()
+                > 366
+        {
+            return Err(AppError::DateRangeInvalid);
+        }
+        let isin = isin.to_ascii_uppercase();
+        let sql = format!(
+            "SELECT raw_ticker, isin, bdi_code, market_code, date, pre_ult_raw, quotation_factor FROM equities_v1 WHERE isin = '{}' AND market_type = 10 AND bdi_code = '02' AND currency_code = 'BRL' AND (security_specification LIKE 'ON%' OR security_specification LIKE 'PN%' OR security_specification LIKE 'UNT%') AND quotation_factor > 0 AND date >= CAST('{}' AS DATE) AND date <= CAST('{}' AS DATE) ORDER BY date DESC LIMIT {}",
+            isin, from, to, limit.clamp(1, 400)
+        );
+        let batches = query_service
+            .execute_sql(&sql)
+            .await
+            .map_err(anyhow::Error::new)?;
+        let mut rows = Vec::new();
+        let retrieved_at = chrono::Utc::now().to_rfc3339();
+        for batch in &batches {
+            for idx in 0..batch.num_rows() {
+                if let Some(quote) = equity_quote_from_batch(batch, idx, &retrieved_at) {
+                    rows.push(quote);
+                }
+            }
+        }
+        Ok(rows)
+    }
+
+    /// Return the latest verified close for an ISIN without a history-range limit.
+    pub async fn latest_equity_quote_by_isin(
+        query_service: &QueryService,
+        isin: &str,
+    ) -> AppResult<Option<EquityQuoteResponse>> {
+        if !valid_isin(isin) {
+            return Err(AppError::TickerNotFound {
+                ticker: isin.to_string(),
+            });
+        }
+        if !query_service.has_table("equities_v1") {
+            return Ok(None);
+        }
+        let isin = isin.to_ascii_uppercase();
+        let sql = format!(
+            "SELECT raw_ticker, isin, bdi_code, market_code, date, pre_ult_raw, quotation_factor FROM equities_v1 WHERE isin = '{}' AND market_type = 10 AND bdi_code = '02' AND currency_code = 'BRL' AND (security_specification LIKE 'ON%' OR security_specification LIKE 'PN%' OR security_specification LIKE 'UNT%') AND quotation_factor > 0 ORDER BY date DESC LIMIT 1",
+            isin
+        );
+        let batches = query_service
+            .execute_sql(&sql)
+            .await
+            .map_err(anyhow::Error::new)?;
+        let Some(batch) = batches.first() else {
+            return Ok(None);
+        };
+        let retrieved_at = chrono::Utc::now().to_rfc3339();
+        Ok((batch.num_rows() > 0)
+            .then(|| equity_quote_from_batch(batch, 0, &retrieved_at))
+            .flatten())
+    }
+
     /// List all tickers with pagination and optional search filter.
     pub fn list_tickers(
         registry: &TickerRegistry,
@@ -688,5 +886,159 @@ impl CotahistService {
             return Some(arr.value(row) as u8);
         }
         None
+    }
+}
+
+fn string_value(batch: &RecordBatch, column: usize, row: usize) -> String {
+    batch
+        .column(column)
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .map(|array| array.value(row).to_string())
+        .unwrap_or_default()
+}
+
+fn nullable_string_value(batch: &RecordBatch, column: usize, row: usize) -> Option<String> {
+    batch
+        .column(column)
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .and_then(|array| (!array.is_null(row)).then(|| array.value(row).to_string()))
+}
+
+fn date32_string(batch: &RecordBatch, column: usize, row: usize) -> String {
+    batch
+        .column(column)
+        .as_any()
+        .downcast_ref::<Date32Array>()
+        .and_then(|array| {
+            chrono::NaiveDate::from_ymd_opt(1970, 1, 1)
+                .map(|epoch| epoch + chrono::Duration::days(i64::from(array.value(row))))
+        })
+        .map(|date| date.format("%Y-%m-%d").to_string())
+        .unwrap_or_default()
+}
+
+fn equity_quote_from_batch(
+    batch: &RecordBatch,
+    row: usize,
+    retrieved_at: &str,
+) -> Option<EquityQuoteResponse> {
+    let date = batch
+        .column(4)
+        .as_any()
+        .downcast_ref::<Date32Array>()?
+        .value(row);
+    let day =
+        chrono::NaiveDate::from_ymd_opt(1970, 1, 1)? + chrono::Duration::days(i64::from(date));
+    let raw = batch
+        .column(5)
+        .as_any()
+        .downcast_ref::<UInt64Array>()?
+        .value(row);
+    let factor = batch
+        .column(6)
+        .as_any()
+        .downcast_ref::<UInt32Array>()?
+        .value(row);
+    Some(EquityQuoteResponse {
+        ticker: string_value(batch, 0, row),
+        isin: string_value(batch, 1, row),
+        bdi_code: string_value(batch, 2, row),
+        market_code: string_value(batch, 3, row),
+        data: day.format("%Y-%m-%d").to_string(),
+        close_per_share: exact_quote(raw, factor)?,
+        quotation_factor: factor,
+        source: "tucano-b3 COTAHIST spot".to_string(),
+        retrieved_at: retrieved_at.to_string(),
+        availability: "available".to_string(),
+        adjusted_for_corporate_actions: false,
+    })
+}
+
+fn valid_isin(value: &str) -> bool {
+    if value.len() != 12
+        || !value
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+    {
+        return false;
+    }
+    let expanded = value
+        .chars()
+        .flat_map(|c| {
+            if c.is_ascii_digit() {
+                vec![c.to_digit(10).unwrap()]
+            } else {
+                c.to_digit(36)
+                    .unwrap()
+                    .to_string()
+                    .chars()
+                    .map(|n| n.to_digit(10).unwrap())
+                    .collect()
+            }
+        })
+        .collect::<Vec<_>>();
+    let sum = expanded
+        .iter()
+        .rev()
+        .enumerate()
+        .map(|(index, digit)| {
+            let product = if index % 2 == 1 { digit * 2 } else { *digit };
+            product / 10 + product % 10
+        })
+        .sum::<u32>();
+    sum % 10 == 0
+}
+
+fn exact_quote(raw: u64, quotation_factor: u32) -> Option<String> {
+    if quotation_factor == 0 {
+        return None;
+    }
+    let denominator = u128::from(quotation_factor) * 100;
+    let mut residual = denominator;
+    let mut twos = 0;
+    let mut fives = 0;
+    while residual % 2 == 0 {
+        residual /= 2;
+        twos += 1;
+    }
+    while residual % 5 == 0 {
+        residual /= 5;
+        fives += 1;
+    }
+    if residual != 1 {
+        return None;
+    }
+    let scale = twos.max(fives);
+    let scaled = u128::from(raw) * 10u128.pow(scale) / denominator;
+    if scale == 0 {
+        return Some(scaled.to_string());
+    }
+    let base = 10u128.pow(scale);
+    let fractional = format!("{:0width$}", scaled % base, width = scale as usize);
+    let fractional = fractional.trim_end_matches('0');
+    if fractional.is_empty() {
+        Some((scaled / base).to_string())
+    } else {
+        Some(format!("{}.{}", scaled / base, fractional))
+    }
+}
+
+#[cfg(test)]
+mod equity_tests {
+    use super::{exact_quote, valid_isin};
+
+    #[test]
+    fn quote_factor_converts_b3_lot_price_to_exact_per_share_decimal() {
+        assert_eq!(exact_quote(1234, 1).as_deref(), Some("12.34"));
+        assert_eq!(exact_quote(1_234, 1_000).as_deref(), Some("0.01234"));
+        assert_eq!(exact_quote(5_000_000, 1_000).as_deref(), Some("50"));
+    }
+
+    #[test]
+    fn isin_check_digit_accepts_real_listing_and_rejects_corruption() {
+        assert!(valid_isin("BRPETRACNOR9"));
+        assert!(!valid_isin("BRPETRACNOR0"));
     }
 }

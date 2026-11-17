@@ -244,6 +244,7 @@ impl IngestService {
                 );
             }
 
+            parquet_writer.push_equity(record.clone())?;
             if !state.ingested_set.contains(&record.date) {
                 records_new += 1;
                 new_dates.insert(record.date);
@@ -277,14 +278,14 @@ impl IngestService {
             parquet_files: Vec::new(),
         };
 
-        if records_new > 0 {
+        if records_parsed > 0 {
             let write_stats = parquet_writer.finish()?;
             tracing::info!(
                 task_id = %task_id,
                 file = %filename,
-                records = records_new,
+                records = records_parsed,
                 files = write_stats.len(),
-                "Parquet gravado"
+                "Parquet datasets gravados"
             );
             file_result.parquet_files = write_stats;
             state.wrote_any = true;

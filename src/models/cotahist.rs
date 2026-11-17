@@ -51,6 +51,78 @@ pub struct TickerDetailResponse {
     pub latest_date: Option<String>,
 }
 
+/// Verified equity listing backed by a spot-market COTAHIST record.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct EquityResponse {
+    /// Ticker normalizado usado para localizar a listagem.
+    pub ticker: String,
+    /// Código de negociação preservado do registro oficial COTAHIST.
+    pub raw_ticker: String,
+    /// ISIN oficial de 12 caracteres validado pelo dígito verificador.
+    pub isin: String,
+    /// Código BDI original, sem conversão.
+    pub bdi_code: String,
+    /// Código TPMERC original, incluindo zeros à esquerda (por exemplo, `010`).
+    pub market_code: String,
+    /// Nome de emissor reportado no COTAHIST, quando presente.
+    pub company_name: Option<String>,
+    /// Especificação oficial ESPECI, como `ON`, `PN` ou `UNT`.
+    pub security_specification: String,
+    /// Primeiro pregão encontrado para este par ticker/ISIN no conjunto verificado.
+    pub first_seen: String,
+    /// Pregão mais recente encontrado para este par ticker/ISIN.
+    pub last_seen: String,
+    /// Indica que o ledger local associa o ticker ao mesmo ISIN como listagem atual.
+    pub is_active: bool,
+}
+
+/// Nominal, unadjusted B3 closing price for one share or unit.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct EquityQuoteResponse {
+    /// Código de negociação preservado do registro oficial COTAHIST.
+    pub ticker: String,
+    /// ISIN usado para selecionar a série histórica da listagem.
+    pub isin: String,
+    /// Código BDI original do registro COTAHIST.
+    pub bdi_code: String,
+    /// Código TPMERC original do registro COTAHIST.
+    pub market_code: String,
+    /// Data do pregão no formato ISO 8601 `AAAA-MM-DD`.
+    pub data: String,
+    /// PREULT dividido pelo FATCOT, como decimal exato por ação ou unit.
+    pub close_per_share: String,
+    /// FATCOT oficial aplicado ao PREULT.
+    pub quotation_factor: u32,
+    /// Fonte do fechamento nominal.
+    pub source: String,
+    /// Horário UTC em que a consulta foi realizada.
+    pub retrieved_at: String,
+    /// Estado da observação; atualmente `available` para pontos retornados.
+    pub availability: String,
+    /// Sempre `false`: COTAHIST não aplica ajustes retroativos por eventos corporativos.
+    pub adjusted_for_corporate_actions: bool,
+}
+
+/// Calendar coverage of rows in the verified equity dataset.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct EquityCoverage {
+    /// Primeiro pregão coberto pelas listagens elegíveis.
+    pub from: String,
+    /// Último pregão coberto pelas listagens elegíveis.
+    pub to: String,
+}
+
+/// Paged verified equity listings.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct EquityListResponse {
+    /// Listagens compatíveis com ações ordinárias, preferenciais e units.
+    pub equities: Vec<EquityResponse>,
+    /// Metadados de paginação após os filtros de elegibilidade e status.
+    pub paginacao: PaginationMeta,
+    /// Cobertura observada do conjunto verificado, quando há dados disponíveis.
+    pub coverage: Option<EquityCoverage>,
+}
+
 /// Response for the ticker list endpoint.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct TickerListResponse {

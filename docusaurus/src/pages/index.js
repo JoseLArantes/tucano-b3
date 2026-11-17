@@ -6,28 +6,28 @@ import styles from './index.module.css';
 
 const sections = [
   {
-    title: 'Começar a consultar',
-    text: 'Configure credenciais, entenda paginação e faça uma consulta COTAHIST com revisão fixa.',
-    link: '/docs/getting-started/quickstart',
-    label: 'Primeira consulta',
+    title: 'Pesquisar ações e units',
+    text: 'Encontre listagens spot verificadas por ticker e selecione a identidade junto com o ISIN.',
+    link: '/docs/api-endpoints/equities',
+    label: 'Abrir o picker',
   },
   {
-    title: 'Entender os dados',
-    text: 'Veja como fontes, fotografias, identidade temporal e proveniência se relacionam.',
-    link: '/docs/concepts/data-model',
-    label: 'Conceitos do domínio',
+    title: 'Entender os identificadores',
+    text: 'Veja como ticker, ISIN, classe de segurança e estado de listagem se relacionam.',
+    link: '/docs/schemas/equities',
+    label: 'Ler os schemas',
   },
   {
-    title: 'Consultar a API',
-    text: 'Explore filtros, permissões, respostas e estados de erro de cada grupo de endpoints.',
-    link: '/docs/api-endpoints/common-patterns',
-    label: 'Referência REST',
+    title: 'Consultar fechamentos',
+    text: 'Leia o último fechamento ou um histórico de até um ano por ISIN.',
+    link: '/docs/api-endpoints/equities',
+    label: 'Ver endpoints',
   },
   {
-    title: 'Operar ingestão',
-    text: 'Acompanhe descoberta, jobs duráveis, revisões, membros de arquivos e quarentena.',
-    link: '/docs/operations/overview',
-    label: 'Guias de operação',
+    title: 'Verificar cobertura',
+    text: 'Confira a atualização do conjunto verificado e as limitações dos preços nominais.',
+    link: '/docs/operations/equity-data',
+    label: 'Ler sobre cobertura',
   },
 ];
 
@@ -51,7 +51,7 @@ export default function Home() {
               <Link className="button button--primary button--lg" to="/docs/intro">
                 Abrir documentação
               </Link>
-              <Link className={styles.secondaryAction} to="/docs/getting-started/quickstart">
+              <Link className={styles.secondaryAction} to="/docs/api-endpoints/equities">
                 Fazer uma consulta <span aria-hidden="true">→</span>
               </Link>
             </div>
@@ -64,15 +64,15 @@ export default function Home() {
         <section className={styles.status} aria-label="Escopo da documentação">
           <div>
             <span className={styles.statusLabel}>REST</span>
-            <span>COTAHIST, cadastro e operações</span>
+            <span>COTAHIST e ações verificadas</span>
           </div>
           <div>
             <span className={styles.statusLabel}>INTEGRIDADE</span>
-            <span>Revisão, identidade e proveniência</span>
+            <span>Ticker, ISIN e cobertura</span>
           </div>
           <div>
-            <span className={styles.statusLabel}>MCP</span>
-            <span>Consultas analíticas somente leitura</span>
+            <span className={styles.statusLabel}>PREÇO</span>
+            <span>Nominal e sem ajuste corporativo</span>
           </div>
         </section>
 
@@ -99,17 +99,17 @@ export default function Home() {
             <p className={styles.kicker}>INTERPRETAÇÃO DE PREÇOS</p>
             <h2>COTAHIST é nominal e sem ajuste retroativo</h2>
             <p>
-              Os valores representam a moeda e a forma de cotação da época. O serviço
-              não ajusta preços por inflação ou eventos corporativos, nem converte
-              PREULT em um fechamento genérico.
+              Os valores representam a moeda e a forma de cotação da época. O dataset
+              verificado aplica FATCOT para expressar o fechamento por ação ou unit e
+              não ajusta preços por eventos corporativos.
             </p>
           </div>
-          <Link to="/docs/data-sources/cotahist">Ler sobre COTAHIST →</Link>
+          <Link to="/docs/operations/equity-data">Ler sobre a cobertura →</Link>
         </aside>
 
         <footer className={styles.homeFooter}>
           <span>Guias em português brasileiro</span>
-          <Link to="/docs/api-endpoints/health">OpenAPI e saúde da API</Link>
+          <Link to="/docs/api-endpoints/equities">Rotas e OpenAPI</Link>
         </footer>
       </main>
     </Layout>

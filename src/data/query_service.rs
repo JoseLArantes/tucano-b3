@@ -4,7 +4,7 @@
 //! This is the primary data access layer used by all API endpoints.
 
 use crate::data::reader::DiscoveredFiles;
-use crate::data::schema::{cotahist_schema, ibov_schema};
+use crate::data::schema::{cotahist_schema, equities_schema, ibov_schema};
 use arrow::array::RecordBatch;
 use datafusion::datasource::file_format::parquet::ParquetFormat;
 use datafusion::datasource::listing::{
@@ -101,6 +101,30 @@ impl QueryService {
             tracing::info!(
                 files = files.cotahist_files.len(),
                 "Tabela 'cotahist' registrada"
+            );
+        }
+
+        if !files.equity_files.is_empty() {
+            let listing_options = ListingOptions::new(Arc::new(ParquetFormat::default()))
+                .with_file_extension(".parquet");
+            let parent_dir = files.equity_files[0]
+                .path
+                .parent()
+                .map(|path| path.to_string_lossy().to_string())
+                .unwrap_or_else(|| files.equity_files[0].path.to_string_lossy().to_string());
+            let table_url = ListingTableUrl::parse(&parent_dir).map_err(|error| {
+                QueryError::DataFusion(datafusion::error::DataFusionError::External(Box::new(
+                    error,
+                )))
+            })?;
+            let config = ListingTableConfig::new(table_url)
+                .with_listing_options(listing_options)
+                .with_schema(equities_schema());
+            let table = ListingTable::try_new(config)?;
+            ctx.register_table("equities_v1", Arc::new(table))?;
+            tracing::info!(
+                files = files.equity_files.len(),
+                "Tabela 'equities_v1' registrada"
             );
         }
 
