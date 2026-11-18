@@ -23,7 +23,6 @@ pub struct MarketCalendarEvent {
     #[schema(example = "2026-02-18", format = "date")]
     pub data: String,
     /// Nome do feriado ou evento.
-    #[schema(example = "Quarta-feira de Cinzas")]
     #[schema(max_length = 200, example = "Quarta-feira de Cinzas")]
     pub evento: String,
     /// Situação da sessão de negociação na data.

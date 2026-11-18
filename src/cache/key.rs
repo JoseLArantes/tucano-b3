@@ -40,14 +40,16 @@ pub fn sort_query_params(query: &str) -> String {
 ///
 /// Health, metrics, info, and documentation endpoints are never cached.
 pub fn is_cacheable(path: &str) -> bool {
-    !path.starts_with("/api/v1/health")
-        && path != "/api/v1/metrics"
-        && !path.starts_with("/api/v1/info")
-        && !path.starts_with("/api/v1/calendar")
-        && !(path.starts_with("/api/v1/cotahist/equities/by-isin/") && path.ends_with("/turnover"))
-        && !path.starts_with("/metrics")
-        && !path.starts_with("/api/docs")
-        && !path.starts_with("/health")
+    let excluded = path.starts_with("/api/v1/health")
+        || path == "/api/v1/metrics"
+        || path.starts_with("/api/v1/info")
+        || path.starts_with("/api/v1/calendar")
+        || (path.starts_with("/api/v1/cotahist/equities/by-isin/") && path.ends_with("/turnover"))
+        || path.starts_with("/metrics")
+        || path.starts_with("/api/docs")
+        || path.starts_with("/health");
+
+    !excluded
 }
 
 /// CacheKey type alias for key representation.
