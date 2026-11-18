@@ -28,7 +28,7 @@ fn test_is_public_path() {
     assert!(!is_public_path("/api/redoc"));
     assert!(!is_public_path("/api/v1/cotahist/tickers"));
     assert!(!is_public_path("/api/v1/cotahist/tickers/VALE3/quotes"));
-    assert!(!is_public_path("/api/v1/ibov/history"));
+    assert!(!is_public_path("/api/v1/metrics/ibov/history"));
     assert!(!is_public_path("/api/v1/ingest/upload"));
     assert!(!is_public_path("/api/v1/ingest/folder"));
     assert!(!is_public_path("/api/v1/info"));

@@ -16,7 +16,11 @@ mod health;
 mod ibov_history;
 #[path = "api/ibov_latest.rs"]
 mod ibov_latest;
+#[path = "api/index_metrics.rs"]
+mod index_metrics;
 #[path = "api/metrics.rs"]
 mod metrics;
 #[path = "api/openapi.rs"]
 mod openapi;
+#[path = "api/support.rs"]
+mod support;

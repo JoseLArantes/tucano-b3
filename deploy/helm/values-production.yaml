@@ -51,6 +51,13 @@ config:
   s3Prefix: ""
   s3ForcePathStyle: "true"
 
+# Kubernetes schedules the daily trigger. The API's embedded scheduler remains
+# responsible for startup backfill, resume, and serialized publication.
+indexIngestion:
+  dailySchedulerEnabled: false
+  cronJob:
+    enabled: true
+
 persistence:
   enabled: true
   size: 50Gi

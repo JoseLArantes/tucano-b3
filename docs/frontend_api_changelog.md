@@ -1,5 +1,14 @@
 # Frontend API changelog
 
+## 2026-11-17
+
+### Alterado
+
+- Rotas IBOV antigas removidas. Atualize `GET /api/v1/ibov/history` para `GET /api/v1/metrics/ibov/history` e `GET /api/v1/ibov/latest` para `GET /api/v1/metrics/ibov/latest`.
+- Incluídas `GET /api/v1/metrics/idiv/history` e `GET /api/v1/metrics/ifix/latest`. O CSV oficial só contém níveis de fechamento, então demais campos OHLC e volume ficam nulos.
+- Para operações, `POST /api/v1/ingest/indices` inicia a execução manual; `GET /api/v1/ingest/indices/{id}` consulta o trabalho e `/api/v1/ingest/indices/status` informa a última ingestão bem-sucedida e a última data de pregão carregada.
+- Compatibilidade: alteração incompatível dos caminhos IBOV antigos. As novas operações de índices usam autenticação e o envelope de resposta vigente.
+
 ## 2026-11-16
 
 ### Added

@@ -5,6 +5,7 @@
 //! and incremental idempotent ingestion.
 
 pub mod cotahist_parser;
+pub mod index_metrics;
 pub mod object_storage;
 pub mod parquet_writer;
 pub mod service;

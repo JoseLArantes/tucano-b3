@@ -1,4 +1,6 @@
+use std::fs;
 use std::path::PathBuf;
+use tempfile::tempdir;
 use tucano_b3::config::DataConfig;
 use tucano_b3::data::query_service::QueryService;
 use tucano_b3::data::reader::discover_files;
@@ -83,4 +85,51 @@ async fn test_ibov_service_operations() {
             .await
             .expect("get_history with dias failed");
     assert_eq!(entries_dias.len(), 1);
+}
+
+#[tokio::test]
+async fn index_endpoints_fall_back_to_legacy_ibov_parquet() {
+    let directory = tempdir().unwrap();
+    let target = directory
+        .path()
+        .join("processed/ibov/ibov-historical.parquet");
+    fs::create_dir_all(target.parent().unwrap()).unwrap();
+    fs::copy(
+        "tests/fixtures/processed/ibov/ibov-historical.parquet",
+        &target,
+    )
+    .unwrap();
+
+    let config = DataConfig {
+        dir: directory.path().to_path_buf(),
+        reload_interval_seconds: 0,
+    };
+    let discovered = discover_files(&config).unwrap();
+    let query_service = QueryService::new(discovered).unwrap();
+    let pagination = PaginationParams {
+        pagina: 1,
+        por_pagina: 10,
+    };
+
+    let (history, total) = IbovService::get_index_history(
+        &query_service,
+        "IBOV",
+        None,
+        None,
+        None,
+        "desc",
+        &pagination,
+    )
+    .await
+    .unwrap();
+    let latest = IbovService::get_index_latest(&query_service, "IBOV")
+        .await
+        .unwrap();
+
+    assert_eq!(total, 2);
+    assert_eq!(history.len(), 2);
+    assert_eq!(history[0].pre_ult, Some(129500.0));
+    assert_eq!(history[0].pre_abr, Some(128500.0));
+    assert_eq!(latest.pre_ult, Some(129500.0));
+    assert_eq!(latest.pre_abr, Some(128500.0));
 }

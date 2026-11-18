@@ -53,6 +53,24 @@ config:
   s3Prefix: ""
   s3ForcePathStyle: "true"
 
+# The API process owns the SQLite/Parquet worker. In Kubernetes, the CronJob
+# below posts to the authenticated API instead of mounting the data volume.
+indexIngestion:
+  dailySchedulerEnabled: true
+  cronJob:
+    enabled: false
+    schedule: "0 2 * * *"
+    timeZone: "America/Sao_Paulo"
+    concurrencyPolicy: Forbid
+    startingDeadlineSeconds: 3600
+    activeDeadlineSeconds: 21600
+    backoffLimit: 2
+    retryIntervalSeconds: 60
+    maxWaitSeconds: 18000
+    successfulJobsHistoryLimit: 2
+    failedJobsHistoryLimit: 6
+    tokenSecretKey: TUCANO_B3_TOKEN
+
 persistence:
   enabled: true
   existingClaim: ""

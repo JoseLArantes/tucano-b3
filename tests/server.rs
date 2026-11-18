@@ -81,6 +81,8 @@ async fn test_cotahist_and_ibov_routes_registered() {
         ),
         // Avoid full-universe liquidity scan against ./data in this smoke test.
         ("/api/v1/cotahist/liquidity", StatusCode::BAD_REQUEST),
+        ("/api/v1/metrics/ibov/history", StatusCode::NOT_FOUND),
+        ("/api/v1/metrics/ibov/latest", StatusCode::NOT_FOUND),
         ("/api/v1/ibov/history", StatusCode::NOT_FOUND),
         ("/api/v1/ibov/latest", StatusCode::NOT_FOUND),
     ];
@@ -113,7 +115,7 @@ async fn test_cotahist_and_ibov_routes_registered() {
 async fn test_method_not_allowed() {
     let router = test_router();
 
-    for path in ["/api/v1/cotahist/tickers", "/api/v1/ibov/history"] {
+    for path in ["/api/v1/cotahist/tickers", "/api/v1/metrics/ibov/history"] {
         let app = router.clone();
         let response = app
             .oneshot(

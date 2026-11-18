@@ -41,7 +41,7 @@ pub fn sort_query_params(query: &str) -> String {
 /// Health, metrics, info, and documentation endpoints are never cached.
 pub fn is_cacheable(path: &str) -> bool {
     !path.starts_with("/api/v1/health")
-        && !path.starts_with("/api/v1/metrics")
+        && path != "/api/v1/metrics"
         && !path.starts_with("/api/v1/info")
         && !path.starts_with("/metrics")
         && !path.starts_with("/api/docs")

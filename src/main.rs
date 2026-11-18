@@ -78,6 +78,27 @@ OPÇÕES:\n    \
         DataLoader::new(&config.data, cache.clone())
             .map_err(|e| anyhow::anyhow!("Failed to load data: {}", e))?,
     );
+    let index_ingestor = tucano_b3::ingest::index_metrics::IndexIngestor::new(
+        &config.data.dir,
+        data_loader.clone(),
+    )?;
+    let daily_index_schedule_enabled = std::env::var("TUCANO_INDEX_INGEST_DAILY_SCHEDULER_ENABLED")
+        .map(|value| {
+            !matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "false" | "0" | "no" | "off"
+            )
+        })
+        .unwrap_or(true);
+    tracing::info!(
+        daily_index_schedule_enabled,
+        "Configuração do agendador diário de índices"
+    );
+    tokio::spawn(
+        index_ingestor
+            .clone()
+            .scheduler_with_daily_schedule(daily_index_schedule_enabled),
+    );
 
     // Initialize API key registry
     let api_keys_path = Path::new("api_keys.toml");
@@ -121,6 +142,7 @@ OPÇÕES:\n    \
         rate_limit_state,
         metrics,
         start_time,
+        index_ingestor,
     )
     .await?;
 

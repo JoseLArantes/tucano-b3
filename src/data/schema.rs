@@ -95,6 +95,22 @@ pub fn ibov_schema() -> Arc<Schema> {
     ]))
 }
 
+/// Schema shared by the official daily index CSV snapshots.
+pub fn index_metrics_schema() -> Arc<Schema> {
+    Arc::new(Schema::new(vec![
+        Field::new("index", DataType::Utf8, false),
+        Field::new("date", DataType::Date32, false),
+        Field::new("close_cents", DataType::Int64, false),
+        Field::new(
+            "_ingested_at",
+            DataType::Timestamp(arrow::datatypes::TimeUnit::Nanosecond, None),
+            true,
+        ),
+        Field::new("_source_file", DataType::Utf8, true),
+        Field::new("_source_hash", DataType::Utf8, true),
+    ]))
+}
+
 /// Validate that a Parquet file's schema matches the expected schema.
 ///
 /// Returns Ok(()) if compatible, Err with details if not.

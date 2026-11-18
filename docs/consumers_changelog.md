@@ -1,5 +1,14 @@
 # Consumers changelog
 
+## 2026-11-17
+
+### Alterado
+
+- Caminhos legados `GET /api/v1/ibov/history` e `GET /api/v1/ibov/latest` removidos. Consumidores devem migrar para `/api/v1/metrics/ibov/history` e `/api/v1/metrics/ibov/latest`.
+- Novas séries oficiais em `/api/v1/metrics/idiv/history` e `/api/v1/metrics/ifix/latest`, alimentadas por CSVs da B3. O fechamento diário aparece em `pre_ult` como pontos do índice; campos ausentes no CSV permanecem nulos.
+- Novos endpoints autenticados de ingestão manual e estado em `/api/v1/ingest/indices`, `/api/v1/ingest/indices/{id}` e `/api/v1/ingest/indices/status`.
+- Compatibilidade: mudança incompatível para os dois caminhos IBOV anteriores. Schemas das respostas de índice mantêm o envelope existente.
+
 ## 2026-11-16
 
 ### Added

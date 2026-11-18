@@ -57,7 +57,7 @@ async fn test_ibov_history_with_data() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/api/v1/ibov/history")
+                .uri("/api/v1/metrics/ibov/history")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -90,7 +90,7 @@ async fn test_ibov_history_with_date_filter() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/api/v1/ibov/history?dias=5&ordem=desc")
+                .uri("/api/v1/metrics/ibov/history?dias=5&ordem=desc")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -121,7 +121,7 @@ async fn test_ibov_latest_with_data() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/api/v1/ibov/latest")
+                .uri("/api/v1/metrics/ibov/latest")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -137,7 +137,55 @@ async fn test_ibov_latest_with_data() {
 
     assert_eq!(json["data"]["codigo"], "IBOV");
     assert!(json["data"]["data"].is_string());
-    assert!(json["data"]["pre_ult"].is_number());
+    assert_eq!(json["data"]["pre_ult"], 131000.0);
+    assert!(json["data"]["var_pct"].is_number());
+}
+
+#[tokio::test]
+async fn test_idiv_history_uses_index_metric_snapshot() {
+    let Some(app) = test_app_with_fixtures() else {
+        return;
+    };
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/metrics/idiv/history?ordem=asc")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["data"]["codigo"], "IDIV");
+    assert_eq!(json["data"]["history"][0]["pre_ult"], 128900.0);
+    assert!(json["data"]["history"][0]["pre_abr"].is_null());
+}
+
+#[tokio::test]
+async fn test_ifix_latest_uses_index_metric_snapshot() {
+    let Some(app) = test_app_with_fixtures() else {
+        return;
+    };
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/metrics/ifix/latest")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["data"]["codigo"], "IFIX");
+    assert_eq!(json["data"]["pre_ult"], 129500.0);
     assert!(json["data"]["var_pct"].is_number());
 }
 
@@ -154,7 +202,7 @@ async fn test_ibov_history_envelope() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/api/v1/ibov/history?por_pagina=5")
+                .uri("/api/v1/metrics/ibov/history?por_pagina=5")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -186,7 +234,7 @@ async fn test_ibov_history_invalid_date_filter() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/api/v1/ibov/history?desde=not-a-date")
+                .uri("/api/v1/metrics/ibov/history?desde=not-a-date")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -209,7 +257,7 @@ async fn test_ibov_history_reversed_dates() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/api/v1/ibov/history?desde=2026-12-31&ate=2026-01-01")
+                .uri("/api/v1/metrics/ibov/history?desde=2026-12-31&ate=2026-01-01")
                 .body(Body::empty())
                 .unwrap(),
         )

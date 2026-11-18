@@ -840,30 +840,54 @@ impl CotahistAnalyticsService {
         desde: &str,
         ate: Option<&str>,
     ) -> AppResult<BTreeMap<String, f64>> {
-        let mut where_clause = format!("WHERE date >= '{desde}'");
-        if let Some(a) = ate {
-            where_clause.push_str(&format!(" AND date <= '{a}'"));
-        }
-        let sql = format!(
-            "SELECT date, pre_ult FROM ibov {where_clause} AND pre_ult IS NOT NULL ORDER BY date ASC"
-        );
-        let batches = query_service
-            .execute_sql(&sql)
-            .await
-            .map_err(|e| AppError::Internal(anyhow::anyhow!("{}", e)))?;
-
         let mut map = BTreeMap::new();
-        for batch in &batches {
-            for row in 0..batch.num_rows() {
-                if let (Some(date), Some(px)) = (
-                    CotahistService::get_str_public(batch, row, "date"),
-                    CotahistService::get_f64_public(batch, row, "pre_ult"),
-                ) {
-                    map.insert(date, px);
+        if query_service.has_table("index_metrics") {
+            let mut official=format!("SELECT date, close_cents / 100.0 pre_ult FROM index_metrics WHERE index='IBOV' AND date >= DATE '{desde}'");
+            if let Some(end) = ate {
+                official.push_str(&format!(" AND date <= DATE '{end}'"));
+            }
+            official.push_str(" ORDER BY date ASC");
+            let batches = query_service
+                .execute_sql(&official)
+                .await
+                .map_err(|e| AppError::Internal(anyhow::anyhow!("{}", e)))?;
+            for batch in &batches {
+                for row in 0..batch.num_rows() {
+                    if let (Some(date), Some(px)) = (
+                        CotahistService::get_str_public(batch, row, "date"),
+                        CotahistService::get_f64_public(batch, row, "pre_ult"),
+                    ) {
+                        map.insert(date, px);
+                    }
                 }
             }
         }
-        Ok(map)
+        if query_service.has_table("ibov") {
+            let mut where_clause = format!("WHERE date >= '{desde}'");
+            if let Some(a) = ate {
+                where_clause.push_str(&format!(" AND date <= '{a}'"));
+            }
+            let sql=format!("SELECT date, pre_ult FROM ibov {where_clause} AND pre_ult IS NOT NULL ORDER BY date ASC");
+            let batches = query_service
+                .execute_sql(&sql)
+                .await
+                .map_err(|e| AppError::Internal(anyhow::anyhow!("{}", e)))?;
+            for batch in &batches {
+                for row in 0..batch.num_rows() {
+                    if let (Some(date), Some(px)) = (
+                        CotahistService::get_str_public(batch, row, "date"),
+                        CotahistService::get_f64_public(batch, row, "pre_ult"),
+                    ) {
+                        map.entry(date).or_insert(px);
+                    }
+                }
+            }
+        }
+        if map.is_empty() {
+            Err(AppError::NoDataInRange)
+        } else {
+            Ok(map)
+        }
     }
 
     fn closes_with_date(rows: &[OhlcRow]) -> Vec<(String, f64)> {
