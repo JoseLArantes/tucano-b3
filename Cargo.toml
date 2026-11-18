@@ -1,6 +1,6 @@
 [package]
 name = "tucano-b3"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 rust-version = "1.82"
 description = "API REST de alta performance para dados de mercado da B3"
