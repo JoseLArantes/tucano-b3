@@ -46,6 +46,8 @@ fn record(
         tot_neg: Some(1),
         quat_tot: Some(100),
         vol_tot: Some(100.0),
+        turnover_cents: Some(10_000),
+        source_line: 2,
     }
 }
 

@@ -525,6 +525,8 @@ mod tests {
             tot_neg: Some(100),
             quat_tot: Some(10000),
             vol_tot: Some(105000.0),
+            turnover_cents: Some(10_500_000),
+            source_line: 2,
         }
     }
 

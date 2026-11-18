@@ -11,6 +11,7 @@
 use crate::data::reload::DataLoader;
 use crate::ingest::cotahist_parser::CotahistParser;
 use crate::ingest::parquet_writer::{self, StreamingParquetWriter};
+use crate::ingest::turnover::TurnoverStage;
 use crate::ingest::zip_handler::{self, MAX_ZIP_SIZE};
 use crate::ledger::{Ledger, TickerBatchEntry};
 use chrono::NaiveDate;
@@ -39,6 +40,9 @@ pub enum IngestError {
 
     #[error("Data reload error: {0}")]
     Reload(String),
+
+    #[error("Turnover ingestion failed: {0}")]
+    Turnover(#[from] anyhow::Error),
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
@@ -137,7 +141,10 @@ impl IngestService {
         let mut state = IngestRunState::new(&task_id, data_dir)?;
         for (idx, filename) in matching_indices {
             let entry = archive.by_index(idx).map_err(zip_handler::ZipError::from)?;
-            Self::ingest_single_reader(&task_id, &filename, entry, &mut state)?;
+            if let Err(error) = Self::ingest_single_reader(&task_id, &filename, entry, &mut state) {
+                state.schedule_reload(data_loader);
+                return Err(error);
+            }
         }
 
         state.finalize(data_loader)
@@ -170,19 +177,27 @@ impl IngestService {
                             };
                             if let Some(inner_name) = entry_name {
                                 if let Ok(entry) = archive.by_index(i) {
-                                    Self::ingest_single_reader(
+                                    if let Err(error) = Self::ingest_single_reader(
                                         &task_id,
                                         &inner_name,
                                         entry,
                                         &mut state,
-                                    )?;
+                                    ) {
+                                        state.schedule_reload(data_loader);
+                                        return Err(error);
+                                    }
                                 }
                             }
                         }
                     }
                 }
             } else if let Ok(file) = std::fs::File::open(path) {
-                Self::ingest_single_reader(&task_id, &filename, file, &mut state)?;
+                if let Err(error) =
+                    Self::ingest_single_reader(&task_id, &filename, file, &mut state)
+                {
+                    state.schedule_reload(data_loader);
+                    return Err(error);
+                }
             }
         }
 
@@ -204,11 +219,13 @@ impl IngestService {
         );
 
         let mut parquet_writer = StreamingParquetWriter::new(&state.output_dir);
+        let turnover = TurnoverStage::new()?;
         let mut new_dates: HashSet<NaiveDate> = HashSet::new();
         let mut unique_tickers: HashMap<String, TickerBatchEntry> = HashMap::new();
         let mut records_new = 0usize;
 
         let stats = CotahistParser::parse_stream(reader, |record| -> Result<(), IngestError> {
+            turnover.push(&record, filename)?;
             // Track ticker metadata across all parsed rows (allows self-healing if a prior run
             // crashed after inserting dates but before committing tickers).
             if let Some(entry) = unique_tickers.get_mut(&record.ticker) {
@@ -253,6 +270,8 @@ impl IngestService {
 
             Ok(())
         })?;
+
+        state.wrote_any |= turnover.publish(&state.data_dir)?;
 
         state.ingested_set.extend(new_dates.iter().copied());
 
@@ -311,6 +330,7 @@ impl IngestService {
 }
 
 struct IngestRunState {
+    data_dir: std::path::PathBuf,
     output_dir: std::path::PathBuf,
     ledger: Ledger,
     ingested_set: HashSet<NaiveDate>,
@@ -330,6 +350,7 @@ impl IngestRunState {
         let ingested_set: HashSet<NaiveDate> = ingested_dates.into_iter().collect();
 
         Ok(Self {
+            data_dir: data_dir.to_path_buf(),
             output_dir,
             ledger,
             ingested_set,
@@ -347,7 +368,7 @@ impl IngestRunState {
         })
     }
 
-    fn finalize(self, data_loader: &Arc<DataLoader>) -> Result<IngestResult, IngestError> {
+    fn schedule_reload(&self, data_loader: &Arc<DataLoader>) {
         if self.wrote_any {
             if let Ok(handle) = tokio::runtime::Handle::try_current() {
                 let loader = Arc::clone(data_loader);
@@ -358,7 +379,10 @@ impl IngestRunState {
                 });
             }
         }
+    }
 
+    fn finalize(self, data_loader: &Arc<DataLoader>) -> Result<IngestResult, IngestError> {
+        self.schedule_reload(data_loader);
         tracing::info!(
             task_id = %self.result.task_id,
             files = self.result.files_processed,

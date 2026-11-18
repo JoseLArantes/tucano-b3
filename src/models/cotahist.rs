@@ -112,6 +112,58 @@ pub struct EquityCoverage {
     pub to: String,
 }
 
+/// Segmento COTAHIST disponível na primeira versão do volume financeiro.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TurnoverSegment {
+    /// Mercado à vista de lote padrão (TPMERC 010 e CODBDI 02).
+    StandardLot,
+}
+
+/// Observação oficial de volume financeiro por listagem e pregão.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct EquityTurnoverObservation {
+    /// Data do pregão em São Paulo (AAAA-MM-DD).
+    #[schema(example = "2026-01-05")]
+    pub data: String,
+    /// ISIN da listagem no registro COTAHIST.
+    #[schema(example = "BRPETRACNOR9")]
+    pub isin: String,
+    /// Ticker oficial no pregão, sem normalização de sufixo.
+    #[schema(example = "PETR3")]
+    pub ticker: String,
+    /// Moeda do volume financeiro. O piloto cobre BRL.
+    #[schema(example = "BRL")]
+    pub currency: String,
+    /// Segmento da observação.
+    pub segment: TurnoverSegment,
+    /// VOLTOT exato em reais, com ponto decimal e duas casas. FATCOT não se aplica.
+    #[schema(example = "10000.01")]
+    pub financial_turnover_brl: String,
+    /// Campo posicional VOLTOT, com 18 dígitos e duas casas implícitas.
+    #[schema(example = "000000000001000001")]
+    pub voltot_raw: String,
+    /// Nome do membro TXT original, inclusive para arquivos ZIP.
+    #[schema(example = "COTAHIST_A2026.TXT")]
+    pub source_member: String,
+    /// Número físico da linha no membro TXT, a partir de 1.
+    #[schema(example = 2)]
+    pub source_line: u64,
+}
+
+/// Observações publicadas e revisão lida na mesma consulta.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct EquityTurnoverResponse {
+    /// Identificador opaco da revisão publicada, ou null antes da primeira carga.
+    pub dataset_revision: Option<String>,
+    /// Quantidade de observações no intervalo solicitado.
+    pub observation_count: usize,
+    /// Somente observações disponíveis, em ordem crescente de data.
+    pub observations: Vec<EquityTurnoverObservation>,
+}
+
 /// Paged verified equity listings.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct EquityListResponse {

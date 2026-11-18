@@ -45,4 +45,27 @@ Cada item de `data` no histórico, ou o conteúdo de `data` em `/latest`, conté
 
 `data.paginacao` contém total, página e tamanho de página. A paginação é determinística por ticker e ISIN. `close_per_share` é texto decimal para evitar arredondamento binário na conversão do preço oficial. Pontos fora da cobertura verificada não são estimados nem preenchidos.
 
-Consulte `/openapi.json` para os schemas fechados publicados pelo serviço e as respostas de erro.
+## Observação de volume financeiro
+
+`data.observations` contém os registros disponíveis. `data.observation_count` conta esses registros e `data.dataset_revision` identifica o conjunto ativo ou vale `null` antes da primeira publicação.
+
+| Campo | Significado |
+|---|---|
+| `data`, `isin`, `ticker` | Data do pregão, identidade verificada e ticker oficial naquele pregão. |
+| `currency`, `segment` | `BRL` e `standard_lot` no piloto. |
+| `financial_turnover_brl` | Valor em reais como texto decimal com duas casas. |
+| `voltot_raw` | 18 dígitos originais de `VOLTOT`, incluindo zeros à esquerda. |
+| `source_member`, `source_line` | Nome do TXT de origem e linha física, começando em 1. |
+
+Exemplos sintéticos para ilustrar a leitura. Os valores não foram publicados pela B3.
+
+| Data | Classe | ISIN | Ticker | `voltot_raw` | `financial_turnover_brl` |
+|---|---|---|---|---|---|
+| 2026-01-05 | ON | BRPETRACNOR9 | PETR3 | `009007199254740993` | `90071992547409.93` |
+| 2026-01-05 | PN | BRPETRACNPR6 | PETR4 | `000000000001000001` | `10000.01` |
+| 2026-01-05 | Unit | BRSANBCDAM13 | SANB11 | `000000000000020000` | `200.00` |
+| 2026-01-06 | ON | BRPETRACNOR9 | PETR3 | `000000000000000000` | `0.00` |
+
+Nos exemplos, `FATCOT=1000` afeta a cotação por ação ou unit. O volume resulta diretamente das duas casas implícitas de `VOLTOT`. A ausência de uma observação ON em 07/01 exclui essa data da série do exemplo.
+
+Consulte `/api/docs/openapi.json` para os schemas e as respostas de erro.

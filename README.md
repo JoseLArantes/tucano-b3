@@ -212,6 +212,8 @@ docker run -d \
 
 O Tucano-B3 possui três métodos integrados via API para ingerir arquivos `COTAHIST` da B3 (arquivos `.ZIP` e, na pasta local, também `.TXT` descompactados). Nenhum deles roda sozinho: a ingestão começa quando o endpoint correspondente é chamado.
 
+O volume financeiro diário exato de ações ON, PN e units é servido por `GET /api/v1/cotahist/equities/by-isin/{isin}/turnover?desde=AAAA-MM-DD&ate=AAAA-MM-DD`. O piloto cobre lote padrão à vista, em BRL, e preserva o `VOLTOT` original. A resposta inclui apenas datas observadas, incluindo zeros publicados. Para preencher o dataset, reimporte os arquivos originais COTAHIST do período desejado. Consulte o [guia de operação](docusaurus/docs/operations/equity-data.md#publicar-volume-financeiro-exato).
+
 As séries IBOV, IDIV e IFIX são carregadas automaticamente a partir dos CSVs anuais da página de evolução diária da B3. O worker faz backfill na primeira inicialização e atualiza o ano corrente diariamente às 02:00 no fuso `America/Sao_Paulo`. Para disparar uma execução manual, chame `POST /api/v1/ingest/indices`; consulte `GET /api/v1/ingest/indices/{id}` para o resultado e `GET /api/v1/ingest/indices/status` para a última ingestão bem-sucedida e a última data de pregão carregada.
 
 ### Ingestão em Lote a partir de uma Pasta Local (`POST /api/v1/ingest/folder`)

@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # Endpoints de ações e units
 
-As rotas ficam sob `/api/v1/cotahist/equities`. Elas leem o conjunto versionado `equities-v1`, que é reconstruído a partir dos arquivos COTAHIST oficiais e separado do ledger legado de ingestão.
+As rotas ficam sob `/api/v1/cotahist/equities`. As cotações leem `equities-v1` e o volume financeiro lê `turnover-v1`. Ambos são alimentados pelos arquivos COTAHIST.
 
 ## Autenticação
 
@@ -57,3 +57,18 @@ curl -H "Authorization: Bearer $TUCANO_B3_TOKEN" \
 ```
 
 Os campos e envelopes estão descritos em [schemas de ações e units](../schemas/equities.md). Para os arquivos de origem e o backfill, consulte [cobertura verificada](../operations/equity-data.md).
+
+## Consultar volume financeiro diário por ISIN
+
+`GET /api/v1/cotahist/equities/by-isin/{isin}/turnover?desde=AAAA-MM-DD&ate=AAAA-MM-DD`
+
+O intervalo é obrigatório, inclusivo e limitado a 366 dias corridos. O piloto cobre lote padrão à vista (`TPMERC=010`, `CODBDI=02`), para ações ON, PN e units em BRL. A resposta inclui todos os registros disponíveis do ISIN, em ordem crescente de data, com o ticker oficial de cada pregão.
+
+Um dia sem observação é omitido. Uma linha com zero publicado retorna `"0.00"`. Uma consulta válida sem observações retorna `200` com uma lista vazia. Use seu calendário de pregões para selecionar as sessões fechadas e aplicar a regra de cobertura e mediana. A tela legada `/api/v1/cotahist/liquidity` ainda usa médias nos campos de mediana.
+
+```bash
+curl -H "Authorization: Bearer $TUCANO_B3_TOKEN" \
+  "http://localhost:8080/api/v1/cotahist/equities/by-isin/BRPETRACNOR9/turnover?desde=2026-07-01&ate=2026-10-31"
+```
+
+O contrato da API está em `/api/docs/openapi.json` e o Swagger UI em `/api/docs/`.

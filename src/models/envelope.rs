@@ -8,8 +8,8 @@ use utoipa::ToSchema;
 
 use crate::models::cotahist::{
     DateQuotesResponse, EquityListResponse, EquityQuoteResponse, EquityResponse,
-    LatestQuoteResponse, PreUltExtremeResponse, QuoteListResponse, SeriesResponse,
-    TickerDetailResponse, TickerListResponse,
+    EquityTurnoverResponse, LatestQuoteResponse, PreUltExtremeResponse, QuoteListResponse,
+    SeriesResponse, TickerDetailResponse, TickerListResponse,
 };
 use crate::models::cotahist_analytics::{
     CompareResponse, DrawdownResponse, GapsResponse, LiquidityScreenResponse, MoversResponse,
@@ -51,6 +51,7 @@ use crate::models::market_calendar::{
     EquityApiResponse = ApiResponse<EquityResponse>,
     EquityQuoteApiResponse = ApiResponse<EquityQuoteResponse>,
     EquityQuotesApiResponse = ApiResponse<Vec<EquityQuoteResponse>>,
+    EquityTurnoverApiResponse = ApiResponse<EquityTurnoverResponse>,
     MarketCalendarYearsApiResponse = ApiResponse<MarketCalendarYearsResponse>,
     MarketCalendarApiResponse = ApiResponse<MarketCalendarResponse>,
     MarketCalendarDeleteApiResponse = ApiResponse<MarketCalendarDeleteResponse>,

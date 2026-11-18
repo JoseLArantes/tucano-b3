@@ -4,6 +4,8 @@
 
 ### Adicionado
 
+- Novo histórico de volume financeiro em `/api/v1/cotahist/equities/by-isin/{isin}/turnover`. Use `desde` e `ate` inclusivos e leia `data.observations`, `data.observation_count` e `data.dataset_revision`. Preserve a precisão de `financial_turnover_brl` ao converter o decimal textual. Contrato aditivo.
+
 - Calendário anual B3 em `/api/v1/calendar`: `GET` lista anos, `POST` cria, `GET /{year}` consulta, `PUT /{year}` substitui por inteiro e `DELETE /{year}` remove. O ano de 2026 é semeado uma única vez no ledger SQLite com fontes B3; alterações são persistentes. Escritas precisam de credencial configurada e usam autenticação.
 - Eventos expõem `data`, `evento`, `situacao` (`closed`, `special_hours`, `open`), `descricao` e horários opcionais. Datas precisam corresponder ao ano, não podem se repetir e são retornadas em ordem crescente. O seed inclui o funcionamento especial de 18/02/2026 e funcionamento normal em 09/07/2026.
 - `GET /api/v1/negotiation-hours` retorna horários gerais da página Trader da B3: Tela e RFQ 09:00–18:00; Voice 08:00–19:15; fuso `America/Sao_Paulo`.

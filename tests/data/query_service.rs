@@ -8,6 +8,7 @@ fn test_query_service_empty_files() {
         equity_files: vec![],
         ibov_file: None,
         index_metric_files: vec![],
+        turnover: None,
     };
     let service = QueryService::new(files);
     assert!(service.is_ok());
@@ -23,6 +24,7 @@ async fn test_execute_sql_no_table() {
         equity_files: vec![],
         ibov_file: None,
         index_metric_files: vec![],
+        turnover: None,
     };
     let service = QueryService::new(files).unwrap();
     let result = service.execute_sql("SELECT * FROM cotahist").await;
@@ -51,6 +53,7 @@ async fn test_execute_sql_simple() {
         equity_files: vec![],
         ibov_file: None,
         index_metric_files: vec![],
+        turnover: None,
     };
 
     let service = QueryService::new(files).unwrap();

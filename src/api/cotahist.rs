@@ -60,8 +60,47 @@ pub struct EquitySearchParams {
 
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct EquityQuoteParams {
+    /// Data inicial inclusiva em AAAA-MM-DD.
     pub desde: String,
+    /// Data final inclusiva em AAAA-MM-DD.
     pub ate: String,
+}
+
+/// Volume financeiro diário exato de ações e units por ISIN.
+///
+/// Retorna apenas observações publicadas de lote padrão no mercado à vista
+/// (TPMERC 010, CODBDI 02), em BRL. O intervalo inclusivo aceita até 366 dias
+/// corridos. Dias ausentes são omitidos e zeros publicados são preservados.
+/// O campo VOLTOT contém duas casas implícitas e independe do FATCOT.
+#[utoipa::path(
+    get,
+    path = "/cotahist/equities/by-isin/{isin}/turnover",
+    tag = "cotahist",
+    params(("isin" = String, Path, description = "ISIN com dígito verificador válido", example = "BRPETRACNOR9"), EquityQuoteParams),
+    responses(
+        (status = 200, description = "Observações e revisão, inclusive quando a lista está vazia", body = EquityTurnoverApiResponse),
+        (status = 400, description = "ISIN, data ou intervalo inválido", body = ErrorResponse),
+        (status = 401, description = "Autenticação ausente ou inválida", body = ErrorResponse),
+        (status = 429, description = "Limite de requisições excedido", body = ErrorResponse),
+        (status = 500, description = "Erro ao consultar o dataset", body = ErrorResponse)
+    ),
+    security(("BearerAuth" = []), ("ApiKeyAuth" = []))
+)]
+pub(crate) async fn equity_turnover_handler(
+    State(state): State<Arc<AppState>>,
+    Path(isin): Path<String>,
+    params: Result<Query<EquityQuoteParams>, axum::extract::rejection::QueryRejection>,
+) -> AppResult<Json<ApiResponse<EquityTurnoverResponse>>> {
+    let start = Instant::now();
+    let Query(params) = params.map_err(|_| crate::error::AppError::InvalidParam {
+        message: "Informe desde e ate no formato AAAA-MM-DD".to_string(),
+    })?;
+    let query = state.data_loader.get_query_service().await;
+    let data = CotahistService::equity_turnover(&query, &isin, &params.desde, &params.ate).await?;
+    Ok(Json(ApiResponse::new(
+        data,
+        start.elapsed().as_secs_f64() * 1000.0,
+    )))
 }
 
 /// Lista pares ticker/ISIN observados no conjunto COTAHIST versionado. A elegibilidade exige mercado à vista `010`, BDI `02`, moeda BRL, ISIN válido e especificação ESPECI de ação ordinária, preferencial ou unit. Esses filtros são aplicados antes da paginação. `busca` é um prefixo de ticker; `ativo` usa o ledger local e é `true` por padrão. A resposta inclui a cobertura temporal verificada. Os dados são nominais e não ajustados por eventos corporativos.
@@ -655,6 +694,10 @@ pub fn routes(state: Arc<AppState>) -> Router {
         .route(
             "/cotahist/equities/by-isin/:isin/quotes",
             get(equity_quotes_handler),
+        )
+        .route(
+            "/cotahist/equities/by-isin/:isin/turnover",
+            get(equity_turnover_handler),
         )
         .route("/cotahist/tickers/:ticker", get(get_ticker_handler))
         .route("/cotahist/tickers/:ticker/quotes", get(get_quotes_handler))

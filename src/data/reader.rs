@@ -24,6 +24,8 @@ pub struct DiscoveredFiles {
     pub ibov_file: Option<ParquetFileInfo>,
     /// Official daily index CSV partitions.
     pub index_metric_files: Vec<ParquetFileInfo>,
+    /// Published turnover revision and immutable partition paths.
+    pub turnover: Option<(String, Vec<PathBuf>)>,
 }
 
 /// Metadata about a single Parquet file.
@@ -85,6 +87,7 @@ pub fn discover_files(data_config: &DataConfig) -> Result<DiscoveredFiles, Reade
         equity_files: Vec::new(),
         ibov_file: None,
         index_metric_files: Vec::new(),
+        turnover: turnover_snapshot(data_dir)?,
     };
 
     // Discover COTAHIST files
@@ -184,6 +187,45 @@ pub fn discover_files(data_config: &DataConfig) -> Result<DiscoveredFiles, Reade
     );
 
     Ok(result)
+}
+
+fn turnover_snapshot(data_dir: &Path) -> Result<Option<(String, Vec<PathBuf>)>, ReaderError> {
+    use rusqlite::OptionalExtension;
+    let read = || -> rusqlite::Result<Option<(String, Vec<PathBuf>)>> {
+        let path = data_dir.join("ledger/tucano.db");
+        if !path.exists() {
+            return Ok(None);
+        }
+        let mut db = rusqlite::Connection::open_with_flags(
+            path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )?;
+        let tx = db.transaction()?;
+        let exists: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='turnover_snapshot')",
+            [], |row| row.get(0),
+        )?;
+        if !exists {
+            return Ok(None);
+        }
+        let revision: Option<String> = tx
+            .query_row(
+                "SELECT revision FROM turnover_snapshot WHERE id=1",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let Some(revision) = revision else {
+            return Ok(None);
+        };
+        let dir = data_dir.join("processed/turnover-v1");
+        let mut stmt = tx.prepare("SELECT filename FROM turnover_partitions ORDER BY year")?;
+        let files = stmt
+            .query_map([], |row| Ok(dir.join(row.get::<_, String>(0)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(Some((revision, files)))
+    };
+    read().map_err(|err| ReaderError::Io(std::io::Error::other(err)))
 }
 
 fn collect_parquet_files(dir: &Path, paths: &mut Vec<PathBuf>) -> Result<(), std::io::Error> {

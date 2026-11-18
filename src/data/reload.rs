@@ -37,6 +37,7 @@ pub struct DataLoader {
     pub ticker_registry: Arc<TickerRegistry>,
     pub data_config: DataConfig,
     pub cache: Arc<CacheStore>,
+    reload_lock: tokio::sync::Mutex<()>,
 }
 
 impl DataLoader {
@@ -52,6 +53,7 @@ impl DataLoader {
             ticker_registry: Arc::new(ticker_registry),
             data_config: data_config.clone(),
             cache,
+            reload_lock: tokio::sync::Mutex::new(()),
         })
     }
 
@@ -65,6 +67,7 @@ impl DataLoader {
     /// Synchronous filesystem discovery, DataFusion table registration, and SQLite
     /// ticker registry loading run on a blocking thread before swapping the handle.
     pub async fn reload(&self) -> Result<(), ReloadError> {
+        let _reload = self.reload_lock.lock().await;
         tracing::info!("Recarregando dados...");
 
         let data_config = self.data_config.clone();
