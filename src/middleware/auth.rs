@@ -23,6 +23,8 @@ pub const TOKEN_HEADER: &str = "X-Token";
 pub fn is_public_path(path: &str) -> bool {
     path == "/health"
         || path == "/api/v1/health"
+        || path == "/docs"
+        || path.starts_with("/docs/")
         || path == "/api/docs"
         || path.starts_with("/api/docs/")
         || path == "/openapi.json"

@@ -1,7 +1,7 @@
 //! SQLite ledger connection and operations.
 
 use chrono::NaiveDate;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Mutex;
@@ -67,6 +67,15 @@ impl Ledger {
                 date TEXT NOT NULL,
                 ingestion_id TEXT,
                 PRIMARY KEY (format, date)
+            );
+            CREATE TABLE IF NOT EXISTS market_calendars (
+                year INTEGER PRIMARY KEY,
+                payload TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS market_calendar_seeds (
+                seed_id TEXT PRIMARY KEY,
+                applied_at TEXT NOT NULL
             );",
         )?;
 
@@ -202,6 +211,116 @@ impl Ledger {
         }
         tx.commit()?;
         Ok(())
+    }
+
+    /// List years with a stored B3 market calendar in ascending order.
+    pub fn list_market_calendar_years(&self) -> Result<Vec<i32>, LedgerError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| LedgerError::Lock(e.to_string()))?;
+        let mut stmt = conn.prepare("SELECT year FROM market_calendars ORDER BY year ASC")?;
+        let rows = stmt.query_map([], |row| row.get(0))?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(LedgerError::from)
+    }
+
+    /// Read a stored market calendar JSON document and its last update time.
+    pub fn get_market_calendar(&self, year: i32) -> Result<Option<(String, String)>, LedgerError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| LedgerError::Lock(e.to_string()))?;
+        conn.query_row(
+            "SELECT payload, updated_at FROM market_calendars WHERE year = ?1",
+            [year],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(LedgerError::from)
+    }
+
+    /// Insert a calendar if the year has no record yet. Returns false on conflict.
+    pub fn insert_market_calendar_if_absent(
+        &self,
+        year: i32,
+        payload: &str,
+        updated_at: &str,
+    ) -> Result<bool, LedgerError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| LedgerError::Lock(e.to_string()))?;
+        let inserted = conn.execute(
+            "INSERT OR IGNORE INTO market_calendars (year, payload, updated_at) VALUES (?1, ?2, ?3)",
+            rusqlite::params![year, payload, updated_at],
+        )?;
+        Ok(inserted == 1)
+    }
+
+    /// Apply a built-in calendar seed once for this ledger, even if that year is deleted later.
+    pub fn initialize_market_calendar_seed(
+        &self,
+        seed_id: &str,
+        year: i32,
+        payload: &str,
+        applied_at: &str,
+    ) -> Result<(), LedgerError> {
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|e| LedgerError::Lock(e.to_string()))?;
+        let tx = conn.transaction()?;
+        let inserted = tx.execute(
+            "INSERT OR IGNORE INTO market_calendar_seeds (seed_id, applied_at) VALUES (?1, ?2)",
+            rusqlite::params![seed_id, applied_at],
+        )?;
+        if inserted == 1 {
+            tx.execute(
+                "INSERT OR IGNORE INTO market_calendars (year, payload, updated_at) VALUES (?1, ?2, ?3)",
+                rusqlite::params![year, payload, applied_at],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Insert a calendar, returning false if the year already exists.
+    pub fn create_market_calendar(
+        &self,
+        year: i32,
+        payload: &str,
+        updated_at: &str,
+    ) -> Result<bool, LedgerError> {
+        self.insert_market_calendar_if_absent(year, payload, updated_at)
+    }
+
+    /// Replace an existing calendar. Returns false if the year is not stored.
+    pub fn update_market_calendar(
+        &self,
+        year: i32,
+        payload: &str,
+        updated_at: &str,
+    ) -> Result<bool, LedgerError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| LedgerError::Lock(e.to_string()))?;
+        let updated = conn.execute(
+            "UPDATE market_calendars SET payload = ?2, updated_at = ?3 WHERE year = ?1",
+            rusqlite::params![year, payload, updated_at],
+        )?;
+        Ok(updated == 1)
+    }
+
+    /// Delete a stored calendar. Returns false if the year is not stored.
+    pub fn delete_market_calendar(&self, year: i32) -> Result<bool, LedgerError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| LedgerError::Lock(e.to_string()))?;
+        let deleted = conn.execute("DELETE FROM market_calendars WHERE year = ?1", [year])?;
+        Ok(deleted == 1)
     }
 }
 

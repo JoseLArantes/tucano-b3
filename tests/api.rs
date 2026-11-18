@@ -18,6 +18,8 @@ mod ibov_history;
 mod ibov_latest;
 #[path = "api/index_metrics.rs"]
 mod index_metrics;
+#[path = "api/market_calendar.rs"]
+mod market_calendar;
 #[path = "api/metrics.rs"]
 mod metrics;
 #[path = "api/openapi.rs"]

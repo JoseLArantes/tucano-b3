@@ -39,3 +39,51 @@ fn test_openapi_schema_has_no_unresolved_refs() {
 
     check_refs(&json_val, schemas);
 }
+
+#[test]
+fn market_calendar_and_negotiation_hours_are_documented() {
+    let document = serde_json::to_value(ApiDoc::openapi()).unwrap();
+    let paths = document.pointer("/paths").unwrap();
+    for (path, method) in [
+        ("/calendar", "get"),
+        ("/calendar", "post"),
+        ("/calendar/{year}", "get"),
+        ("/calendar/{year}", "put"),
+        ("/calendar/{year}", "delete"),
+        ("/negotiation-hours", "get"),
+    ] {
+        assert!(paths
+            .get(path)
+            .and_then(|entry| entry.get(method))
+            .is_some());
+    }
+
+    let schemas = document.pointer("/components/schemas").unwrap();
+    for schema in [
+        "MarketCalendarCreateRequest",
+        "MarketCalendarUpdateRequest",
+        "MarketCalendarEvent",
+        "MarketCalendarResponse",
+        "NegotiationHoursResponse",
+    ] {
+        assert!(schemas.get(schema).is_some(), "missing schema {schema}");
+    }
+    assert_eq!(
+        schemas
+            .pointer("/MarketCalendarCreateRequest/additionalProperties")
+            .and_then(serde_json::Value::as_bool),
+        Some(false)
+    );
+    assert_eq!(
+        schemas
+            .pointer("/MarketCalendarCreateRequest/example/ano")
+            .and_then(serde_json::Value::as_i64),
+        Some(2027)
+    );
+    assert!(paths
+        .get("/calendar")
+        .and_then(|path| path.get("post"))
+        .and_then(|operation| operation.get("description"))
+        .and_then(serde_json::Value::as_str)
+        .is_some());
+}

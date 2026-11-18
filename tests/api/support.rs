@@ -19,8 +19,17 @@ impl TestApp {
 }
 
 pub fn empty_app() -> TestApp {
-    let data_dir = tempfile::tempdir().expect("create isolated test data directory");
+    app_with_config(AppConfig::default())
+}
+
+pub fn authenticated_app() -> TestApp {
     let mut config = AppConfig::default();
+    config.auth.token = Some("calendar-test-token".to_string());
+    app_with_config(config)
+}
+
+fn app_with_config(mut config: AppConfig) -> TestApp {
+    let data_dir = tempfile::tempdir().expect("create isolated test data directory");
     config.data.dir = data_dir.path().to_path_buf();
 
     let cache = Arc::new(tucano_b3::cache::CacheStore::new(&config.cache));

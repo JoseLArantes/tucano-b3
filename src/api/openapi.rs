@@ -10,6 +10,7 @@ use crate::models::cotahist::*;
 use crate::models::cotahist_analytics::*;
 use crate::models::envelope::*;
 use crate::models::ibov::*;
+use crate::models::market_calendar::*;
 use crate::models::pagination::*;
 
 struct SecurityAddon;
@@ -59,11 +60,13 @@ Indicadores calculados sobre PREULT/OHLCV COTAHIST — **não** são séries ofi
 - Gaps de abertura (`/gaps`), indicadores móveis SMA/EMA/vol/ADV (`/rolling`), spread compra/venda (`/spread`), comparação normalizada base 100 (`/compare`).\n\n\
 ### Índices B3\n\
 `/metrics/ibov/history` e `/metrics/ibov/latest` consultam a série oficial do IBOV. Também estão disponíveis `/metrics/idiv/history` e `/metrics/ifix/latest`. Os CSVs publicados pela B3 fornecem fechamento diário em pontos.\n\n\
+### Calendário e negociação B3\n\
+`/calendar` lista e cria calendários anuais; `/calendar/{year}` consulta, substitui ou remove o calendário do ano. O ledger inicia com a agenda oficial de 2026 e preserva as fontes. `/negotiation-hours` apresenta os horários gerais publicados para Tela, RFQ e Voice; exceções de uma data estão no calendário anual.\n\n\
 ### Ingestão e operações\n\
 Upload, pasta local ou bucket S3 compatível (Cloudflare R2) de arquivos COTAHIST (`.ZIP`/`.TXT`) com idempotência por data de pregão. Os CSVs de IBOV, IDIV e IFIX são atualizados diariamente às 02:00 em `America/Sao_Paulo` e podem ser disparados por `POST /ingest/indices`. Health, info do dataset e métricas Prometheus.\n\n\
 ### Contratos e limitações\n\
 - Preços COTAHIST são **nominais** (sem ajuste retroativo por eventos corporativos).\n\
-- Autenticação Bearer / API Key nas rotas protegidas; `/health` e `/api/docs` são públicos.\n\
+- Autenticação Bearer / API Key nas rotas protegidas; `/health`, `/docs`, `/openapi.json` e o alias legado `/api/docs` são públicos.\n\
 - Envelope padrão `{ data, meta }` em respostas de sucesso; erros tipados em português.",
         contact(
             name = "tucano-b3",
@@ -114,6 +117,13 @@ Upload, pasta local ou bucket S3 compatível (Cloudflare R2) de arquivos COTAHIS
         crate::api::index_metrics::start_ingest,
         crate::api::index_metrics::ingest_status,
         crate::api::index_metrics::ingestion_overview,
+        // B3 market calendar and Trader negotiation hours
+        crate::api::market_calendar::list_calendars,
+        crate::api::market_calendar::get_calendar,
+        crate::api::market_calendar::create_calendar,
+        crate::api::market_calendar::update_calendar,
+        crate::api::market_calendar::delete_calendar,
+        crate::api::market_calendar::negotiation_hours,
         // System endpoints
         crate::api::health::health_handler,
         crate::api::info::info_handler,
@@ -159,6 +169,10 @@ Upload, pasta local ou bucket S3 compatível (Cloudflare R2) de arquivos COTAHIS
             CompareApiResponse,
             IbovHistoryApiResponse,
             IbovLatestApiResponse,
+            MarketCalendarYearsApiResponse,
+            MarketCalendarApiResponse,
+            MarketCalendarDeleteApiResponse,
+            NegotiationHoursApiResponse,
             IngestApiResponse,
             ResponseMeta,
             ErrorResponse,
@@ -198,6 +212,15 @@ Upload, pasta local ou bucket S3 compatível (Cloudflare R2) de arquivos COTAHIS
             IbovHistoryEntry,
             IbovHistoryResponse,
             IbovLatestResponse,
+            MarketDayStatus,
+            MarketCalendarEvent,
+            MarketCalendarCreateRequest,
+            MarketCalendarUpdateRequest,
+            MarketCalendarResponse,
+            MarketCalendarYearsResponse,
+            MarketCalendarDeleteResponse,
+            NegotiationSessionHours,
+            NegotiationHoursResponse,
             // Ingest
             crate::models::ingest::IngestResponse,
             crate::models::ingest::FolderIngestRequest,
@@ -212,6 +235,7 @@ Upload, pasta local ou bucket S3 compatível (Cloudflare R2) de arquivos COTAHIS
     tags(
         (name = "cotahist", description = "Cotações históricas de ativos listados na B3"),
         (name = "índices", description = "Séries oficiais de índices da B3"),
+        (name = "calendário", description = "Calendário anual e horários de negociação publicados pela B3"),
         (name = "ingestão", description = "Ingestão de dados COTAHIST e índices da B3"),
         (name = "sistema", description = "Endpoints de saúde e informações do serviço"),
     ),

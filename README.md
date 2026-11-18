@@ -305,7 +305,7 @@ curl -X POST "http://localhost:8080/api/v1/ingest/upload" \
 
 ### Autenticação
 
-Todas as rotas da API — **exceto** `/health`, `/api/v1/health` e `/api/docs/*` — exigem o envio do token configurado em `TUCANO_B3_TOKEN` através de um dos cabeçalhos abaixo:
+Todas as rotas da API — **exceto** `/health`, `/api/v1/health`, `/docs/*`, `/openapi.json` e o alias legado `/api/docs/*` — exigem o envio do token configurado em `TUCANO_B3_TOKEN` através de um dos cabeçalhos abaixo:
 
 - **Bearer Token (Recomendado):** `Authorization: Bearer <TUCANO_B3_TOKEN>`
 - **API Key Header:** `X-API-Key: <TUCANO_B3_TOKEN>`
@@ -343,6 +343,12 @@ Todas as rotas da API — **exceto** `/health`, `/api/v1/health` e `/api/docs/*`
 | `GET` | `/api/v1/metrics/ibov/latest` | Protegida | Fechamento diário mais recente do IBOV |
 | `GET` | `/api/v1/metrics/idiv/history` | Protegida | Série diária oficial paginada do IDIV |
 | `GET` | `/api/v1/metrics/ifix/latest` | Protegida | Fechamento diário mais recente do IFIX |
+| `GET` | `/api/v1/calendar` | Protegida | Lista anos com calendário B3 cadastrado |
+| `POST` | `/api/v1/calendar` | Protegida | Cria calendário anual com fontes e eventos |
+| `GET` | `/api/v1/calendar/{year}` | Protegida | Consulta feriados e exceções de funcionamento de um ano |
+| `PUT` | `/api/v1/calendar/{year}` | Protegida | Substitui o calendário anual existente |
+| `DELETE` | `/api/v1/calendar/{year}` | Protegida | Remove calendário anual persistido |
+| `GET` | `/api/v1/negotiation-hours` | Protegida | Horários gerais de Tela, RFQ e Voice publicados pela B3 |
 | `POST` | `/api/v1/ingest/indices` | Protegida | Enfileira ingestão manual dos CSVs anuais dos índices |
 | `GET` | `/api/v1/ingest/indices/{id}` | Protegida | Consulta estado e resultado por índice/ano |
 | `GET` | `/api/v1/ingest/indices/status` | Protegida | Último sucesso de ingestão e data de negociação mais recente |
@@ -352,6 +358,28 @@ Todas as rotas da API — **exceto** `/health`, `/api/v1/health` e `/api/docs/*`
 | `GET` | `/metrics` ou `/api/v1/metrics` | Protegida | Métricas no formato texto do Prometheus |
 
 Os antigos caminhos `/api/v1/ibov/history` e `/api/v1/ibov/latest` foram removidos. Consulte a página de operações para o agendamento diário e o fluxo de ingestão CSV da B3.
+
+### Calendário B3 e horários de negociação
+
+O ledger SQLite recebe uma carga inicial do calendário B3 de 2026. O endpoint `GET /api/v1/calendar` lista os anos existentes; `GET /api/v1/calendar/{year}` lê os eventos. Use `POST /api/v1/calendar` para criar um ano, `PUT /api/v1/calendar/{year}` para substituir seu conteúdo inteiro e `DELETE /api/v1/calendar/{year}` para removê-lo. Criação, alteração e remoção exigem que a autenticação esteja configurada. As datas devem pertencer ao ano, os eventos não podem repetir datas e as fontes devem apontar para `b3.com.br` ou um subdomínio oficial.
+
+```bash
+# Consultar os calendários disponíveis
+curl -s -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8080/api/v1/calendar | jq
+
+# Consultar o calendário de 2026
+curl -s -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8080/api/v1/calendar/2026 | jq
+
+# Consultar os horários gerais da plataforma Trader (fuso de São Paulo)
+curl -s -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8080/api/v1/negotiation-hours | jq
+```
+
+O calendário semente registra os dias sem pregão, a sessão especial de 18 de fevereiro (pré-abertura às 12h45 e negociações a partir das 13h), e o funcionamento normal em 9 de julho. Sua carga é aplicada uma única vez por ledger; uma exclusão não é revertida por reinicialização. Os horários gerais publicados para o Trader são Tela 09:00–18:00, RFQ 09:00–18:00 e Voice 08:00–19:15, no fuso `America/Sao_Paulo`. Horários gerais não substituem exceções de datas específicas.
+
+Fontes do seed: [calendário B3 de 2026](https://www.b3.com.br/pt_br/noticias/calendario-de-negociacao-da-b3-confira-o-funcionamento-da-bolsa-em-2026.htm), [Circular 003/2026-VNC](https://www.b3.com.br/data/files/FC/55/3B/12/7FE9B9109B5E99B9AC094EA8/OC%20003-2026-VNC%20ERRATA_CALENDARIO%20DE%20FERIADOS%20EM%202026%20E%20FUNCIONAMENTO%20DA%20B3%20EM%2018022026%20QUARTAFEIRA%20DE%20CINZAS_PT.pdf) e [horários de negociação Trader](https://www.b3.com.br/pt_br/solucoes/plataformas/interface-de-negociacao/trader/horarios-de-negociacao.htm).
 
 > **Analytics COTAHIST:** retornos, stats, drawdown, relative, movers, gaps, rolling, spread, liquidity e compare são **indicadores derivados** de preços nominais. Não possuem ajuste por eventos corporativos e não são séries oficiais da B3.
 
@@ -412,9 +440,9 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 Com o servidor em execução, a especificação **OpenAPI 3.0** e o playground interativo estão disponíveis publicamente:
 
-- **Swagger UI (Playground Interativo):** [http://localhost:8080/api/docs/](http://localhost:8080/api/docs/)
+- **Swagger UI (Playground Interativo):** [http://localhost:8080/docs/](http://localhost:8080/docs/) (o alias `/api/docs/` permanece disponível)
   - Clique no botão **Authorize** no topo da página, cole seu `TUCANO_B3_TOKEN` em `BearerAuth` (ou `ApiKeyAuth`) e clique em **Authorize**. A sessão ficará salva automaticamente no navegador (`persistAuthorization`).
-- **Especificação OpenAPI JSON Bruta:** [http://localhost:8080/api/docs/openapi.json](http://localhost:8080/api/docs/openapi.json)
+- **Especificação OpenAPI JSON Bruta:** [http://localhost:8080/openapi.json](http://localhost:8080/openapi.json) (o alias `/api/docs/openapi.json` permanece disponível)
 
 ---
 

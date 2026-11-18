@@ -8,6 +8,7 @@ pub mod health;
 pub mod index_metrics;
 pub mod info;
 pub mod ingest;
+pub mod market_calendar;
 pub mod metrics;
 pub mod openapi;
 
@@ -39,5 +40,6 @@ pub fn routes(
         .merge(info::routes(state.clone()))
         .merge(cotahist::routes(state.clone()))
         .merge(cotahist_analytics::routes(state.clone()))
-        .merge(index_metrics::routes(state))
+        .merge(index_metrics::routes(state.clone()))
+        .merge(market_calendar::routes(state))
 }

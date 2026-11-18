@@ -26,6 +26,7 @@ The product is a single deployable binary with no mandatory external database se
 - IBOV, IDIV, and IFIX annual CSV ingestion from the official B3 daily-evolution download, with a Tokio worker, daily 02:00 America/Sao_Paulo refresh, initial historical backfill, and authenticated manual jobs.
 - COTAHIST REST: ticker discovery, quote history, latest, date ranges, compact series, extremes, and additive analytics derived from nominal prices.
 - Index REST: IBOV and IDIV historical series, and IBOV and IFIX latest points under `/api/v1/metrics/...`.
+- B3 market-calendar REST with a 2026 official-source seed, authenticated annual calendar CRUD stored in the SQLite ledger, and Trader negotiation hours from the B3 published schedule.
 - In-memory query cache (TTL + LRU), Bearer/API-key auth, per-key and per-IP rate limiting.
 - OpenAPI 3 generated from code, Swagger UI at `/docs`, health/info/metrics endpoints.
 - Structured logging, request IDs, Prometheus metrics, graceful shutdown, Docker packaging.
