@@ -1,28 +1,8 @@
 //! Integration tests for ingestion endpoints.
 
+use crate::support::empty_app as test_app;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use tower::ServiceExt;
-
-fn test_app() -> axum::Router {
-    let config = tucano_b3::config::AppConfig::default();
-    let cache = std::sync::Arc::new(tucano_b3::cache::store::CacheStore::new(&config.cache));
-    let data_loader = std::sync::Arc::new(
-        tucano_b3::data::reload::DataLoader::new(&config.data, cache.clone()).unwrap(),
-    );
-    let api_keys =
-        std::sync::Arc::new(tucano_b3::middleware::rate_limit::keys::ApiKeyRegistry::empty());
-    let rate_state = std::sync::Arc::new(
-        tucano_b3::middleware::rate_limit::layer::RateLimitState::new(
-            api_keys,
-            config.rate_limit.clone(),
-        ),
-    );
-    let metrics = std::sync::Arc::new(tucano_b3::metrics::AppMetrics::new());
-    let start_time = std::time::Instant::now();
-
-    tucano_b3::server::build_router(&config, data_loader, cache, rate_state, metrics, start_time)
-}
 
 #[tokio::test]
 async fn test_upload_without_file_returns_400() {

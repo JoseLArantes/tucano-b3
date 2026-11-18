@@ -16,6 +16,7 @@ use crate::cache::store::CacheStore;
 use crate::config::ObjectStorageConfig;
 use crate::data::reload::DataLoader;
 use crate::ingest::index_metrics::IndexIngestor;
+use crate::services::market_calendar::MarketCalendarService;
 
 /// Shared application state.
 ///
@@ -29,6 +30,7 @@ pub struct AppState {
     /// S3-compatible bucket used by `POST /api/v1/ingest/bucket`.
     pub object_storage: ObjectStorageConfig,
     pub index_ingestor: Arc<IndexIngestor>,
+    pub market_calendar: Arc<MarketCalendarService>,
     pub auth_enabled: bool,
 }
 
@@ -40,6 +42,10 @@ impl AppState {
         index_ingestor: Arc<IndexIngestor>,
         auth_enabled: bool,
     ) -> Self {
+        let market_calendar = Arc::new(
+            MarketCalendarService::new(index_ingestor.ledger())
+                .expect("B3 market calendar ledger must be available"),
+        );
         Self {
             start_time: Instant::now(),
             version: env!("CARGO_PKG_VERSION").to_string(),
@@ -47,6 +53,7 @@ impl AppState {
             cache,
             object_storage: ObjectStorageConfig::default(),
             index_ingestor,
+            market_calendar,
             auth_enabled,
         }
     }

@@ -30,36 +30,19 @@ mod ingest;
 mod ingest_e2e;
 
 use std::net::SocketAddr;
-use std::sync::Arc;
 use tucano_b3::config::AppConfig;
-use tucano_b3::data::reload::DataLoader;
-use tucano_b3::server::build_router;
+
+mod support;
 
 /// Helper: start a test server on a random port.
 async fn start_test_server() -> SocketAddr {
-    let config = AppConfig::default();
-    let cache = Arc::new(tucano_b3::cache::CacheStore::new(&config.cache));
-    let data_loader = Arc::new(DataLoader::new(&config.data, cache.clone()).unwrap());
-    let api_keys = Arc::new(tucano_b3::middleware::ApiKeyRegistry::empty());
-    let rate_limit_state = Arc::new(tucano_b3::middleware::RateLimitState::new(
-        api_keys,
-        config.rate_limit.clone(),
-    ));
-    let metrics = Arc::new(tucano_b3::metrics::AppMetrics::new());
-    let start_time = std::time::Instant::now();
-    let router = build_router(
-        &config,
-        data_loader,
-        cache,
-        rate_limit_state,
-        metrics,
-        start_time,
-    );
+    let (router, data_dir) = support::empty_router(AppConfig::default());
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
 
     tokio::spawn(async move {
+        let _data_dir = data_dir;
         axum::serve(listener, router).await.unwrap();
     });
 

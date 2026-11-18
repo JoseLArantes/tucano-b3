@@ -234,6 +234,7 @@ pub struct IndexIngestor {
     loader: Arc<DataLoader>,
     lock: AsyncMutex<()>,
     db: Mutex<Connection>,
+    ledger: Arc<crate::ledger::Ledger>,
 }
 
 impl IndexIngestor {
@@ -242,7 +243,7 @@ impl IndexIngestor {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        drop(crate::ledger::Ledger::open(&path)?);
+        let ledger = Arc::new(crate::ledger::Ledger::open(&path)?);
         let db = Connection::open(path)?;
         db.execute_batch("CREATE TABLE IF NOT EXISTS index_ingest_jobs (id TEXT PRIMARY KEY, status TEXT NOT NULL, created_at TEXT NOT NULL, results TEXT NOT NULL DEFAULT '[]', request_json TEXT NOT NULL DEFAULT '{}'); CREATE TABLE IF NOT EXISTS index_ingest_years (index_code TEXT NOT NULL, year INTEGER NOT NULL, source_hash TEXT NOT NULL, row_count INTEGER NOT NULL, completed_at TEXT NOT NULL, PRIMARY KEY(index_code, year)); CREATE TABLE IF NOT EXISTS index_partitions (index_code TEXT NOT NULL, year INTEGER NOT NULL, path TEXT NOT NULL, source_hash TEXT NOT NULL, row_count INTEGER NOT NULL, completed_at TEXT NOT NULL, PRIMARY KEY(index_code,year)); CREATE TABLE IF NOT EXISTS index_ingest_schedule (local_date TEXT PRIMARY KEY, completed_at TEXT NOT NULL);")?;
         let has_request = db
@@ -262,7 +263,13 @@ impl IndexIngestor {
             loader,
             lock: AsyncMutex::new(()),
             db: Mutex::new(db),
+            ledger,
         }))
+    }
+
+    /// Shared embedded ledger used by API services that persist operational records.
+    pub fn ledger(&self) -> Arc<crate::ledger::Ledger> {
+        self.ledger.clone()
     }
 
     pub fn create_job(

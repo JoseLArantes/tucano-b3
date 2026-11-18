@@ -43,6 +43,10 @@ pub struct CotahistRecord {
     pub tot_neg: Option<u32>,
     pub quat_tot: Option<u64>,
     pub vol_tot: Option<f64>,
+    /// Exact COTAHIST VOLTOT in cents, available only for an 18-digit source field.
+    pub turnover_cents: Option<u64>,
+    /// One-based physical line number in the original member.
+    pub source_line: usize,
 }
 
 /// Errors during COTAHIST parsing.
@@ -118,14 +122,9 @@ impl CotahistParser {
 
         loop {
             raw_bytes.clear();
-            let bytes_read = match buf_reader.read_until(b'\n', &mut raw_bytes) {
-                Ok(n) => n,
-                Err(e) => {
-                    tracing::warn!(line = line_num + 1, error = %e, "Erro ao ler linha");
-                    stats.lines_errored += 1;
-                    break;
-                }
-            };
+            let bytes_read = buf_reader
+                .read_until(b'\n', &mut raw_bytes)
+                .map_err(CotahistParseError::Io)?;
 
             if bytes_read == 0 {
                 break;
@@ -310,8 +309,12 @@ impl CotahistParser {
         let quat_tot = field_ascii(line, 152, 170).trim().parse::<u64>().ok();
 
         // VOLTOT (bytes 170-188) — volume (BRL)
-        let vol_tot =
-            Self::parse_implicit_decimal(field_ascii(line, 170, 188), 2, line_num, "VOLTOT")?;
+        let turnover_field = field_ascii(line, 170, 188);
+        let turnover_cents = (turnover_field.len() == 18
+            && turnover_field.bytes().all(|byte| byte.is_ascii_digit()))
+        .then(|| turnover_field.parse::<u64>().ok())
+        .flatten();
+        let vol_tot = Self::parse_implicit_decimal(turnover_field, 2, line_num, "VOLTOT")?;
 
         // CODISI (bytes 231-242) — ISIN code or B3 internal security code.
         let isin = {
@@ -352,6 +355,8 @@ impl CotahistParser {
             tot_neg,
             quat_tot,
             vol_tot,
+            turnover_cents,
+            source_line: line_num,
         }))
     }
 

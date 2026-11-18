@@ -4,7 +4,9 @@
 //! This is the primary data access layer used by all API endpoints.
 
 use crate::data::reader::DiscoveredFiles;
-use crate::data::schema::{cotahist_schema, equities_schema, ibov_schema, index_metrics_schema};
+use crate::data::schema::{
+    cotahist_schema, equities_schema, ibov_schema, index_metrics_schema, turnover_schema,
+};
 use arrow::array::RecordBatch;
 use datafusion::datasource::file_format::parquet::ParquetFormat;
 use datafusion::datasource::listing::{
@@ -170,7 +172,29 @@ impl QueryService {
             ctx.register_table("index_metrics", Arc::new(table))?;
         }
 
+        if let Some((_, paths)) = &files.turnover {
+            let urls = paths
+                .iter()
+                .map(|path| ListingTableUrl::parse(path.to_string_lossy()))
+                .collect::<Result<Vec<_>, _>>()?;
+            let table = ListingTable::try_new(
+                ListingTableConfig::new_with_multi_paths(urls)
+                    .with_listing_options(
+                        ListingOptions::new(Arc::new(ParquetFormat::default()))
+                            .with_file_extension(".parquet"),
+                    )
+                    .with_schema(turnover_schema()),
+            )?;
+            ctx.register_table("turnover_v1", Arc::new(table))?;
+        }
         Ok(Self { ctx, files })
+    }
+
+    pub(crate) fn turnover_revision(&self) -> Option<&str> {
+        self.files
+            .turnover
+            .as_ref()
+            .map(|(revision, _)| revision.as_str())
     }
 
     /// Execute a SQL query and return the results as RecordBatches.

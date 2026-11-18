@@ -168,3 +168,14 @@ pub enum SchemaValidationError {
         source: parquet::errors::ParquetError,
     },
 }
+/// Exact standard lot COTAHIST turnover with original source location.
+pub fn turnover_schema() -> Arc<Schema> {
+    Arc::new(Schema::new(vec![
+        Field::new("date", DataType::Date32, false),
+        Field::new("isin", DataType::Utf8, false),
+        Field::new("ticker", DataType::Utf8, false),
+        Field::new("cents", DataType::UInt64, false),
+        Field::new("member", DataType::Utf8, false),
+        Field::new("source_line", DataType::UInt64, false),
+    ]))
+}

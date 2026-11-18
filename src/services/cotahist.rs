@@ -16,6 +16,75 @@ use std::collections::HashMap;
 pub struct CotahistService;
 
 impl CotahistService {
+    /// Read exact turnover from the same immutable snapshot that supplies the revision.
+    pub async fn equity_turnover(
+        query: &QueryService,
+        isin: &str,
+        from: &str,
+        to: &str,
+    ) -> AppResult<EquityTurnoverResponse> {
+        let isin = isin.to_ascii_uppercase();
+        if !valid_isin(&isin) {
+            return Err(AppError::InvalidParam {
+                message: "ISIN inválido".to_string(),
+            });
+        }
+        let parse_date = |value: &str| {
+            chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
+                .ok()
+                .filter(|date| value.len() == 10 && date.format("%Y-%m-%d").to_string() == value)
+                .ok_or_else(|| AppError::InvalidDate {
+                    value: value.to_string(),
+                })
+        };
+        let from = parse_date(from)?;
+        let to = parse_date(to)?;
+        if !(0..366).contains(&(to - from).num_days()) {
+            return Err(AppError::InvalidParam {
+                message: "Informe um intervalo crescente de até 366 dias corridos".to_string(),
+            });
+        }
+        let mut observations = Vec::new();
+        let dataset_revision = query.turnover_revision().map(str::to_owned);
+        if dataset_revision.is_some() {
+            let sql = format!(
+                "SELECT date, isin, ticker, cents, member, source_line FROM turnover_v1
+                WHERE isin = '{isin}' AND date BETWEEN DATE '{from}' AND DATE '{to}' ORDER BY date"
+            );
+            for batch in query.execute_sql(&sql).await.map_err(anyhow::Error::new)? {
+                let cents = batch
+                    .column(3)
+                    .as_any()
+                    .downcast_ref::<UInt64Array>()
+                    .ok_or_else(|| anyhow::anyhow!("Invalid turnover cents column"))?;
+                let lines = batch
+                    .column(5)
+                    .as_any()
+                    .downcast_ref::<UInt64Array>()
+                    .ok_or_else(|| anyhow::anyhow!("Invalid turnover source line column"))?;
+                for row in 0..batch.num_rows() {
+                    let value = cents.value(row);
+                    observations.push(EquityTurnoverObservation {
+                        data: date32_string(&batch, 0, row),
+                        isin: string_value(&batch, 1, row),
+                        ticker: string_value(&batch, 2, row),
+                        currency: "BRL".to_string(),
+                        segment: TurnoverSegment::StandardLot,
+                        financial_turnover_brl: format!("{}.{:02}", value / 100, value % 100),
+                        voltot_raw: format!("{value:018}"),
+                        source_member: string_value(&batch, 4, row),
+                        source_line: lines.value(row),
+                    });
+                }
+            }
+        }
+        Ok(EquityTurnoverResponse {
+            dataset_revision,
+            observation_count: observations.len(),
+            observations,
+        })
+    }
+
     /// List spot-market equities whose latest records identify a supported share class.
     pub async fn list_equities(
         query_service: &QueryService,
@@ -956,7 +1025,7 @@ fn equity_quote_from_batch(
     })
 }
 
-fn valid_isin(value: &str) -> bool {
+pub(crate) fn valid_isin(value: &str) -> bool {
     if value.len() != 12
         || !value
             .chars()

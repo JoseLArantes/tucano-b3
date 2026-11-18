@@ -6,7 +6,7 @@ Este mapa localiza o vocabulário canônico do projeto. O [PRODUCT.md](PRODUCT.m
 
 | Contexto | Abrangência | Glossário |
 | --- | --- | --- |
-| Histórico de mercado B3 | Instrumentos, identificadores temporais, registros de negociação, fontes, versões, proveniência, operação e cobertura | [Histórico de mercado](docs/domain/CONTEXT.md) |
+| Histórico de mercado B3 | Instrumentos, identificadores temporais, registros de negociação, fontes, versões, proveniência, calendário de pregões e cobertura | [Histórico de mercado](docs/domain/CONTEXT.md) |
 
 O contexto atualmente documentado é compartilhado por aquisição, persistência e REST. Seus grupos de termos não implicam novos serviços ou módulos. Criar contextos adicionais apenas quando uma fronteira de domínio real exigir vocabulário próprio, incluindo então seu `CONTEXT.md` neste mapa.
 

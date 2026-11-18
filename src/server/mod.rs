@@ -96,7 +96,13 @@ pub fn build_router_with_ingestor(
         )
         // Standalone metrics endpoint (standard Prometheus scrape /metrics)
         .merge(crate::api::metrics::routes(metrics.clone(), start_time))
-        // Swagger UI (also serves /api/docs/openapi.json)
+        // Public Swagger aliases share the same generated OpenAPI document.
+        .merge(
+            SwaggerUi::new("/docs")
+                .url("/openapi.json", ApiDoc::openapi())
+                .config(utoipa_swagger_ui::Config::default().persist_authorization(true)),
+        )
+        // Preserve the original UI and document URLs for existing consumers.
         .merge(
             SwaggerUi::new("/api/docs")
                 .url("/api/docs/openapi.json", ApiDoc::openapi())

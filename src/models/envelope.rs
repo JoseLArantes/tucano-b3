@@ -8,8 +8,8 @@ use utoipa::ToSchema;
 
 use crate::models::cotahist::{
     DateQuotesResponse, EquityListResponse, EquityQuoteResponse, EquityResponse,
-    LatestQuoteResponse, PreUltExtremeResponse, QuoteListResponse, SeriesResponse,
-    TickerDetailResponse, TickerListResponse,
+    EquityTurnoverResponse, LatestQuoteResponse, PreUltExtremeResponse, QuoteListResponse,
+    SeriesResponse, TickerDetailResponse, TickerListResponse,
 };
 use crate::models::cotahist_analytics::{
     CompareResponse, DrawdownResponse, GapsResponse, LiquidityScreenResponse, MoversResponse,
@@ -18,6 +18,10 @@ use crate::models::cotahist_analytics::{
 };
 use crate::models::ibov::{IbovHistoryResponse, IbovLatestResponse};
 use crate::models::ingest::IngestResponse;
+use crate::models::market_calendar::{
+    MarketCalendarDeleteResponse, MarketCalendarResponse, MarketCalendarYearsResponse,
+    NegotiationHoursResponse,
+};
 
 /// Standard response envelope for all successful API responses.
 #[derive(Debug, Serialize, ToSchema)]
@@ -47,6 +51,11 @@ use crate::models::ingest::IngestResponse;
     EquityApiResponse = ApiResponse<EquityResponse>,
     EquityQuoteApiResponse = ApiResponse<EquityQuoteResponse>,
     EquityQuotesApiResponse = ApiResponse<Vec<EquityQuoteResponse>>,
+    EquityTurnoverApiResponse = ApiResponse<EquityTurnoverResponse>,
+    MarketCalendarYearsApiResponse = ApiResponse<MarketCalendarYearsResponse>,
+    MarketCalendarApiResponse = ApiResponse<MarketCalendarResponse>,
+    MarketCalendarDeleteApiResponse = ApiResponse<MarketCalendarDeleteResponse>,
+    NegotiationHoursApiResponse = ApiResponse<NegotiationHoursResponse>,
 )]
 pub struct ApiResponse<T: Serialize> {
     pub data: T,

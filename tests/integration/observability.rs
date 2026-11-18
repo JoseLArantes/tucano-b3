@@ -1,27 +1,8 @@
 //! Integration tests for observability.
 
+use crate::support::empty_app as test_app;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use std::sync::Arc;
-use tower::ServiceExt;
-
-fn test_app() -> axum::Router {
-    let config = tucano_b3::config::AppConfig::default();
-    let cache = Arc::new(tucano_b3::cache::store::CacheStore::new(&config.cache));
-    let data_loader =
-        Arc::new(tucano_b3::data::reload::DataLoader::new(&config.data, cache.clone()).unwrap());
-    let api_keys = Arc::new(tucano_b3::middleware::rate_limit::keys::ApiKeyRegistry::empty());
-    let rate_state = Arc::new(
-        tucano_b3::middleware::rate_limit::layer::RateLimitState::new(
-            api_keys,
-            config.rate_limit.clone(),
-        ),
-    );
-    let metrics = Arc::new(tucano_b3::metrics::AppMetrics::new());
-    let start_time = std::time::Instant::now();
-
-    tucano_b3::server::build_router(&config, data_loader, cache, rate_state, metrics, start_time)
-}
 
 #[tokio::test]
 async fn test_metrics_after_requests() {
@@ -29,7 +10,6 @@ async fn test_metrics_after_requests() {
 
     // Make a request to generate metrics
     let _ = app
-        .clone()
         .oneshot(
             Request::builder()
                 .uri("/api/v1/health")
@@ -68,7 +48,6 @@ async fn test_metrics_not_cached() {
 
     // Two metrics requests should both return fresh data
     let r1 = app
-        .clone()
         .oneshot(
             Request::builder()
                 .uri("/metrics")
@@ -103,7 +82,6 @@ async fn test_request_logging_does_not_crash() {
     // Various requests should all succeed without panic
     for path in ["/api/v1/health", "/api/v1/info", "/metrics"] {
         let response = app
-            .clone()
             .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
             .await
             .unwrap();

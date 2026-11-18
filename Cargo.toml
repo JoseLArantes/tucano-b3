@@ -7,7 +7,6 @@ description = "API REST de alta performance para dados de mercado da B3"
 license = "MIT"
 repository = "https://github.com/tucano-b3/tucano-b3"
 documentation = "https://github.com/tucano-b3/tucano-b3"
-homepage = "https://github.com/tucano-b3/tucano-b3"
 readme = "README.md"
 keywords = ["b3", "market-data", "rest-api", "parquet", "datafusion"]
 categories = ["web-programming::http-server", "finance"]

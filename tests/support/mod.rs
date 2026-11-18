@@ -19,8 +19,19 @@ impl TestApp {
 }
 
 pub fn empty_app() -> TestApp {
+    app_with_config(AppConfig::default())
+}
+
+pub fn app_with_config(config: AppConfig) -> TestApp {
+    let (router, data_dir) = empty_router(config);
+    TestApp {
+        router,
+        _data_dir: data_dir,
+    }
+}
+
+pub fn empty_router(mut config: AppConfig) -> (axum::Router, TempDir) {
     let data_dir = tempfile::tempdir().expect("create isolated test data directory");
-    let mut config = AppConfig::default();
     config.data.dir = data_dir.path().to_path_buf();
 
     let cache = Arc::new(tucano_b3::cache::CacheStore::new(&config.cache));
@@ -42,8 +53,5 @@ pub fn empty_app() -> TestApp {
         std::time::Instant::now(),
     );
 
-    TestApp {
-        router,
-        _data_dir: data_dir,
-    }
+    (router, data_dir)
 }

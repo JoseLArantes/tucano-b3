@@ -1,5 +1,16 @@
 # Consumers changelog
 
+## 2026-11-18
+
+### Adicionado
+
+- `GET /api/v1/cotahist/equities/by-isin/{isin}/turnover` retorna o `VOLTOT` exato de ON, PN e units do lote padrão, com datas observadas, revisão e origem. O campo `financial_turnover_brl` é texto com duas casas. Zeros explícitos são preservados e dias sem linha são omitidos. Contrato aditivo.
+
+- Novo recurso de calendário B3 com carga inicial de 2026 e CRUD autenticado: `GET /api/v1/calendar`, `POST /api/v1/calendar`, `GET /api/v1/calendar/{year}`, `PUT /api/v1/calendar/{year}` e `DELETE /api/v1/calendar/{year}`.
+- O corpo de calendário usa `ano`, `fontes` e `eventos`. Eventos incluem data ISO, nome, situação de funcionamento e observações/horários opcionais. `POST` responde `409` para ano existente; `PUT` e `DELETE` respondem `404` para ano ausente; datas fora do ano e duplicadas são rejeitadas.
+- `GET /api/v1/negotiation-hours` apresenta os horários gerais Trader publicados pela B3, no fuso `America/Sao_Paulo`: Tela 09:00–18:00, RFQ 09:00–18:00 e Voice 08:00–19:15. Horários especiais por data permanecem no calendário.
+- Compatibilidade: aditivo; todas as respostas de sucesso usam `{ data, meta }`. A fonte de 2026 é preservada e o seed é aplicado somente uma vez por ledger.
+
 ## 2026-11-17
 
 ### Alterado

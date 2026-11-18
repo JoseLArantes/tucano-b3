@@ -2,27 +2,12 @@
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use std::sync::Arc;
-use tower::ServiceExt;
 
-fn test_app_with_rate_limit(limit: u32) -> axum::Router {
+fn test_app_with_rate_limit(limit: u32) -> crate::support::TestApp {
     let mut config = tucano_b3::config::AppConfig::default();
     config.rate_limit.enabled = true;
     config.rate_limit.default_requests_per_minute = limit;
-
-    let cache = Arc::new(tucano_b3::cache::CacheStore::new(&config.cache));
-    let data_loader =
-        Arc::new(tucano_b3::data::reload::DataLoader::new(&config.data, cache.clone()).unwrap());
-    let api_keys = Arc::new(tucano_b3::middleware::ApiKeyRegistry::empty());
-    let rate_state = Arc::new(tucano_b3::middleware::RateLimitState::new(
-        api_keys,
-        config.rate_limit.clone(),
-    ));
-
-    let metrics = Arc::new(tucano_b3::metrics::AppMetrics::new());
-    let start_time = std::time::Instant::now();
-
-    tucano_b3::server::build_router(&config, data_loader, cache, rate_state, metrics, start_time)
+    crate::support::app_with_config(config)
 }
 
 #[tokio::test]
@@ -32,7 +17,6 @@ async fn test_rate_limit_integration() {
     // 3 requests should succeed
     for _ in 0..3 {
         let response = app
-            .clone()
             .oneshot(
                 Request::builder()
                     .uri("/api/v1/cotahist/tickers")
@@ -66,7 +50,6 @@ async fn test_health_bypasses_rate_limit() {
     // Many health requests should all succeed
     for _ in 0..10 {
         let response = app
-            .clone()
             .oneshot(
                 Request::builder()
                     .uri("/api/v1/health")
@@ -86,7 +69,6 @@ async fn test_429_response_format() {
 
     // Consume the one token
     let _ = app
-        .clone()
         .oneshot(
             Request::builder()
                 .uri("/api/v1/cotahist/tickers")

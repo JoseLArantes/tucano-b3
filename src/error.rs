@@ -16,6 +16,12 @@ pub enum AppError {
     #[error("Ticker não encontrado: {ticker}")]
     TickerNotFound { ticker: String },
 
+    #[error("Recurso não encontrado: {resource}")]
+    ResourceNotFound { resource: String },
+
+    #[error("Conflito: {message}")]
+    Conflict { message: String },
+
     #[error("Formato de data inválido: {value}")]
     InvalidDate { value: String },
 
@@ -46,6 +52,8 @@ impl AppError {
     pub fn code(&self) -> &'static str {
         match self {
             Self::TickerNotFound { .. } => "TICKER_NOT_FOUND",
+            Self::ResourceNotFound { .. } => "RESOURCE_NOT_FOUND",
+            Self::Conflict { .. } => "CONFLICT",
             Self::InvalidDate { .. } => "INVALID_DATE",
             Self::DateRangeInvalid => "DATE_RANGE_INVALID",
             Self::NoDataInRange => "NO_DATA_IN_RANGE",
@@ -61,6 +69,8 @@ impl AppError {
     pub fn status_code(&self) -> StatusCode {
         match self {
             Self::TickerNotFound { .. } => StatusCode::NOT_FOUND,
+            Self::ResourceNotFound { .. } => StatusCode::NOT_FOUND,
+            Self::Conflict { .. } => StatusCode::CONFLICT,
             Self::InvalidDate { .. } => StatusCode::BAD_REQUEST,
             Self::DateRangeInvalid => StatusCode::BAD_REQUEST,
             Self::NoDataInRange => StatusCode::NOT_FOUND,

@@ -12,6 +12,8 @@ fn test_app(auth_config: AuthConfig) -> Router {
         .route("/api/v1/health", get(|| async { "healthy" }))
         .route("/api/docs", get(|| async { "swagger" }))
         .route("/api/docs/openapi.json", get(|| async { "{}" }))
+        .route("/docs", get(|| async { "swagger" }))
+        .route("/openapi.json", get(|| async { "{}" }))
         .route("/api/v1/cotahist/tickers", get(|| async { "tickers" }))
         .layer(AuthLayer::new(auth_config))
 }
@@ -23,6 +25,9 @@ fn test_is_public_path() {
     assert!(is_public_path("/api/docs"));
     assert!(is_public_path("/api/docs/openapi.json"));
     assert!(is_public_path("/api/docs/index.html"));
+    assert!(is_public_path("/docs"));
+    assert!(is_public_path("/docs/index.html"));
+    assert!(is_public_path("/openapi.json"));
 
     assert!(!is_public_path("/redoc"));
     assert!(!is_public_path("/api/redoc"));
