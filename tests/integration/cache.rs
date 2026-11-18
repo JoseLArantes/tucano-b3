@@ -1,31 +1,8 @@
 //! Integration tests for caching behavior.
 
+use crate::support::empty_app as test_app_with_cache;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use tower::ServiceExt;
-
-fn test_app_with_cache() -> axum::Router {
-    let config = tucano_b3::config::AppConfig::default();
-    let cache = std::sync::Arc::new(tucano_b3::cache::store::CacheStore::new(&config.cache));
-    let data_loader = std::sync::Arc::new(
-        tucano_b3::data::reload::DataLoader::new(&config.data, cache.clone()).unwrap(),
-    );
-    let api_keys = std::sync::Arc::new(tucano_b3::middleware::ApiKeyRegistry::empty());
-    let rate_limit_state = std::sync::Arc::new(tucano_b3::middleware::RateLimitState::new(
-        api_keys,
-        config.rate_limit.clone(),
-    ));
-    let metrics = std::sync::Arc::new(tucano_b3::metrics::AppMetrics::new());
-    let start_time = std::time::Instant::now();
-    tucano_b3::server::build_router(
-        &config,
-        data_loader,
-        cache,
-        rate_limit_state,
-        metrics,
-        start_time,
-    )
-}
 
 #[tokio::test]
 async fn test_health_not_cached_integration() {
@@ -33,7 +10,6 @@ async fn test_health_not_cached_integration() {
 
     // Two identical health requests
     let r1 = app
-        .clone()
         .oneshot(
             Request::builder()
                 .uri("/api/v1/health")
@@ -65,7 +41,6 @@ async fn test_cotahist_tickers_cached() {
 
     // First request
     let r1 = app
-        .clone()
         .oneshot(
             Request::builder()
                 .uri("/api/v1/cotahist/tickers")
@@ -76,10 +51,7 @@ async fn test_cotahist_tickers_cached() {
         .unwrap();
 
     assert_eq!(r1.status(), StatusCode::OK);
-    let x_cache_1 = r1
-        .headers()
-        .get("x-cache")
-        .map(|v| v.to_str().unwrap().to_string());
+    assert_eq!(r1.headers()["x-cache"], "MISS");
 
     // Second identical request
     let r2 = app
@@ -93,15 +65,7 @@ async fn test_cotahist_tickers_cached() {
         .unwrap();
 
     assert_eq!(r2.status(), StatusCode::OK);
-    let x_cache_2 = r2
-        .headers()
-        .get("x-cache")
-        .map(|v| v.to_str().unwrap().to_string());
-
-    // If cache is enabled, second should be HIT
-    if x_cache_1 == Some("MISS".to_string()) {
-        assert_eq!(x_cache_2, Some("HIT".to_string()));
-    }
+    assert_eq!(r2.headers()["x-cache"], "HIT");
 }
 
 #[tokio::test]
@@ -109,7 +73,6 @@ async fn test_different_queries_different_cache() {
     let app = test_app_with_cache();
 
     let r1 = app
-        .clone()
         .oneshot(
             Request::builder()
                 .uri("/api/v1/cotahist/tickers?pagina=1")
@@ -129,6 +92,8 @@ async fn test_different_queries_different_cache() {
         .await
         .unwrap();
 
-    assert!(r1.status().is_success() || r1.status().is_client_error());
-    assert!(r2.status().is_success() || r2.status().is_client_error());
+    assert_eq!(r1.status(), StatusCode::OK);
+    assert_eq!(r2.status(), StatusCode::OK);
+    assert_eq!(r1.headers()["x-cache"], "MISS");
+    assert_eq!(r2.headers()["x-cache"], "MISS");
 }

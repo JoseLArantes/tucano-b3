@@ -22,13 +22,15 @@ pub fn empty_app() -> TestApp {
     app_with_config(AppConfig::default())
 }
 
-pub fn authenticated_app() -> TestApp {
-    let mut config = AppConfig::default();
-    config.auth.token = Some("calendar-test-token".to_string());
-    app_with_config(config)
+pub fn app_with_config(config: AppConfig) -> TestApp {
+    let (router, data_dir) = empty_router(config);
+    TestApp {
+        router,
+        _data_dir: data_dir,
+    }
 }
 
-fn app_with_config(mut config: AppConfig) -> TestApp {
+pub fn empty_router(mut config: AppConfig) -> (axum::Router, TempDir) {
     let data_dir = tempfile::tempdir().expect("create isolated test data directory");
     config.data.dir = data_dir.path().to_path_buf();
 
@@ -51,8 +53,5 @@ fn app_with_config(mut config: AppConfig) -> TestApp {
         std::time::Instant::now(),
     );
 
-    TestApp {
-        router,
-        _data_dir: data_dir,
-    }
+    (router, data_dir)
 }

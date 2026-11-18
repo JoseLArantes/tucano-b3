@@ -2,6 +2,12 @@ use axum::body::{to_bytes, Body};
 use axum::http::{Method, Request, StatusCode};
 use serde_json::{json, Value};
 
+fn authenticated_app() -> crate::support::TestApp {
+    let mut config = tucano_b3::config::AppConfig::default();
+    config.auth.token = Some("calendar-test-token".to_string());
+    crate::support::app_with_config(config)
+}
+
 fn request(method: Method, uri: &str, body: Value, authenticated: bool) -> Request<Body> {
     let mut builder = Request::builder()
         .method(method)
@@ -36,7 +42,7 @@ fn calendar_body(year: i32, event_date: &str) -> Value {
 
 #[tokio::test]
 async fn seeded_calendar_crud_and_trader_hours_are_available() {
-    let app = crate::support::authenticated_app();
+    let app = authenticated_app();
 
     let response = app
         .oneshot(request(
@@ -158,7 +164,7 @@ async fn seeded_calendar_crud_and_trader_hours_are_available() {
 
 #[tokio::test]
 async fn calendar_rejects_invalid_year_dates_and_unconfigured_mutations() {
-    let app = crate::support::authenticated_app();
+    let app = authenticated_app();
     let response = app
         .oneshot(request(
             Method::POST,
@@ -203,7 +209,7 @@ async fn calendar_rejects_invalid_year_dates_and_unconfigured_mutations() {
 
 #[tokio::test]
 async fn calendar_crud_requires_valid_auth_when_enabled() {
-    let app = crate::support::authenticated_app();
+    let app = authenticated_app();
     let response = app
         .oneshot(request(
             Method::DELETE,
