@@ -1,5 +1,7 @@
 //! Persistence and validation for source-attributed cash distributions.
 
+mod reports;
+
 use crate::ledger::{Ledger, LedgerError, ProventoDraft, ProventoEntry, ProventoFilters};
 use crate::models::proventos::{
     ProventoDeleteResponse, ProventoRequest, ProventoResponse, ProventoTipo, ProventosListResponse,
@@ -149,36 +151,57 @@ fn validate_record(mut request: ProventoRequest) -> Result<ProventoDraft, Proven
 
 fn validate_date(value: Option<&str>, field: &str) -> Result<Option<String>, ProventosError> {
     value
-        .map(|value| {
-            let date = NaiveDate::parse_from_str(value, "%Y-%m-%d").map_err(|_| {
-                ProventosError::Invalid(format!(
-                    "{field} deve usar uma data válida no formato AAAA-MM-DD"
-                ))
-            })?;
-            if date.format("%Y-%m-%d").to_string() != value {
-                return Err(ProventosError::Invalid(format!(
-                    "{field} deve usar o formato ISO AAAA-MM-DD"
-                )));
-            }
-            Ok(value.to_string())
-        })
+        .map(|value| parse_iso_date(value, field).map(|_| value.to_string()))
         .transpose()
 }
 
-fn validate_filters(query: &ProventosQuery) -> Result<ProventoFilters, ProventosError> {
-    let ticker = query
-        .ticker
-        .as_deref()
-        .map(|value| value.trim().to_ascii_uppercase());
-    if ticker.as_ref().is_some_and(|value| {
-        value.is_empty()
-            || value.len() > 10
-            || !value.bytes().all(|byte| byte.is_ascii_alphanumeric())
-    }) {
+fn parse_iso_date(value: &str, field: &str) -> Result<NaiveDate, ProventosError> {
+    let date = NaiveDate::parse_from_str(value, "%Y-%m-%d").map_err(|_| {
+        ProventosError::Invalid(format!(
+            "{field} deve usar uma data válida no formato AAAA-MM-DD"
+        ))
+    })?;
+    if date.format("%Y-%m-%d").to_string() != value {
+        return Err(ProventosError::Invalid(format!(
+            "{field} deve usar o formato ISO AAAA-MM-DD"
+        )));
+    }
+    Ok(date)
+}
+
+fn parse_tickers(
+    ticker: Option<&str>,
+    tickers: Option<&str>,
+) -> Result<Vec<String>, ProventosError> {
+    if ticker.is_some() && tickers.is_some() {
         return Err(ProventosError::Invalid(
-            "o filtro ticker deve conter de 1 a 10 caracteres alfanuméricos".to_string(),
+            "informe ticker ou tickers, sem combinar os dois parâmetros".to_string(),
         ));
     }
+    if let Some(ticker) = ticker {
+        Ok(vec![normalize_ticker_filter(ticker)?])
+    } else if let Some(tickers) = tickers {
+        let requested = tickers.split(',').collect::<Vec<_>>();
+        if requested.len() > 100 {
+            return Err(ProventosError::Invalid(
+                "o filtro tickers aceita no máximo 100 códigos".to_string(),
+            ));
+        }
+        let mut normalized = Vec::with_capacity(requested.len());
+        for ticker in requested {
+            let ticker = normalize_ticker_filter(ticker)?;
+            if !normalized.contains(&ticker) {
+                normalized.push(ticker);
+            }
+        }
+        Ok(normalized)
+    } else {
+        Ok(Vec::new())
+    }
+}
+
+fn validate_filters(query: &ProventosQuery) -> Result<ProventoFilters, ProventosError> {
+    let tickers = parse_tickers(query.ticker.as_deref(), query.tickers.as_deref())?;
     let data_pagamento_desde = validate_date(
         query.data_pagamento_desde.as_deref(),
         "data_pagamento_desde",
@@ -193,11 +216,24 @@ fn validate_filters(query: &ProventosQuery) -> Result<ProventoFilters, Proventos
         }
     }
     Ok(ProventoFilters {
-        ticker,
+        tickers,
         tipo: query.tipo.map(|tipo| tipo.as_str().to_string()),
         data_pagamento_desde,
         data_pagamento_ate,
     })
+}
+
+fn normalize_ticker_filter(value: &str) -> Result<String, ProventosError> {
+    let ticker = value.trim().to_ascii_uppercase();
+    if ticker.is_empty()
+        || ticker.len() > 10
+        || !ticker.bytes().all(|byte| byte.is_ascii_alphanumeric())
+    {
+        return Err(ProventosError::Invalid(
+            "cada ticker deve conter de 1 a 10 caracteres alfanuméricos".to_string(),
+        ));
+    }
+    Ok(ticker)
 }
 
 /// Parse a positive base-10 BRL value into integer micro-reais without floating point.
@@ -258,17 +294,17 @@ fn to_response(entry: ProventoEntry) -> Result<ProventoResponse, ProventosError>
         id: entry.id,
         ticker: entry.ticker,
         tipo,
-        valor: format!(
-            "{}.{:06}",
-            entry.valor_micros / 1_000_000,
-            entry.valor_micros % 1_000_000
-        ),
+        valor: format_micros(i128::from(entry.valor_micros)),
         data_com: entry.data_com,
         data_pagamento: entry.data_pagamento,
         obs: entry.obs,
         criado_em: entry.criado_em,
         atualizado_em: entry.atualizado_em,
     })
+}
+
+fn format_micros(micros: i128) -> String {
+    format!("{}.{:06}", micros / 1_000_000, micros % 1_000_000)
 }
 
 #[cfg(test)]
@@ -293,6 +329,7 @@ mod tests {
         let service = ProventosService::new(ledger.clone()).unwrap();
         let query = ProventosQuery {
             ticker: None,
+            tickers: None,
             tipo: None,
             data_pagamento_desde: None,
             data_pagamento_ate: None,

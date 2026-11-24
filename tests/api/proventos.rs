@@ -36,6 +36,119 @@ fn sample_provento() -> Value {
 }
 
 #[tokio::test]
+async fn reports_use_data_com_and_sum_all_types_with_exact_precision() {
+    let app = authenticated_app();
+    for (data_com, valor) in [
+        (Some("2026-01-01"), "0.000001"),
+        (Some("2026-08-14"), "0.000002"),
+        (Some("2026-12-31"), "0.000003"),
+        (Some("2025-12-31"), "2.000000"),
+        (None, "3.000000"),
+    ] {
+        let response = app
+            .oneshot(request(
+                Method::POST,
+                "/api/v1/proventos",
+                json!({
+                    "ticker": "TAEE3",
+                    "tipo": "Rendimento",
+                    "valor": valor,
+                    "data_com": data_com,
+                    "data_pagamento": if data_com.is_some() { "2027-01-01" } else { "2026-08-14" }
+                }),
+                true,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+    }
+    for (uri, expected) in [
+        (
+            "/api/v1/proventos/yearly?ticker=taee3&ano=2026",
+            json!({"ticker": "TAEE3", "ano": 2026, "proventos_on_year": "0.200106"}),
+        ),
+        (
+            "/api/v1/proventos/yearly?ticker=TAEE3&ano=2024",
+            json!({"ticker": "TAEE3", "ano": 2024, "proventos_on_year": "0.000000"}),
+        ),
+        (
+            "/api/v1/proventos/period?tickers=%20taee3%20,PETR4,TAEE3,ZZZZ99&desde=2026-08-14&ate=2026-08-21",
+            json!([
+                {"ticker": "TAEE3", "proventos_on_period": "0.200102"},
+                {"ticker": "PETR4", "proventos_on_period": "0.674100"},
+                {"ticker": "ZZZZ99", "proventos_on_period": "0.000000"}
+            ]),
+        ),
+        (
+            "/api/v1/proventos/period?ticker=TAEE3&desde=2026-08-14&ate=2026-08-14",
+            json!([{"ticker": "TAEE3", "proventos_on_period": "0.200102"}]),
+        ),
+        (
+            "/api/v1/proventos/series?tickers=ZZZZ99,TAEE3,PETR4&desde=2026-08-14&ate=2026-12-31",
+            json!([
+                {"ticker": "ZZZZ99", "series": []},
+                {"ticker": "TAEE3", "series": [
+                    {"date_ms": report_date_ms(8, 14), "valor": "0.200102"},
+                    {"date_ms": report_date_ms(12, 31), "valor": "0.000003"}
+                ]},
+                {"ticker": "PETR4", "series": [
+                    {"date_ms": report_date_ms(8, 21), "valor": "0.674100"}
+                ]}
+            ]),
+        ),
+    ] {
+        let response = app
+            .oneshot(request(Method::GET, uri, json!({}), true))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "{uri}");
+        assert_eq!(json_body(response).await["data"], expected, "{uri}");
+    }
+}
+
+fn report_date_ms(month: u32, day: u32) -> i64 {
+    chrono::NaiveDate::from_ymd_opt(2026, month, day)
+        .unwrap()
+        .and_time(chrono::NaiveTime::MIN)
+        .and_utc()
+        .timestamp_millis()
+}
+
+#[tokio::test]
+async fn reports_validate_query_parameters_and_require_credentials_when_configured() {
+    let app = authenticated_app();
+    for uri in [
+        "/api/v1/proventos/yearly?ticker=TAEE3",
+        "/api/v1/proventos/yearly?ticker=TAEE3&ano=10000",
+        "/api/v1/proventos/period?desde=2026-08-01&ate=2026-08-31",
+        "/api/v1/proventos/period?ticker=TAEE3&tickers=PETR4&desde=2026-08-01&ate=2026-08-31",
+        "/api/v1/proventos/series?ticker=TAEE3&desde=2026-08-31&ate=2026-08-01",
+        "/api/v1/proventos/series?ticker=TAEE3&desde=2026-02-30&ate=2026-08-01",
+        "/api/v1/proventos/series?ticker=TAEE3&desde=2026-08-01",
+        "/api/v1/proventos/series?tickers=TAEE3,,PETR4&desde=2026-08-01&ate=2026-08-31",
+    ] {
+        let response = app
+            .oneshot(request(Method::GET, uri, json!({}), true))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{uri}");
+        assert_eq!(json_body(response).await["error"]["code"], "INVALID_PARAM");
+    }
+    for route in ["yearly", "period", "series"] {
+        let response = app
+            .oneshot(request(
+                Method::GET,
+                &format!("/api/v1/proventos/{route}"),
+                json!({}),
+                false,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+}
+
+#[tokio::test]
 async fn seeded_proventos_are_queryable_with_exact_values_and_filters() {
     let app = authenticated_app();
     let response = app
@@ -74,6 +187,25 @@ async fn seeded_proventos_are_queryable_with_exact_values_and_filters() {
     assert_eq!(body["data"]["proventos"][0]["ticker"], "TAEE3");
     assert_eq!(body["data"]["proventos"][0]["tipo"], "JCP");
     assert_eq!(body["data"]["proventos"][0]["valor"], "0.119800");
+
+    let response = app
+        .oneshot(request(
+            Method::GET,
+            "/api/v1/proventos?tickers=TAEE3%2CPETR4&data_pagamento_desde=2026-11-23&data_pagamento_ate=2026-11-30",
+            json!({}),
+            true,
+        ))
+        .await
+        .unwrap();
+    let body = json_body(response).await;
+    assert_eq!(body["data"]["paginacao"]["total"], 3);
+    let matched_tickers = body["data"]["proventos"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|provento| provento["ticker"].as_str().unwrap())
+        .collect::<std::collections::HashSet<_>>();
+    assert_eq!(matched_tickers, ["PETR4", "TAEE3"].into_iter().collect());
 
     let response = app
         .oneshot(request(
@@ -200,6 +332,30 @@ async fn proventos_reject_invalid_fields_and_protect_mutations() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let body = json_body(response).await;
     assert_eq!(body["error"]["code"], "INVALID_PARAM");
+
+    for uri in [
+        "/api/v1/proventos?tickers=PETR4%2C%2CVALE3",
+        "/api/v1/proventos?ticker=PETR4&tickers=VALE3",
+    ] {
+        let response = app
+            .oneshot(request(Method::GET, uri, json!({}), true))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+    let too_many_tickers = std::iter::repeat_n("PETR4", 101)
+        .collect::<Vec<_>>()
+        .join(",");
+    let response = app
+        .oneshot(request(
+            Method::GET,
+            &format!("/api/v1/proventos?tickers={too_many_tickers}"),
+            json!({}),
+            true,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
     let response = app
         .oneshot(request(

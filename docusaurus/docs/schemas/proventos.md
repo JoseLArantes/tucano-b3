@@ -31,6 +31,35 @@ O corpo de `POST` e `PUT` contém `ticker`, `tipo`, `valor`, `data_com`, `data_p
 - `proventos`: lista paginada de objetos Provento.
 - `paginacao`: `total`, `pagina`, `por_pagina` e `total_paginas`.
 
-Filtros opcionais: `ticker`, `tipo`, `data_pagamento_desde` e `data_pagamento_ate`. Intervalos de pagamento são inclusivos. A ordenação é determinística: data de pagamento, ticker, tipo e ID; valores sem data ficam no final.
+Filtros opcionais: `ticker` para um único código, `tickers` para uma lista separada por vírgula (máximo de 100), `tipo`, `data_pagamento_desde` e `data_pagamento_ate`. `ticker` e `tickers` são mutuamente exclusivos. Intervalos de pagamento são inclusivos. A ordenação é determinística: data de pagamento, ticker, tipo e ID; valores sem data ficam no final.
 
 O ledger recebe um conjunto inicial de registros de novembro de 2026 uma única vez. Para qualquer registro, `obs` contém somente a informação de proveniência fornecida no cadastro; a API não verifica sua veracidade. Proventos cadastrados não são apresentados como série oficial da B3.
+
+## Relatórios
+
+Os três relatórios usam o envelope `{ data, meta }`. As somas em reais por ação ou cota incluem todos os tipos e são strings com seis casas decimais. Os exemplos abaixo mostram o conteúdo de `data`.
+
+**Total anual**, em `GET /api/v1/proventos/yearly`.
+
+```json
+{"ticker": "TAEE3", "ano": 2026, "proventos_on_year": "0.200100"}
+```
+
+**Total por período**, em `GET /api/v1/proventos/period`.
+
+```json
+[
+  {"ticker": "TAEE3", "proventos_on_period": "0.200100"},
+  {"ticker": "PETR4", "proventos_on_period": "0.674100"}
+]
+```
+
+**Série diária**, em `GET /api/v1/proventos/series`.
+
+```json
+[
+  {"ticker": "TAEE3", "series": [{"date_ms": 1786665600000, "valor": "0.200100"}]}
+]
+```
+
+Cada `date_ms` é um inteiro de 64 bits que representa a data-com à meia-noite UTC em milissegundos desde o Unix epoch. Em gráficos baseados em data civil, formate o eixo em UTC. Cada `valor` é a soma dos lançamentos daquela data-com. Séries não preenchem dias sem lançamentos.

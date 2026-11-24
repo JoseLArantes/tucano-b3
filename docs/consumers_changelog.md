@@ -8,6 +8,8 @@
 - Os tipos aceitos são `Dividendo`, `JCP` e `Rendimento`. `valor` entra e sai como decimal textual em reais; a resposta usa seis casas exatas. Datas ISO e `obs` de fonte/observações podem ser nulas.
 - Ledger SQLite novo recebe uma única carga inicial com 34 registros de novembro de 2026. Categorias plurais foram normalizadas para o tipo `Dividendo`; o campo `obs` mantém as observações fornecidas para os registros.
 - Compatibilidade: aditivo. Sucessos usam `{ data, meta }`; proventos não são apresentados como série oficial da B3.
+- A listagem aceita também `tickers`, com até 100 códigos separados por vírgula; `ticker` e `tickers` não podem ser usados juntos.
+- Relatórios aditivos em `GET /api/v1/proventos/yearly`, `/period` e `/series`. A seleção usa a data-com. Os totais `proventos_on_year`, `proventos_on_period` e o `valor` dos pontos usam texto decimal com seis casas.
 
 ## 2026-11-18
 

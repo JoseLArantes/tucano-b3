@@ -22,7 +22,10 @@ use crate::models::market_calendar::{
     MarketCalendarDeleteResponse, MarketCalendarResponse, MarketCalendarYearsResponse,
     NegotiationHoursResponse,
 };
-use crate::models::proventos::{ProventoDeleteResponse, ProventoResponse, ProventosListResponse};
+use crate::models::proventos::{
+    ProventoDeleteResponse, ProventoResponse, ProventosListResponse, ProventosPeriodTotal,
+    ProventosTickerSeries, ProventosYearlyResponse,
+};
 
 /// Standard response envelope for all successful API responses.
 #[derive(Debug, Serialize, ToSchema)]
@@ -60,6 +63,9 @@ use crate::models::proventos::{ProventoDeleteResponse, ProventoResponse, Provent
     ProventoApiResponse = ApiResponse<ProventoResponse>,
     ProventosListApiResponse = ApiResponse<ProventosListResponse>,
     ProventoDeleteApiResponse = ApiResponse<ProventoDeleteResponse>,
+    ProventosYearlyApiResponse = ApiResponse<ProventosYearlyResponse>,
+    ProventosPeriodApiResponse = ApiResponse<Vec<ProventosPeriodTotal>>,
+    ProventosSeriesApiResponse = ApiResponse<Vec<ProventosTickerSeries>>,
 )]
 pub struct ApiResponse<T: Serialize> {
     pub data: T,

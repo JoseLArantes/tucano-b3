@@ -106,6 +106,10 @@ pub struct ProventosQuery {
     /// Filtra por ticker; a API normaliza a entrada para maiúsculas.
     #[param(min_length = 1, max_length = 10, example = "PETR4")]
     pub ticker: Option<String>,
+    /// Filtra por até 100 tickers separados por vírgula; exclusivo com `ticker`.
+    /// Cada código é aparado, convertido para maiúsculas e deduplicado.
+    #[param(min_length = 1, max_length = 1099, example = "PETR4,VALE3")]
+    pub tickers: Option<String>,
     /// Filtra pela categoria `Dividendo`, `JCP` ou `Rendimento`.
     #[param(example = "JCP")]
     pub tipo: Option<ProventoTipo>,
@@ -181,4 +185,88 @@ pub struct ProventoDeleteResponse {
     pub id: i64,
     /// Indica que o registro foi excluído.
     pub removido: bool,
+}
+
+/// Seleção de um ticker e um ano civil de data-com.
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[serde(deny_unknown_fields)]
+#[into_params(parameter_in = Query)]
+pub struct ProventosYearlyQuery {
+    /// Código alfanumérico de 1 a 10 caracteres, normalizado para maiúsculas.
+    #[param(min_length = 1, max_length = 10, example = "TAEE3")]
+    pub ticker: String,
+    /// Ano civil da data-com, de 1 a 9999.
+    #[param(minimum = 1, maximum = 9999, example = 2026)]
+    pub ano: i32,
+}
+
+/// Seleção de tickers e intervalo inclusivo de data-com para relatórios.
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[serde(deny_unknown_fields)]
+#[into_params(parameter_in = Query)]
+pub struct ProventosPeriodQuery {
+    /// Código alfanumérico de 1 a 10 caracteres. Informe este campo ou `tickers`.
+    #[param(min_length = 1, max_length = 10, example = "TAEE3")]
+    pub ticker: Option<String>,
+    /// De 1 a 100 códigos separados por vírgula. Espaços externos e diferenças de caixa são normalizados. Códigos repetidos são consolidados. Informe este campo ou `ticker`.
+    #[param(example = "PETR4,TAEE3")]
+    pub tickers: Option<String>,
+    /// Primeira data-com incluída no relatório, em `AAAA-MM-DD`.
+    #[param(format = "date", example = "2026-08-01")]
+    pub desde: String,
+    /// Última data-com incluída no relatório, em `AAAA-MM-DD`. Deve ser igual ou posterior a `desde`.
+    #[param(format = "date", example = "2026-08-31")]
+    pub ate: String,
+}
+
+/// Total anual de proventos cadastrados para um ticker.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+#[schema(example = json!({"ticker": "TAEE3", "ano": 2026, "proventos_on_year": "0.200100"}))]
+pub struct ProventosYearlyResponse {
+    /// Código de negociação normalizado.
+    pub ticker: String,
+    /// Ano civil usado para filtrar a data-com.
+    pub ano: i32,
+    /// Soma em reais por ação ou cota, em texto com seis casas decimais. É `0.000000` quando não há registros.
+    #[schema(pattern = r"^[0-9]+\.[0-9]{6}$", example = "0.200100")]
+    pub proventos_on_year: String,
+}
+
+/// Total de proventos para um ticker no intervalo solicitado.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+#[schema(example = json!({"ticker": "TAEE3", "proventos_on_period": "0.200100"}))]
+pub struct ProventosPeriodTotal {
+    /// Código de negociação normalizado.
+    pub ticker: String,
+    /// Soma em reais por ação ou cota, em texto com seis casas decimais. É `0.000000` quando não há registros.
+    #[schema(pattern = r"^[0-9]+\.[0-9]{6}$", example = "0.200100")]
+    pub proventos_on_period: String,
+}
+
+/// Ponto da série com o total de proventos por data-com.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProventosSeriesPoint {
+    /// Data-com à meia-noite UTC, em milissegundos desde o Unix epoch.
+    #[schema(example = 1786665600000_i64)]
+    pub date_ms: i64,
+    /// Soma de todos os tipos nessa data-com, em reais por ação ou cota, em texto com seis casas decimais.
+    #[schema(pattern = r"^[0-9]+\.[0-9]{6}$", example = "0.200100")]
+    pub valor: String,
+}
+
+/// Série compacta de proventos para um ticker no intervalo solicitado.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+#[schema(example = json!({
+    "ticker": "TAEE3",
+    "series": [{"date_ms": 1786665600000_i64, "valor": "0.200100"}]
+}))]
+pub struct ProventosTickerSeries {
+    /// Código de negociação normalizado.
+    pub ticker: String,
+    /// Um ponto por data-com com registros, em ordem crescente. Sem registros, a lista fica vazia.
+    pub series: Vec<ProventosSeriesPoint>,
 }

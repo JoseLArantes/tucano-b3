@@ -1,4 +1,6 @@
-//! CRUD endpoints for cash distributions and similar proventos.
+//! CRUD and reporting endpoints for registered cash distributions.
+
+pub(crate) mod reports;
 
 use crate::api::health::AppState;
 #[allow(unused_imports)]
@@ -25,12 +27,13 @@ use std::time::Instant;
 pub struct ProventosJson<T>(T);
 
 /// Query extractor that returns malformed filters in the standard error envelope.
-pub struct ProventosQueryParams(ProventosQuery);
+pub struct ProventosQueryParams<T>(T);
 
 #[axum::async_trait]
-impl<S> FromRequestParts<S> for ProventosQueryParams
+impl<S, T> FromRequestParts<S> for ProventosQueryParams<T>
 where
     S: Send + Sync,
+    T: DeserializeOwned + Send,
 {
     type Rejection = AppError;
 
@@ -38,7 +41,7 @@ where
         parts: &mut axum::http::request::Parts,
         state: &S,
     ) -> Result<Self, Self::Rejection> {
-        Query::<ProventosQuery>::from_request_parts(parts, state)
+        Query::<T>::from_request_parts(parts, state)
             .await
             .map(|Query(value)| Self(value))
             .map_err(|error| AppError::InvalidParam {
@@ -88,11 +91,13 @@ fn require_configured_auth(state: &AppState) -> AppResult<()> {
 /// Listar proventos cadastrados
 ///
 /// Retorna registros em ordem determinística por data de pagamento, ticker, tipo
-/// e identificador. `ticker` e `tipo` podem ser combinados com o intervalo de
-/// pagamento inclusivo; registros sem data de pagamento não entram no intervalo.
-/// `pagina` começa em 1 e `por_pagina` assume 50, limitado a 1–1000. Valores são
-/// decimais textuais exatos em reais, com seis casas. `obs` preserva a fonte e as
-/// observações fornecidas, sem validação ou classificação como série oficial B3.
+/// e identificador. Use `ticker` para um código ou `tickers` para uma lista de até
+/// 100 códigos separados por vírgula; esses parâmetros são mutuamente exclusivos.
+/// A lista de tickers é combinada com `tipo` e o intervalo inclusivo de pagamento;
+/// registros sem data não entram no intervalo. `pagina` começa em 1 e `por_pagina`
+/// assume 50, limitado a 1–1000. Valores são decimais textuais exatos em reais,
+/// com seis casas. `obs` preserva a fonte e as observações fornecidas, sem validação
+/// ou classificação como série oficial B3.
 #[utoipa::path(
     get,
     path = "/proventos",
@@ -107,7 +112,7 @@ fn require_configured_auth(state: &AppState) -> AppResult<()> {
 )]
 pub(crate) async fn list_proventos(
     State(state): State<Arc<AppState>>,
-    ProventosQueryParams(query): ProventosQueryParams,
+    ProventosQueryParams(query): ProventosQueryParams<ProventosQuery>,
 ) -> AppResult<Json<ApiResponse<crate::models::proventos::ProventosListResponse>>> {
     let start = Instant::now();
     let list = state.proventos.list(query).map_err(map_proventos_error)?;
@@ -257,6 +262,9 @@ pub(crate) async fn delete_provento(
 pub fn routes(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/proventos", get(list_proventos).post(create_provento))
+        .route("/proventos/yearly", get(reports::yearly))
+        .route("/proventos/period", get(reports::period))
+        .route("/proventos/series", get(reports::series))
         .route(
             "/proventos/:id",
             get(get_provento)

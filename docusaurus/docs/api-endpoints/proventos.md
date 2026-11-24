@@ -1,8 +1,8 @@
 ---
-title: CRUD de proventos
+title: CRUD e relatórios de proventos
 ---
 
-# CRUD de proventos
+# CRUD e relatórios de proventos
 
 O recurso mantém registros de `Dividendo`, `JCP` e `Rendimento` no ledger SQLite. Cada lançamento inclui ticker, valor por ação ou cota, datas disponíveis e `obs` para fonte e observações. A API preserva valores em escala decimal exata de seis casas e não interpreta estes registros como uma série oficial da B3. A proveniência informada em `obs` é armazenada literalmente; a API não consulta nem valida a fonte.
 
@@ -14,17 +14,21 @@ As rotas exigem Bearer ou API Key quando a autenticação está habilitada. `POS
 | --- | --- | --- |
 | `GET` | `/api/v1/proventos` | Lista registros com filtros e paginação. |
 | `POST` | `/api/v1/proventos` | Cadastra um provento (`201`). |
+| `GET` | `/api/v1/proventos/yearly` | Soma proventos de um ticker por ano civil da data-com. |
+| `GET` | `/api/v1/proventos/period` | Soma proventos por ticker em um intervalo de data-com. |
+| `GET` | `/api/v1/proventos/series` | Retorna séries diárias por ticker para gráficos. |
 | `GET` | `/api/v1/proventos/{id}` | Consulta um registro por identificador. |
 | `PUT` | `/api/v1/proventos/{id}` | Substitui os campos de negócio do registro. |
 | `DELETE` | `/api/v1/proventos/{id}` | Exclui o registro persistido. |
 
 ## Consulta e filtros
 
-`GET /api/v1/proventos` aceita os parâmetros opcionais `ticker`, `tipo`, `data_pagamento_desde`, `data_pagamento_ate`, `pagina` e `por_pagina`.
+`GET /api/v1/proventos` aceita os parâmetros opcionais `ticker`, `tickers`, `tipo`, `data_pagamento_desde`, `data_pagamento_ate`, `pagina` e `por_pagina`.
 
 | Parâmetro | Formato | Padrão/limite | Comportamento |
 | --- | --- | --- | --- |
 | `ticker` | texto alfanumérico | 1–10 caracteres | Comparação exata após normalização para maiúsculas. |
+| `tickers` | lista separada por vírgula | 1–100 códigos | Retorna registros para qualquer código da lista. Mutuamente exclusivo com `ticker`; códigos duplicados são removidos. |
 | `tipo` | enum | `Dividendo`, `JCP`, `Rendimento` | Filtra pela categoria do registro. |
 | `data_pagamento_desde` | `AAAA-MM-DD` | opcional | Limite inferior inclusivo. Exclui registros sem data de pagamento. |
 | `data_pagamento_ate` | `AAAA-MM-DD` | opcional | Limite superior inclusivo. Exclui registros sem data de pagamento. |
@@ -33,10 +37,38 @@ As rotas exigem Bearer ou API Key quando a autenticação está habilitada. `POS
 
 Quando os dois limites de pagamento são informados, `desde` deve anteceder ou ser igual a `ate`. A ordem dos resultados é data de pagamento crescente, ticker, tipo e ID; registros sem data de pagamento ficam no final. A resposta inclui `data.proventos` e `data.paginacao` com `total`, `pagina`, `por_pagina` e `total_paginas`.
 
+`ticker` filtra um único código e permanece disponível por compatibilidade. Para filtrar vários, use `tickers=PETR4,VALE3`; valores são aparados, normalizados para maiúsculas e deduplicados. Os demais filtros são combinados com a seleção de tickers, e a paginação se aplica ao conjunto resultante.
+
 ```bash
 curl -s -H "Authorization: Bearer $TUCANO_B3_TOKEN" \
-  'http://localhost:8080/api/v1/proventos?ticker=PETR4&tipo=JCP&data_pagamento_desde=2026-11-01&data_pagamento_ate=2026-11-30' | jq
+  'http://localhost:8080/api/v1/proventos?tickers=PETR4,VALE3&tipo=JCP&data_pagamento_desde=2026-11-01&data_pagamento_ate=2026-11-30' | jq
 ```
+
+## Relatórios por data-com
+
+Os relatórios somam Dividendo, JCP e Rendimento por ação ou cota em reais. Cada lançamento entra na soma pela `data_com`, mesmo quando o pagamento ocorre em outro intervalo. Lançamentos sem data-com ficam fora. Esses valores vêm dos registros cadastrados.
+
+| GET | Parâmetros obrigatórios | Resultado em `data` |
+| --- | --- | --- |
+| `/api/v1/proventos/yearly` | `ticker` e `ano`, de 1 a 9999 | Um objeto com `ticker`, `ano` e `proventos_on_year`. |
+| `/api/v1/proventos/period` | `ticker` ou `tickers`, `desde` e `ate` | Uma lista com `ticker` e `proventos_on_period` para cada código. |
+| `/api/v1/proventos/series` | `ticker` ou `tickers`, `desde` e `ate` | Uma lista com `ticker` e `series` para cada código. |
+
+Use `desde` e `ate` no formato `AAAA-MM-DD`, com `desde` menor ou igual a `ate`. Os limites são inclusivos. Em `tickers`, use de 1 a 100 códigos separados por vírgula. Cada código contém de 1 a 10 caracteres alfanuméricos. Após remover os espaços externos e normalizar para maiúsculas, os relatórios retornam cada ticker distinto na ordem em que aparece pela primeira vez.
+
+Os relatórios retornam `200` com `"0.000000"` para totais sem registros e `[]` para a série do ticker sem registros. Os dias com lançamentos aparecem em ordem crescente como pontos `{date_ms, valor}`. Os dias sem lançamentos são omitidos. Os relatórios não são paginados. Consulte os [schemas de relatórios](../schemas/proventos.md#relatórios).
+
+```bash
+base='http://localhost:8080/api/v1/proventos'
+curl -fsS -H "Authorization: Bearer $TUCANO_B3_TOKEN" \
+  "$base/yearly?ticker=TAEE3&ano=2026"
+curl -fsS -H "Authorization: Bearer $TUCANO_B3_TOKEN" \
+  "$base/period?tickers=TAEE3,PETR4&desde=2026-08-14&ate=2026-08-21"
+curl -fsS -H "Authorization: Bearer $TUCANO_B3_TOKEN" \
+  "$base/series?tickers=TAEE3,PETR4&desde=2026-08-14&ate=2026-08-21"
+```
+
+Parâmetros ausentes, inválidos ou desconhecidos retornam `400`. Credenciais ausentes ou inválidas retornam `401` quando a autenticação está habilitada. O limite de requisições retorna `429`. Falhas internas de consulta retornam `500`.
 
 ## Criar, substituir e excluir
 
