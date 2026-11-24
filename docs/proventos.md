@@ -21,6 +21,27 @@ curl -s -H "Authorization: Bearer $TUCANO_B3_TOKEN" \
 
 Os registros não constituem uma série oficial da B3. O campo `obs` guarda a proveniência fornecida com cada registro, sem validação automática pela API.
 
+## Importar um arquivo CSV
+
+No Swagger UI em `/docs`, informe a credencial em **Authorize**, abra **proventos → POST /proventos/upload**, clique em **Try it out**, selecione o CSV no campo `file` e execute.
+
+```csv
+ticker,tipo,valor,data_com,data_pagamento,obs
+TSTU11,Rendimento,0.123456,2026-10-30,2026-11-10,"Comunicado do fundo, outubro"
+TSTU3,Dividendo,0.230000,2026-11-01,,
+TSTU4,JCP,0.120000,,,
+```
+
+O arquivo usa UTF-8, vírgula como separador e ponto no valor por ação ou cota. O cabeçalho deve ter `ticker`, `tipo` e `valor`. As colunas `data_com`, `data_pagamento` e `obs` são opcionais. Datas usam `AAAA-MM-DD` e células opcionais vazias correspondem a valores nulos. O limite é 1 MiB e 10.000 registros.
+
+```bash
+curl -fsS -H "Authorization: Bearer $TUCANO_B3_TOKEN" \
+  -F 'file=@proventos.csv;type=text/csv' \
+  'http://localhost:8080/api/v1/proventos/upload'
+```
+
+O serviço responde com `data.recebidos`, `data.inseridos` e `data.ignorados`. Um erro de validação rejeita o lote inteiro. Registros idênticos após normalização são ignorados. Alterações em registros existentes são feitas pelo CRUD.
+
 ## Relatórios por data-com
 
 | Rota GET | Consulta | Resultado em `data` |

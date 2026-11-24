@@ -356,6 +356,7 @@ Todas as rotas da API — **exceto** `/health`, `/api/v1/health`, `/docs/*`, `/o
 | `GET` | `/api/v1/proventos/period` | Protegida | Total por ticker em um intervalo inclusivo de data-com |
 | `GET` | `/api/v1/proventos/series` | Protegida | Séries diárias compactas por ticker e data-com |
 | `POST` | `/api/v1/proventos` | Protegida | Cadastra dividendo, JCP ou rendimento com fonte/observação |
+| `POST` | `/api/v1/proventos/upload` | Protegida | Importa um lote de proventos de um arquivo CSV |
 | `GET` | `/api/v1/proventos/{id}` | Protegida | Consulta um provento por ID |
 | `PUT` | `/api/v1/proventos/{id}` | Protegida | Substitui os campos de um provento |
 | `DELETE` | `/api/v1/proventos/{id}` | Protegida | Remove um provento persistido |
@@ -396,6 +397,8 @@ Fontes do seed: [calendário B3 de 2026](https://www.b3.com.br/pt_br/noticias/ca
 `/api/v1/proventos` mantém dividendos, JCP e rendimentos no SQLite. A lista aceita `ticker` para um código ou `tickers` para até 100 códigos separados por vírgula, além dos filtros `tipo`, `data_pagamento_desde` e `data_pagamento_ate`, `pagina` e `por_pagina`. Um ledger novo inclui 34 registros iniciais de novembro de 2026; essa carga não é atualizada automaticamente. O campo `valor` usa uma string decimal para manter seis casas sem arredondamento; registre a fonte e as observações de cada lançamento em `obs`. Esses registros preservam a proveniência declarada e não são apresentados como série oficial da B3. Consulte [docs/proventos.md](docs/proventos.md) para os exemplos de CRUD.
 
 Para relatórios, consulte `/api/v1/proventos/yearly?ticker=TAEE3&ano=2026` ou use `/period` e `/series` com `ticker` ou `tickers`, `desde` e `ate`. As somas incluem os três tipos de provento e são determinadas pela data-com. Veja [os exemplos de relatórios](docs/proventos.md#relatórios-por-data-com).
+
+Para importar um CSV pelo Swagger UI em `/docs`, autorize a sessão, abra **proventos → POST /proventos/upload**, clique em **Try it out** e selecione o arquivo no campo `file`. Veja [o formato e os exemplos de importação](docs/proventos.md#importar-um-arquivo-csv).
 
 > **Analytics COTAHIST:** retornos, stats, drawdown, relative, movers, gaps, rolling, spread, liquidity e compare são **indicadores derivados** de preços nominais. Não possuem ajuste por eventos corporativos e não são séries oficiais da B3.
 

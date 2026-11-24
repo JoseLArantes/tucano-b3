@@ -1,6 +1,7 @@
 //! CRUD and reporting endpoints for registered cash distributions.
 
 pub(crate) mod reports;
+pub(crate) mod upload;
 
 use crate::api::health::AppState;
 #[allow(unused_imports)]
@@ -15,9 +16,9 @@ use crate::models::proventos::{
     ProventoDeleteResponse, ProventoRequest, ProventoResponse, ProventosQuery,
 };
 use crate::services::proventos::ProventosError;
-use axum::extract::{FromRequest, FromRequestParts, Path, Query, Request, State};
+use axum::extract::{DefaultBodyLimit, FromRequest, FromRequestParts, Path, Query, Request, State};
 use axum::http::StatusCode;
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::de::DeserializeOwned;
 use std::sync::Arc;
@@ -262,6 +263,10 @@ pub(crate) async fn delete_provento(
 pub fn routes(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/proventos", get(list_proventos).post(create_provento))
+        .route(
+            "/proventos/upload",
+            post(upload::upload_csv).layer(DefaultBodyLimit::max(upload::UPLOAD_BODY_LIMIT)),
+        )
         .route("/proventos/yearly", get(reports::yearly))
         .route("/proventos/period", get(reports::period))
         .route("/proventos/series", get(reports::series))

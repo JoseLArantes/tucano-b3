@@ -35,6 +35,117 @@ fn sample_provento() -> Value {
     })
 }
 
+fn csv_upload(csv: &str, authorized: bool) -> Request<Body> {
+    let mut request = Request::builder()
+        .method(Method::POST)
+        .uri("/api/v1/proventos/upload")
+        .header(
+            "content-type",
+            "multipart/form-data; boundary=proventos-test",
+        );
+    if authorized {
+        request = request.header("authorization", "Bearer proventos-test-token");
+    }
+    request
+        .body(Body::from(format!(
+            "--proventos-test\r\nContent-Disposition: form-data; name=\"file\"; filename=\"proventos.csv\"\r\nContent-Type: text/csv\r\n\r\n{csv}\r\n--proventos-test--\r\n"
+        )))
+        .unwrap()
+}
+
+#[tokio::test]
+async fn csv_upload_imports_exact_values_and_skips_existing_and_in_file_duplicates() {
+    let app = authenticated_app();
+    let csv = concat!(
+        "\u{feff}tipo,ticker,valor,data_com,data_pagamento,obs\r\n",
+        "Rendimento, tstu11 ,0.123456,2026-06-10,2026-07-01,\"Fundo, comunicado público\"\r\n",
+        "Rendimento,TSTU11,0.123456,2026-06-10,2026-07-01,\"Fundo, comunicado público\"\r\n",
+        "JCP,TSTU11,0.000001,2026-06-10,,\r\n",
+        "Dividendo,TSTU11,1,2026-06-10,,\r\n",
+    );
+    for expected in [
+        json!({"recebidos": 4, "inseridos": 3, "ignorados": 1}),
+        json!({"recebidos": 4, "inseridos": 0, "ignorados": 4}),
+    ] {
+        let response = app.oneshot(csv_upload(csv, true)).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(json_body(response).await["data"], expected);
+    }
+    let response = app
+        .oneshot(request(
+            Method::GET,
+            "/api/v1/proventos/yearly?ticker=TSTU11&ano=2026",
+            json!({}),
+            true,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        json_body(response).await["data"]["proventos_on_year"],
+        "1.123457"
+    );
+
+    let response = app
+        .oneshot(request(
+            Method::GET,
+            "/api/v1/proventos?ticker=TSTU11&tipo=Rendimento",
+            json!({}),
+            true,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        json_body(response).await["data"]["proventos"][0]["obs"],
+        "Fundo, comunicado público"
+    );
+}
+
+#[tokio::test]
+async fn invalid_csv_upload_is_atomic_and_uploads_require_auth() {
+    let app = authenticated_app();
+    let invalid = concat!(
+        "ticker,tipo,valor\n",
+        "ABCD3,Dividendo,1.00\n",
+        "ABCD4,JCP,0.1234567\n",
+    );
+    let response = app.oneshot(csv_upload(invalid, true)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let error = json_body(response).await;
+    assert!(error["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("linha 3"));
+
+    let missing_headers = "ticker,tipo\nABCD3,Dividendo\n";
+    let response = app
+        .oneshot(csv_upload(missing_headers, true))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let valid = "ticker,tipo,valor\nABCD3,Dividendo,1\n";
+    let response = app.oneshot(csv_upload(valid, false)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let response = crate::support::empty_app()
+        .oneshot(csv_upload(valid, false))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+    let response = app.oneshot(csv_upload(valid, true)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(json_body(response).await["data"]["inseridos"], 1);
+
+    let oversized = "x".repeat(1024 * 1024 + 1);
+    let response = app.oneshot(csv_upload(&oversized, true)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    assert_eq!(
+        json_body(response).await["error"]["code"],
+        "PAYLOAD_TOO_LARGE"
+    );
+}
+
 #[tokio::test]
 async fn reports_use_data_com_and_sum_all_types_with_exact_precision() {
     let app = authenticated_app();

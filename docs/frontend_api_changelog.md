@@ -8,6 +8,7 @@
 - DTO fechado com `ticker`, `tipo` (`Dividendo`, `JCP`, `Rendimento`), `valor` textual exato em reais, `data_com`, `data_pagamento` e `obs`; respostas também trazem ID e datas de auditoria. Listas retornam paginação em `data.paginacao`.
 - Um ledger novo recebe uma única carga de 34 registros de novembro de 2026. A proveniência fica em `obs`; compatibilidade aditiva, sem classificação como série oficial da B3.
 - Relatórios aditivos por data-com. `GET /api/v1/proventos/yearly` recebe `ticker` e `ano` e devolve `proventos_on_year`. `/period` e `/series` recebem `ticker` ou `tickers`, `desde` e `ate`. O primeiro devolve `proventos_on_period` por ticker e o segundo devolve pontos diários `{date_ms, valor}` por ticker.
+- `POST /api/v1/proventos/upload` recebe um CSV em `multipart/form-data` no campo binário `file` e retorna `{recebidos, inseridos, ignorados}` em `data`. A mudança é aditiva e os contratos do CRUD permanecem compatíveis.
 
 ## 2026-11-18
 

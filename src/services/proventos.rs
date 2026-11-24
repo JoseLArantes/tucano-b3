@@ -1,5 +1,6 @@
 //! Persistence and validation for source-attributed cash distributions.
 
+mod csv_import;
 mod reports;
 
 use crate::ledger::{Ledger, LedgerError, ProventoDraft, ProventoEntry, ProventoFilters};

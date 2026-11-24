@@ -21,3 +21,4 @@ Este contexto cobre a proveniência, a aquisição, o armazenamento e a exposiç
 - A API preserva as fontes fornecidas e não infere feriados nem horários que não estejam descritos nas fontes.
 - Proventos mantêm origem em `obs`, valor decimal com escala exata de seis casas e datas ISO. A carga inicial é aplicada uma vez por ledger; alterações e exclusões posteriores são persistentes.
 - Os relatórios somam os valores unitários de todos os tipos por ticker. Os limites de data-com são inclusivos. Registros sem data-com ficam fora da soma.
+- A importação CSV grava o lote em uma transação. Dois lançamentos são considerados idênticos na importação quando coincidem ticker, tipo, valor exato, as duas datas e observação após normalização. Um lançamento já existente conserva seu ID e os valores cadastrados.

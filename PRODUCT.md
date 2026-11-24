@@ -28,7 +28,7 @@ The product is a single deployable binary with no mandatory external database se
 - Exact COTAHIST daily BRL turnover for verified standard-lot equity and corporate unit observations by ISIN, with original VOLTOT digits and published dataset revision. Missing observations are omitted and published zeros are preserved.
 - Index REST: IBOV and IDIV historical series, and IBOV and IFIX latest points under `/api/v1/metrics/...`.
 - B3 market-calendar REST with a 2026 official-source seed, authenticated annual calendar CRUD stored in the SQLite ledger, and Trader negotiation hours from the B3 published schedule.
-- Source-attributed provento records (`Dividendo`, `JCP`, and `Rendimento`) with authenticated CRUD in the SQLite ledger. Reporting provides per-ticker totals by calendar year or date range, plus compact daily series, all by data-com. Records retain their supplied provenance and are not presented as an official B3 series.
+- Source-attributed provento records (`Dividendo`, `JCP`, and `Rendimento`) with authenticated CRUD and atomic CSV import in the SQLite ledger. Reporting provides per-ticker totals by calendar year or date range, plus compact daily series, all by data-com. Records retain their supplied provenance and are not presented as an official B3 series.
 - In-memory query cache (TTL + LRU), Bearer/API-key auth, per-key and per-IP rate limiting.
 - OpenAPI 3 generated from code, Swagger UI at `/docs`, health/info/metrics endpoints.
 - Structured logging, request IDs, Prometheus metrics, graceful shutdown, Docker packaging.

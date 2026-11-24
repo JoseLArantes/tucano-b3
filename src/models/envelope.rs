@@ -23,8 +23,8 @@ use crate::models::market_calendar::{
     NegotiationHoursResponse,
 };
 use crate::models::proventos::{
-    ProventoDeleteResponse, ProventoResponse, ProventosListResponse, ProventosPeriodTotal,
-    ProventosTickerSeries, ProventosYearlyResponse,
+    ProventoDeleteResponse, ProventoResponse, ProventosCsvUploadResponse, ProventosListResponse,
+    ProventosPeriodTotal, ProventosTickerSeries, ProventosYearlyResponse,
 };
 
 /// Standard response envelope for all successful API responses.
@@ -66,6 +66,7 @@ use crate::models::proventos::{
     ProventosYearlyApiResponse = ApiResponse<ProventosYearlyResponse>,
     ProventosPeriodApiResponse = ApiResponse<Vec<ProventosPeriodTotal>>,
     ProventosSeriesApiResponse = ApiResponse<Vec<ProventosTickerSeries>>,
+    ProventosCsvUploadApiResponse = ApiResponse<ProventosCsvUploadResponse>,
 )]
 pub struct ApiResponse<T: Serialize> {
     pub data: T,

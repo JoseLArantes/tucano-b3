@@ -237,6 +237,42 @@ async fn test_openapi_documents_proventos_reporting() {
 }
 
 #[tokio::test]
+async fn test_openapi_exposes_proventos_csv_as_a_swagger_file_input() {
+    let response = test_app()
+        .oneshot(
+            Request::builder()
+                .uri("/openapi.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let operation = &json["paths"]["/proventos/upload"]["post"];
+    let form = &operation["requestBody"]["content"]["multipart/form-data"]["schema"];
+    assert_eq!(
+        form["$ref"],
+        "#/components/schemas/ProventosCsvUploadRequest"
+    );
+    let schema = &json["components"]["schemas"]["ProventosCsvUploadRequest"];
+    assert_eq!(schema["required"], serde_json::json!(["file"]));
+    assert_eq!(schema["additionalProperties"], false);
+    assert_eq!(schema["properties"]["file"]["type"], "string");
+    assert_eq!(schema["properties"]["file"]["format"], "binary");
+    assert_eq!(
+        operation["security"],
+        serde_json::json!([{"BearerAuth": []}, {"ApiKeyAuth": []}])
+    );
+    for status in ["200", "400", "401", "413", "429", "500", "503"] {
+        assert!(operation["responses"][status].is_object(), "{status}");
+    }
+}
+
+#[tokio::test]
 async fn test_openapi_has_all_endpoints() {
     let app = test_app();
     let response = app

@@ -35,6 +35,24 @@ Filtros opcionais: `ticker` para um único código, `tickers` para uma lista sep
 
 O ledger recebe um conjunto inicial de registros de novembro de 2026 uma única vez. Para qualquer registro, `obs` contém somente a informação de proveniência fornecida no cadastro; a API não verifica sua veracidade. Proventos cadastrados não são apresentados como série oficial da B3.
 
+## Importação CSV
+
+`POST /api/v1/proventos/upload` usa `multipart/form-data` com um campo binário obrigatório chamado `file`. O arquivo tem cabeçalho e de 1 a 10.000 registros em UTF-8, com limite de 1 MiB. As colunas obrigatórias são `ticker`, `tipo` e `valor`, com as mesmas regras do cadastro individual. As colunas `data_com`, `data_pagamento` e `obs` são opcionais. O serviço interpreta célula opcional vazia como nula e rejeita cabeçalhos repetidos ou desconhecidos.
+
+Dois registros são idênticos se coincidirem os seis campos após normalização, incluindo `obs`. O serviço compara os valores decimais pela quantidade exata de micro-reais. Uma observação diferente representa um registro diferente para a importação.
+
+A resposta `200` usa o envelope `{ data, meta }`. Exemplo de `data`:
+
+```json
+{"recebidos": 3, "inseridos": 2, "ignorados": 1}
+```
+
+| Campo | Tipo | Significado |
+| --- | --- | --- |
+| `recebidos` | inteiro | Quantidade de registros válidos lidos, sem contar o cabeçalho. |
+| `inseridos` | inteiro | Quantidade de registros novos gravados na transação. |
+| `ignorados` | inteiro | Quantidade de registros idênticos a um já gravado ou visto antes no mesmo arquivo. |
+
 ## Relatórios
 
 Os três relatórios usam o envelope `{ data, meta }`. As somas em reais por ação ou cota incluem todos os tipos e são strings com seis casas decimais. Os exemplos abaixo mostram o conteúdo de `data`.

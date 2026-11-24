@@ -10,6 +10,7 @@
 - Compatibilidade: aditivo. Sucessos usam `{ data, meta }`; proventos não são apresentados como série oficial da B3.
 - A listagem aceita também `tickers`, com até 100 códigos separados por vírgula; `ticker` e `tickers` não podem ser usados juntos.
 - Relatórios aditivos em `GET /api/v1/proventos/yearly`, `/period` e `/series`. A seleção usa a data-com. Os totais `proventos_on_year`, `proventos_on_period` e o `valor` dos pontos usam texto decimal com seis casas.
+- Importação aditiva pelo `POST /api/v1/proventos/upload`, com campo multipart `file` selecionável no Swagger UI. O CSV é validado em lote e a resposta inclui `recebidos`, `inseridos` e `ignorados`.
 
 ## 2026-11-18
 

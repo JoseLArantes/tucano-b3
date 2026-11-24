@@ -187,6 +187,28 @@ pub struct ProventoDeleteResponse {
     pub removido: bool,
 }
 
+/// Formulário multipart para upload de um arquivo CSV de proventos.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProventosCsvUploadRequest {
+    /// Arquivo CSV UTF-8 de até 1 MiB e 10.000 registros, com cabeçalho e separador vírgula.
+    #[schema(value_type = String, format = Binary)]
+    pub file: String,
+}
+
+/// Resultado de uma importação CSV confirmada no ledger.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+#[schema(example = json!({"recebidos": 3, "inseridos": 2, "ignorados": 1}))]
+pub struct ProventosCsvUploadResponse {
+    /// Total de registros válidos lidos, sem contar o cabeçalho.
+    pub recebidos: usize,
+    /// Quantidade de registros novos inseridos na mesma transação.
+    pub inseridos: usize,
+    /// Quantidade de registros idênticos a um já persistido ou inserido antes no mesmo arquivo.
+    pub ignorados: usize,
+}
+
 /// Seleção de um ticker e um ano civil de data-com.
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
 #[serde(deny_unknown_fields)]

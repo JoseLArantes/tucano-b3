@@ -1,7 +1,9 @@
 //! SQLite ledger connection and operations.
 
 use chrono::NaiveDate;
-use rusqlite::{params_from_iter, types::Value, Connection, OptionalExtension};
+use rusqlite::{
+    params_from_iter, types::Value, Connection, OptionalExtension, TransactionBehavior,
+};
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Mutex;
@@ -411,6 +413,45 @@ impl Ledger {
         }
         tx.commit()?;
         Ok(())
+    }
+
+    /// Import new normalized records in one transaction, skipping exact matches.
+    pub fn import_proventos_csv(
+        &self,
+        records: &[ProventoDraft],
+        now: &str,
+    ) -> Result<usize, LedgerError> {
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|e| LedgerError::Lock(e.to_string()))?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut inserted = 0;
+        {
+            let mut stmt = tx.prepare_cached(
+                "INSERT INTO proventos
+                    (ticker, tipo, valor_micros, data_com, data_pagamento, obs, created_at, updated_at)
+                 SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7
+                 WHERE NOT EXISTS (
+                     SELECT 1 FROM proventos
+                     WHERE ticker = ?1 AND tipo = ?2 AND valor_micros = ?3
+                       AND data_com IS ?4 AND data_pagamento IS ?5 AND obs IS ?6
+                 )",
+            )?;
+            for record in records {
+                inserted += stmt.execute(rusqlite::params![
+                    record.ticker,
+                    record.tipo,
+                    record.valor_micros,
+                    record.data_com,
+                    record.data_pagamento,
+                    record.obs,
+                    now,
+                ])?;
+            }
+        }
+        tx.commit()?;
+        Ok(inserted)
     }
 
     /// Insert one provento and return the persisted row.
