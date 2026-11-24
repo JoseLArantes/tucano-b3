@@ -46,6 +46,49 @@ async fn test_openapi_json_is_valid() {
 }
 
 #[tokio::test]
+async fn test_openapi_groups_ingestion_operations_under_one_tag() {
+    let app = test_app();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/docs/openapi.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    let tags = json["tags"].as_array().unwrap();
+    assert!(tags
+        .iter()
+        .any(|tag| tag["name"].as_str() == Some("ingestão")));
+    assert!(!tags
+        .iter()
+        .any(|tag| tag["name"].as_str() == Some("ingest")));
+
+    let paths = json["paths"].as_object().unwrap();
+    for (path, method) in [
+        ("/ingest/upload", "post"),
+        ("/ingest/folder", "post"),
+        ("/ingest/bucket", "post"),
+        ("/ingest/indices", "post"),
+        ("/ingest/indices/{id}", "get"),
+        ("/ingest/indices/status", "get"),
+    ] {
+        assert_eq!(
+            paths[path][method]["tags"],
+            serde_json::json!(["ingestão"]),
+            "unexpected OpenAPI tag for {method} {path}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn test_openapi_documents_provento_crud_and_exact_decimal_schema() {
     let app = test_app();
     let response = app
