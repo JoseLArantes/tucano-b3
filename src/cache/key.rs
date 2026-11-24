@@ -44,6 +44,7 @@ pub fn is_cacheable(path: &str) -> bool {
         || path == "/api/v1/metrics"
         || path.starts_with("/api/v1/info")
         || path.starts_with("/api/v1/calendar")
+        || path.starts_with("/api/v1/proventos")
         || (path.starts_with("/api/v1/cotahist/equities/by-isin/") && path.ends_with("/turnover"))
         || path.starts_with("/metrics")
         || path.starts_with("/api/docs")

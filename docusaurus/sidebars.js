@@ -6,6 +6,8 @@ const sidebars = {
     { type: 'doc', id: 'schemas/index-metrics', label: 'Schema dos índices' },
     { type: 'doc', id: 'api-endpoints/market-calendar', label: 'Calendário B3' },
     { type: 'doc', id: 'schemas/market-calendar', label: 'Schema do calendário' },
+    { type: 'doc', id: 'api-endpoints/proventos', label: 'Proventos' },
+    { type: 'doc', id: 'schemas/proventos', label: 'Schema de proventos' },
     { type: 'doc', id: 'operations/index-ingestion', label: 'Operação de índices' },
     {
       type: 'category',

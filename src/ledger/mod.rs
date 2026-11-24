@@ -4,4 +4,6 @@
 
 pub mod connection;
 
-pub use connection::{Ledger, LedgerError, TickerBatchEntry};
+pub use connection::{
+    Ledger, LedgerError, ProventoDraft, ProventoEntry, ProventoFilters, TickerBatchEntry,
+};

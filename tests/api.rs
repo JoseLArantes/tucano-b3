@@ -24,4 +24,6 @@ mod market_calendar;
 mod metrics;
 #[path = "api/openapi.rs"]
 mod openapi;
+#[path = "api/proventos.rs"]
+mod proventos;
 mod support;

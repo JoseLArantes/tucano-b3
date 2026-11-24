@@ -1,5 +1,13 @@
 # Frontend API changelog
 
+## 2026-11-24
+
+### Adicionado
+
+- CRUD autenticado para proventos: `GET` e `POST /api/v1/proventos`; `GET`, `PUT` e `DELETE /api/v1/proventos/{id}`. A listagem aceita `ticker`, `tipo`, `data_pagamento_desde`, `data_pagamento_ate`, `pagina` e `por_pagina`.
+- DTO fechado com `ticker`, `tipo` (`Dividendo`, `JCP`, `Rendimento`), `valor` textual exato em reais, `data_com`, `data_pagamento` e `obs`; respostas também trazem ID e datas de auditoria. Listas retornam paginação em `data.paginacao`.
+- Um ledger novo recebe uma única carga de 34 registros de novembro de 2026. A proveniência fica em `obs`; compatibilidade aditiva, sem classificação como série oficial da B3.
+
 ## 2026-11-18
 
 ### Adicionado

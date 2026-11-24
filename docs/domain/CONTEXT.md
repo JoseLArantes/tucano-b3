@@ -10,6 +10,7 @@ Este contexto cobre a proveniência, a aquisição, o armazenamento e a exposiç
 - **Modalidade Trader**: modalidade `Tela`, `RFQ` ou `Voice` cujos horários constam na página de negociação do Trader da B3.
 - **Fonte oficial**: página ou documento publicado pela B3 usado para preencher um calendário ou horário. A URL é preservada no contrato servido.
 - **Ledger**: banco SQLite embarcado que mantém os calendários anuais e os registros operacionais do serviço.
+- **Provento**: registro com origem atribuída de `Dividendo`, `JCP` ou `Rendimento`, associado a um ticker, valor unitário, datas disponíveis e observação de origem. Registros podem vir de fontes públicas que não são a própria B3; a API preserva essa origem e não os descreve como série oficial da B3.
 
 ## Regras do contexto
 
@@ -17,3 +18,4 @@ Este contexto cobre a proveniência, a aquisição, o armazenamento e a exposiç
 - O calendário 2026 é semeado uma única vez por ledger. Operações posteriores de criação, substituição e exclusão são persistidas no SQLite.
 - Horários são apresentados no fuso `America/Sao_Paulo`; horários especiais pertencem ao evento da data e não alteram automaticamente o horário geral da modalidade.
 - A API preserva as fontes fornecidas e não infere feriados nem horários que não estejam descritos nas fontes.
+- Proventos mantêm origem em `obs`, valor decimal com escala exata de seis casas e datas ISO. A carga inicial é aplicada uma vez por ledger; alterações e exclusões posteriores são persistentes.

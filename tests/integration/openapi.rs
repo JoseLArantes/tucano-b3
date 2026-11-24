@@ -46,6 +46,81 @@ async fn test_openapi_json_is_valid() {
 }
 
 #[tokio::test]
+async fn test_openapi_documents_provento_crud_and_exact_decimal_schema() {
+    let app = test_app();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/docs/openapi.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    let paths = &json["paths"];
+    for (path, method) in [
+        ("/proventos", "get"),
+        ("/proventos", "post"),
+        ("/proventos/{id}", "get"),
+        ("/proventos/{id}", "put"),
+        ("/proventos/{id}", "delete"),
+    ] {
+        assert_eq!(
+            paths[path][method]["tags"],
+            serde_json::json!(["proventos"])
+        );
+        assert!(paths[path][method]["security"].is_array());
+    }
+    assert_eq!(
+        json["components"]["schemas"]["ProventoRequest"]["properties"]["valor"]["type"],
+        "string"
+    );
+    assert_eq!(
+        json["components"]["schemas"]["ProventoRequest"]["additionalProperties"],
+        false
+    );
+    assert!(json["components"]["schemas"]["ProventoRequest"]["example"].is_object());
+    assert!(json["components"]["schemas"]["ProventoResponse"]["example"].is_object());
+    assert!(json["components"]["schemas"]["ProventosListResponse"]["example"].is_object());
+    assert!(json["components"]["schemas"]["ProventosListApiResponse"].is_object());
+
+    let list_operation = &paths["/proventos"]["get"];
+    assert!(list_operation["description"].as_str().unwrap().len() > 200);
+    for parameter in list_operation["parameters"].as_array().unwrap() {
+        assert!(parameter["description"]
+            .as_str()
+            .is_some_and(|text| !text.is_empty()));
+    }
+    let parameter_names = list_operation["parameters"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|parameter| parameter["name"].as_str())
+        .collect::<Vec<_>>();
+    for expected in [
+        "ticker",
+        "tipo",
+        "data_pagamento_desde",
+        "data_pagamento_ate",
+        "pagina",
+        "por_pagina",
+    ] {
+        assert!(parameter_names.contains(&expected));
+    }
+    let create = &paths["/proventos"]["post"];
+    assert!(create["requestBody"]["content"]["application/json"]["schema"].is_object());
+    assert!(create["responses"]["201"].is_object());
+    assert!(create["responses"]["400"].is_object());
+    assert!(paths["/proventos/{id}"]["put"]["responses"]["404"].is_object());
+    assert!(paths["/proventos/{id}"]["delete"]["responses"]["200"].is_object());
+}
+
+#[tokio::test]
 async fn test_openapi_has_all_endpoints() {
     let app = test_app();
     let response = app

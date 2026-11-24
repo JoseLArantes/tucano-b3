@@ -1,5 +1,14 @@
 # Consumers changelog
 
+## 2026-11-24
+
+### Adicionado
+
+- CRUD autenticado de proventos em `/api/v1/proventos` e `/api/v1/proventos/{id}`: listagem paginada com filtros por ticker, tipo e intervalo de pagamento; criação, consulta, substituição e exclusão.
+- Os tipos aceitos são `Dividendo`, `JCP` e `Rendimento`. `valor` entra e sai como decimal textual em reais; a resposta usa seis casas exatas. Datas ISO e `obs` de fonte/observações podem ser nulas.
+- Ledger SQLite novo recebe uma única carga inicial com 34 registros de novembro de 2026. Categorias plurais foram normalizadas para o tipo `Dividendo`; o campo `obs` mantém as observações fornecidas para os registros.
+- Compatibilidade: aditivo. Sucessos usam `{ data, meta }`; proventos não são apresentados como série oficial da B3.
+
 ## 2026-11-18
 
 ### Adicionado

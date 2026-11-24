@@ -7,3 +7,4 @@ pub mod ibov;
 pub mod ingest;
 pub mod market_calendar;
 pub mod pagination;
+pub mod proventos;
