@@ -1,7 +1,9 @@
 //! SQLite ledger connection and operations.
 
 use chrono::NaiveDate;
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::{
+    params_from_iter, types::Value, Connection, OptionalExtension, TransactionBehavior,
+};
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Mutex;
@@ -15,6 +17,40 @@ pub struct TickerBatchEntry {
     pub company_name: Option<String>,
     pub first_seen: NaiveDate,
     pub last_seen: NaiveDate,
+}
+
+/// Provento draft stored with exact BRL micro-units.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProventoDraft {
+    pub ticker: String,
+    pub tipo: String,
+    pub valor_micros: i64,
+    pub data_com: Option<String>,
+    pub data_pagamento: Option<String>,
+    pub obs: Option<String>,
+}
+
+/// Stored provento row returned from the ledger.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProventoEntry {
+    pub id: i64,
+    pub ticker: String,
+    pub tipo: String,
+    pub valor_micros: i64,
+    pub data_com: Option<String>,
+    pub data_pagamento: Option<String>,
+    pub obs: Option<String>,
+    pub criado_em: String,
+    pub atualizado_em: String,
+}
+
+/// Filters shared by paged provento queries.
+#[derive(Debug, Clone, Default)]
+pub struct ProventoFilters {
+    pub tickers: Vec<String>,
+    pub tipo: Option<String>,
+    pub data_pagamento_desde: Option<String>,
+    pub data_pagamento_ate: Option<String>,
 }
 
 /// Errors during ledger operations.
@@ -74,6 +110,24 @@ impl Ledger {
                 updated_at TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS market_calendar_seeds (
+                seed_id TEXT PRIMARY KEY,
+                applied_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS proventos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticker TEXT NOT NULL CHECK(length(ticker) BETWEEN 1 AND 10),
+                tipo TEXT NOT NULL CHECK(tipo IN ('Dividendo', 'JCP', 'Rendimento')),
+                valor_micros INTEGER NOT NULL CHECK(valor_micros BETWEEN 1 AND 99999999999999),
+                data_com TEXT,
+                data_pagamento TEXT,
+                obs TEXT CHECK(obs IS NULL OR length(obs) <= 255),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_proventos_ticker ON proventos(ticker);
+            CREATE INDEX IF NOT EXISTS idx_proventos_ticker_data_com ON proventos(ticker, data_com);
+            CREATE INDEX IF NOT EXISTS idx_proventos_pagamento ON proventos(data_pagamento);
+            CREATE TABLE IF NOT EXISTS proventos_seeds (
                 seed_id TEXT PRIMARY KEY,
                 applied_at TEXT NOT NULL
             );",
@@ -322,6 +376,324 @@ impl Ledger {
         let deleted = conn.execute("DELETE FROM market_calendars WHERE year = ?1", [year])?;
         Ok(deleted == 1)
     }
+
+    /// Apply a built-in provento seed exactly once and atomically with its rows.
+    pub fn initialize_proventos_seed(
+        &self,
+        seed_id: &str,
+        records: &[ProventoDraft],
+        applied_at: &str,
+    ) -> Result<(), LedgerError> {
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|e| LedgerError::Lock(e.to_string()))?;
+        let tx = conn.transaction()?;
+        let inserted = tx.execute(
+            "INSERT OR IGNORE INTO proventos_seeds (seed_id, applied_at) VALUES (?1, ?2)",
+            rusqlite::params![seed_id, applied_at],
+        )?;
+        if inserted == 1 {
+            let mut stmt = tx.prepare_cached(
+                "INSERT INTO proventos
+                    (ticker, tipo, valor_micros, data_com, data_pagamento, obs, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+            )?;
+            for record in records {
+                stmt.execute(rusqlite::params![
+                    record.ticker,
+                    record.tipo,
+                    record.valor_micros,
+                    record.data_com,
+                    record.data_pagamento,
+                    record.obs,
+                    applied_at,
+                ])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Import new normalized records in one transaction, skipping exact matches.
+    pub fn import_proventos_csv(
+        &self,
+        records: &[ProventoDraft],
+        now: &str,
+    ) -> Result<usize, LedgerError> {
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|e| LedgerError::Lock(e.to_string()))?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut inserted = 0;
+        {
+            let mut stmt = tx.prepare_cached(
+                "INSERT INTO proventos
+                    (ticker, tipo, valor_micros, data_com, data_pagamento, obs, created_at, updated_at)
+                 SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7
+                 WHERE NOT EXISTS (
+                     SELECT 1 FROM proventos
+                     WHERE ticker = ?1 AND tipo = ?2 AND valor_micros = ?3
+                       AND data_com IS ?4 AND data_pagamento IS ?5 AND obs IS ?6
+                 )",
+            )?;
+            for record in records {
+                inserted += stmt.execute(rusqlite::params![
+                    record.ticker,
+                    record.tipo,
+                    record.valor_micros,
+                    record.data_com,
+                    record.data_pagamento,
+                    record.obs,
+                    now,
+                ])?;
+            }
+        }
+        tx.commit()?;
+        Ok(inserted)
+    }
+
+    /// Insert one provento and return the persisted row.
+    pub fn create_provento(
+        &self,
+        record: &ProventoDraft,
+        now: &str,
+    ) -> Result<ProventoEntry, LedgerError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| LedgerError::Lock(e.to_string()))?;
+        conn.execute(
+            "INSERT INTO proventos
+                (ticker, tipo, valor_micros, data_com, data_pagamento, obs, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+            rusqlite::params![
+                record.ticker,
+                record.tipo,
+                record.valor_micros,
+                record.data_com,
+                record.data_pagamento,
+                record.obs,
+                now,
+            ],
+        )?;
+        let id = conn.last_insert_rowid();
+        conn.query_row(
+            "SELECT id, ticker, tipo, valor_micros, data_com, data_pagamento, obs, created_at, updated_at
+             FROM proventos WHERE id = ?1",
+            [id],
+            map_provento_row,
+        )
+        .map_err(LedgerError::from)
+    }
+
+    /// Return a stored provento by its stable identifier.
+    pub fn get_provento(&self, id: i64) -> Result<Option<ProventoEntry>, LedgerError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| LedgerError::Lock(e.to_string()))?;
+        conn.query_row(
+            "SELECT id, ticker, tipo, valor_micros, data_com, data_pagamento, obs, created_at, updated_at
+             FROM proventos WHERE id = ?1",
+            [id],
+            map_provento_row,
+        )
+        .optional()
+        .map_err(LedgerError::from)
+    }
+
+    /// Return a deterministic page and the total count matching the supplied filters.
+    pub fn list_proventos(
+        &self,
+        filters: &ProventoFilters,
+        limit: u32,
+        offset: u32,
+    ) -> Result<(Vec<ProventoEntry>, usize), LedgerError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| LedgerError::Lock(e.to_string()))?;
+        let mut conditions = Vec::new();
+        let mut filter_values = Vec::<Value>::new();
+
+        if !filters.tickers.is_empty() {
+            let placeholders = (1..=filters.tickers.len())
+                .map(|index| format!("?{index}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            filter_values.extend(filters.tickers.iter().cloned().map(Value::Text));
+            conditions.push(format!("ticker IN ({placeholders})"));
+        }
+        if let Some(tipo) = &filters.tipo {
+            filter_values.push(Value::Text(tipo.clone()));
+            conditions.push(format!("tipo = ?{}", filter_values.len()));
+        }
+        if let Some(desde) = &filters.data_pagamento_desde {
+            filter_values.push(Value::Text(desde.clone()));
+            conditions.push(format!("data_pagamento >= ?{}", filter_values.len()));
+        }
+        if let Some(ate) = &filters.data_pagamento_ate {
+            filter_values.push(Value::Text(ate.clone()));
+            conditions.push(format!("data_pagamento <= ?{}", filter_values.len()));
+        }
+
+        let where_clause = if conditions.is_empty() {
+            "1 = 1".to_string()
+        } else {
+            conditions.join(" AND ")
+        };
+        let total_sql = format!("SELECT COUNT(*) FROM proventos WHERE {where_clause}");
+        let total: i64 =
+            conn.query_row(&total_sql, params_from_iter(filter_values.iter()), |row| {
+                row.get(0)
+            })?;
+
+        let list_sql = format!(
+            "SELECT id, ticker, tipo, valor_micros, data_com, data_pagamento, obs, created_at, updated_at
+             FROM proventos
+             WHERE {where_clause}
+             ORDER BY data_pagamento IS NULL ASC, data_pagamento ASC, ticker ASC, tipo ASC, id ASC
+             LIMIT ?{} OFFSET ?{}",
+            filter_values.len() + 1,
+            filter_values.len() + 2,
+        );
+        let mut list_values = filter_values;
+        list_values.push(Value::Integer(i64::from(limit)));
+        list_values.push(Value::Integer(i64::from(offset)));
+        let mut stmt = conn.prepare(&list_sql)?;
+        let rows = stmt.query_map(params_from_iter(list_values.iter()), map_provento_row)?;
+        let entries = rows.collect::<Result<Vec<_>, _>>()?;
+        Ok((entries, total as usize))
+    }
+
+    /// Sum the stored unit values per ticker over an inclusive data-com interval.
+    pub fn proventos_period_totals(
+        &self,
+        tickers: &[String],
+        desde: NaiveDate,
+        ate: NaiveDate,
+    ) -> Result<Vec<(String, i128)>, LedgerError> {
+        self.query_proventos_report(tickers, desde, ate, "ticker", |row| {
+            Ok((row.get(0)?, report_micros(row, 1)?))
+        })
+    }
+
+    /// Sum the stored unit values per ticker and data-com, in chronological order for each ticker.
+    pub fn proventos_daily_totals(
+        &self,
+        tickers: &[String],
+        desde: NaiveDate,
+        ate: NaiveDate,
+    ) -> Result<Vec<(String, NaiveDate, i128)>, LedgerError> {
+        self.query_proventos_report(tickers, desde, ate, "ticker, data_com", |row| {
+            Ok((row.get(0)?, row.get(1)?, report_micros(row, 2)?))
+        })
+    }
+
+    fn query_proventos_report<T>(
+        &self,
+        tickers: &[String],
+        desde: NaiveDate,
+        ate: NaiveDate,
+        group_by: &str,
+        map: impl FnMut(&rusqlite::Row<'_>) -> rusqlite::Result<T>,
+    ) -> Result<Vec<T>, LedgerError> {
+        if tickers.is_empty() {
+            return Ok(Vec::new());
+        }
+        let placeholders = vec!["?"; tickers.len()].join(", ");
+        // Sum whole reais and fractional micro-units separately to keep both integer
+        // aggregates in range even when the combined amount exceeds i64 micro-units.
+        let sql = format!(
+            "SELECT {group_by}, SUM(valor_micros / 1000000), SUM(valor_micros % 1000000)
+             FROM proventos
+             WHERE data_com BETWEEN ? AND ? AND ticker IN ({placeholders})
+             GROUP BY {group_by} ORDER BY {group_by}"
+        );
+        let dates: [&dyn rusqlite::ToSql; 2] = [&desde, &ate];
+        let params = dates
+            .into_iter()
+            .chain(tickers.iter().map(|ticker| ticker as &dyn rusqlite::ToSql));
+
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| LedgerError::Lock(e.to_string()))?;
+        let mut stmt = conn.prepare_cached(&sql)?;
+        let rows = stmt.query_map(params_from_iter(params), map)?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    /// Replace a provento's business fields, preserving its creation timestamp.
+    pub fn update_provento(
+        &self,
+        id: i64,
+        record: &ProventoDraft,
+        now: &str,
+    ) -> Result<Option<ProventoEntry>, LedgerError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| LedgerError::Lock(e.to_string()))?;
+        let updated = conn.execute(
+            "UPDATE proventos SET ticker = ?2, tipo = ?3, valor_micros = ?4,
+                 data_com = ?5, data_pagamento = ?6, obs = ?7, updated_at = ?8
+             WHERE id = ?1",
+            rusqlite::params![
+                id,
+                record.ticker,
+                record.tipo,
+                record.valor_micros,
+                record.data_com,
+                record.data_pagamento,
+                record.obs,
+                now,
+            ],
+        )?;
+        if updated == 0 {
+            return Ok(None);
+        }
+        conn.query_row(
+            "SELECT id, ticker, tipo, valor_micros, data_com, data_pagamento, obs, created_at, updated_at
+             FROM proventos WHERE id = ?1",
+            [id],
+            map_provento_row,
+        )
+        .map(Some)
+        .map_err(LedgerError::from)
+    }
+
+    /// Delete a provento. Returns false when the identifier does not exist.
+    pub fn delete_provento(&self, id: i64) -> Result<bool, LedgerError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| LedgerError::Lock(e.to_string()))?;
+        let deleted = conn.execute("DELETE FROM proventos WHERE id = ?1", [id])?;
+        Ok(deleted == 1)
+    }
+}
+
+fn report_micros(row: &rusqlite::Row<'_>, offset: usize) -> rusqlite::Result<i128> {
+    let reais = i128::from(row.get::<_, i64>(offset)?);
+    let micros = i128::from(row.get::<_, i64>(offset + 1)?);
+    Ok(reais * 1_000_000 + micros)
+}
+
+fn map_provento_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProventoEntry> {
+    Ok(ProventoEntry {
+        id: row.get(0)?,
+        ticker: row.get(1)?,
+        tipo: row.get(2)?,
+        valor_micros: row.get(3)?,
+        data_com: row.get(4)?,
+        data_pagamento: row.get(5)?,
+        obs: row.get(6)?,
+        criado_em: row.get(7)?,
+        atualizado_em: row.get(8)?,
+    })
 }
 
 #[cfg(test)]

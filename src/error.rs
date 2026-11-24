@@ -43,6 +43,9 @@ pub enum AppError {
     #[error("Parâmetro inválido: {message}")]
     InvalidParam { message: String },
 
+    #[error("Arquivo muito grande: {message}")]
+    PayloadTooLarge { message: String },
+
     #[error("Não autorizado")]
     Unauthorized,
 }
@@ -61,6 +64,7 @@ impl AppError {
             Self::Internal(_) => "INTERNAL_ERROR",
             Self::ServiceUnavailable => "SERVICE_UNAVAILABLE",
             Self::InvalidParam { .. } => "INVALID_PARAM",
+            Self::PayloadTooLarge { .. } => "PAYLOAD_TOO_LARGE",
             Self::Unauthorized => "UNAUTHORIZED",
         }
     }
@@ -78,6 +82,7 @@ impl AppError {
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::ServiceUnavailable => StatusCode::SERVICE_UNAVAILABLE,
             Self::InvalidParam { .. } => StatusCode::BAD_REQUEST,
+            Self::PayloadTooLarge { .. } => StatusCode::PAYLOAD_TOO_LARGE,
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
         }
     }

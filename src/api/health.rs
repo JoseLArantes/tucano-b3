@@ -17,6 +17,7 @@ use crate::config::ObjectStorageConfig;
 use crate::data::reload::DataLoader;
 use crate::ingest::index_metrics::IndexIngestor;
 use crate::services::market_calendar::MarketCalendarService;
+use crate::services::proventos::ProventosService;
 
 /// Shared application state.
 ///
@@ -31,6 +32,7 @@ pub struct AppState {
     pub object_storage: ObjectStorageConfig,
     pub index_ingestor: Arc<IndexIngestor>,
     pub market_calendar: Arc<MarketCalendarService>,
+    pub proventos: Arc<ProventosService>,
     pub auth_enabled: bool,
 }
 
@@ -46,6 +48,10 @@ impl AppState {
             MarketCalendarService::new(index_ingestor.ledger())
                 .expect("B3 market calendar ledger must be available"),
         );
+        let proventos = Arc::new(
+            ProventosService::new(index_ingestor.ledger())
+                .expect("proventos ledger and seed must be available"),
+        );
         Self {
             start_time: Instant::now(),
             version: env!("CARGO_PKG_VERSION").to_string(),
@@ -54,6 +60,7 @@ impl AppState {
             object_storage: ObjectStorageConfig::default(),
             index_ingestor,
             market_calendar,
+            proventos,
             auth_enabled,
         }
     }

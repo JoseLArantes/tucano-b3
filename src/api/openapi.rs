@@ -12,6 +12,7 @@ use crate::models::envelope::*;
 use crate::models::ibov::*;
 use crate::models::market_calendar::*;
 use crate::models::pagination::*;
+use crate::models::proventos::*;
 
 struct SecurityAddon;
 
@@ -62,6 +63,8 @@ Indicadores calculados sobre PREULT/OHLCV COTAHIST — **não** são séries ofi
 `/metrics/ibov/history` e `/metrics/ibov/latest` consultam a série oficial do IBOV. Também estão disponíveis `/metrics/idiv/history` e `/metrics/ifix/latest`. Os CSVs publicados pela B3 fornecem fechamento diário em pontos.\n\n\
 ### Calendário e negociação B3\n\
 `/calendar` lista e cria calendários anuais; `/calendar/{year}` consulta, substitui ou remove o calendário do ano. O ledger inicia com a agenda oficial de 2026 e preserva as fontes. `/negotiation-hours` apresenta os horários gerais publicados para Tela, RFQ e Voice; exceções de uma data estão no calendário anual.\n\n\
+### Proventos cadastrados\n\
+CRUD autenticado de dividendos, juros sobre capital próprio (`JCP`) e rendimentos em `/proventos`. Os valores são decimais textuais exatos em reais; datas, fonte e observações ficam associadas a cada registro. A API preserva a proveniência informada, mas não valida as fontes nem apresenta proventos como série oficial da B3.\n\n\
 ### Ingestão e operações\n\
 Upload, pasta local ou bucket S3 compatível (Cloudflare R2) de arquivos COTAHIST (`.ZIP`/`.TXT`) com idempotência por data de pregão. Os CSVs de IBOV, IDIV e IFIX são atualizados diariamente às 02:00 em `America/Sao_Paulo` e podem ser disparados por `POST /ingest/indices`. Health, info do dataset e métricas Prometheus.\n\n\
 ### Contratos e limitações\n\
@@ -125,6 +128,16 @@ Upload, pasta local ou bucket S3 compatível (Cloudflare R2) de arquivos COTAHIS
         crate::api::market_calendar::update_calendar,
         crate::api::market_calendar::delete_calendar,
         crate::api::market_calendar::negotiation_hours,
+        // Source-attributed provento CRUD and reporting
+        crate::api::proventos::list_proventos,
+        crate::api::proventos::get_provento,
+        crate::api::proventos::create_provento,
+        crate::api::proventos::update_provento,
+        crate::api::proventos::delete_provento,
+        crate::api::proventos::upload::upload_csv,
+        crate::api::proventos::reports::yearly,
+        crate::api::proventos::reports::period,
+        crate::api::proventos::reports::series,
         // System endpoints
         crate::api::health::health_handler,
         crate::api::info::info_handler,
@@ -178,6 +191,13 @@ Upload, pasta local ou bucket S3 compatível (Cloudflare R2) de arquivos COTAHIS
             MarketCalendarApiResponse,
             MarketCalendarDeleteApiResponse,
             NegotiationHoursApiResponse,
+            ProventoApiResponse,
+            ProventosListApiResponse,
+            ProventoDeleteApiResponse,
+            ProventosYearlyApiResponse,
+            ProventosPeriodApiResponse,
+            ProventosSeriesApiResponse,
+            ProventosCsvUploadApiResponse,
             IngestApiResponse,
             ResponseMeta,
             ErrorResponse,
@@ -226,6 +246,17 @@ Upload, pasta local ou bucket S3 compatível (Cloudflare R2) de arquivos COTAHIS
             MarketCalendarDeleteResponse,
             NegotiationSessionHours,
             NegotiationHoursResponse,
+            ProventoTipo,
+            ProventoRequest,
+            ProventoResponse,
+            ProventosListResponse,
+            ProventoDeleteResponse,
+            ProventosYearlyResponse,
+            ProventosPeriodTotal,
+            ProventosSeriesPoint,
+            ProventosTickerSeries,
+            ProventosCsvUploadRequest,
+            ProventosCsvUploadResponse,
             // Ingest
             crate::models::ingest::IngestResponse,
             crate::models::ingest::FolderIngestRequest,
@@ -241,6 +272,7 @@ Upload, pasta local ou bucket S3 compatível (Cloudflare R2) de arquivos COTAHIS
         (name = "cotahist", description = "Cotações históricas de ativos listados na B3"),
         (name = "índices", description = "Séries oficiais de índices da B3"),
         (name = "calendário", description = "Calendário anual e horários de negociação publicados pela B3"),
+        (name = "proventos", description = "CRUD e importação CSV de dividendos, JCP e rendimentos com fonte preservada, além de relatórios por data-com"),
         (name = "ingestão", description = "Ingestão de dados COTAHIST e índices da B3"),
         (name = "sistema", description = "Endpoints de saúde e informações do serviço"),
     ),

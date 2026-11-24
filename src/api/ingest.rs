@@ -28,7 +28,7 @@ pub use crate::models::ingest::{
 #[utoipa::path(
     post,
     path = "/ingest/upload",
-    tag = "ingest",
+    tag = "ingestão",
     request_body(
         content = UploadFileRequest,
         content_type = "multipart/form-data",
@@ -148,7 +148,7 @@ pub(crate) async fn upload_handler(
 #[utoipa::path(
     post,
     path = "/ingest/folder",
-    tag = "ingest",
+    tag = "ingestão",
     request_body = FolderIngestRequest,
     responses(
         (status = 200, description = "Ingestão concluída", body = IngestApiResponse),
@@ -232,7 +232,7 @@ pub(crate) async fn folder_handler(
 #[utoipa::path(
     post,
     path = "/ingest/bucket",
-    tag = "ingest",
+    tag = "ingestão",
     request_body = BucketIngestRequest,
     responses(
         (status = 200, description = "Ingestão concluída", body = IngestApiResponse),

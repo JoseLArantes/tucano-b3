@@ -11,6 +11,7 @@ pub mod ingest;
 pub mod market_calendar;
 pub mod metrics;
 pub mod openapi;
+pub mod proventos;
 
 use crate::cache::store::CacheStore;
 use crate::data::reload::DataLoader;
@@ -41,5 +42,6 @@ pub fn routes(
         .merge(cotahist::routes(state.clone()))
         .merge(cotahist_analytics::routes(state.clone()))
         .merge(index_metrics::routes(state.clone()))
-        .merge(market_calendar::routes(state))
+        .merge(market_calendar::routes(state.clone()))
+        .merge(proventos::routes(state))
 }
