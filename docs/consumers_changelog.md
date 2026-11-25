@@ -1,5 +1,9 @@
 # Consumers changelog
 
+## 2026-11-25
+
+- Cadastro e importação de proventos usam ticker, tipo, valor exato, data-com e pagamento como identidade. Mudanças em `obs` preservam o ID. O cadastro de registro existente retorna `200`, e o resultado da importação inclui `atualizados`. Um `PUT` que colida com outro registro retorna `409`.
+
 ## 2026-11-24
 
 ### Adicionado

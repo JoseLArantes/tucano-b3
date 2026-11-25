@@ -64,8 +64,8 @@ async fn csv_upload_imports_exact_values_and_skips_existing_and_in_file_duplicat
         "Dividendo,TSTU11,1,2026-06-10,,\r\n",
     );
     for expected in [
-        json!({"recebidos": 4, "inseridos": 3, "ignorados": 1}),
-        json!({"recebidos": 4, "inseridos": 0, "ignorados": 4}),
+        json!({"recebidos": 4, "inseridos": 3, "atualizados": 0, "ignorados": 1}),
+        json!({"recebidos": 4, "inseridos": 0, "atualizados": 0, "ignorados": 4}),
     ] {
         let response = app.oneshot(csv_upload(csv, true)).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -99,6 +99,51 @@ async fn csv_upload_imports_exact_values_and_skips_existing_and_in_file_duplicat
         json_body(response).await["data"]["proventos"][0]["obs"],
         "Fundo, comunicado público"
     );
+}
+
+#[tokio::test]
+async fn create_and_import_share_identity_and_update_only_observation() {
+    let app = authenticated_app();
+    let uri = "/api/v1/proventos";
+    let draft = json!({"ticker":"TEST3","tipo":"JCP","valor":"1.00","obs":"original"});
+    let response = app
+        .oneshot(request(Method::POST, uri, draft.clone(), true))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let original = json_body(response).await["data"].clone();
+    let response = app
+        .oneshot(request(Method::POST, uri, draft, true))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(json_body(response).await["data"], original);
+
+    let csv = "ticker,tipo,valor,obs\nTEST3,JCP,1,intermediaria\ntest3,JCP,1.000000,final\n";
+    for updates in [1, 0] {
+        let response = app.oneshot(csv_upload(csv, true)).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            json_body(response).await["data"],
+            json!({
+                "recebidos": 2, "inseridos": 0, "atualizados": updates, "ignorados": 2 - updates
+            })
+        );
+    }
+    let response = app
+        .oneshot(request(
+            Method::GET,
+            "/api/v1/proventos?ticker=TEST3",
+            json!({}),
+            true,
+        ))
+        .await
+        .unwrap();
+    let data = json_body(response).await["data"].clone();
+    assert_eq!(data["paginacao"]["total"], 1);
+    assert_eq!(data["proventos"][0]["id"], original["id"]);
+    assert_eq!(data["proventos"][0]["criado_em"], original["criado_em"]);
+    assert_eq!(data["proventos"][0]["obs"], "final");
 }
 
 #[tokio::test]

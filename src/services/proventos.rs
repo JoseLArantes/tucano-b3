@@ -76,12 +76,15 @@ impl ProventosService {
     }
 
     /// Create a provento.
-    pub fn create(&self, request: ProventoRequest) -> Result<ProventoResponse, ProventosError> {
+    pub fn create(
+        &self,
+        request: ProventoRequest,
+    ) -> Result<(ProventoResponse, bool), ProventosError> {
         let record = validate_record(request)?;
-        let entry = self
+        let (entry, created) = self
             .ledger
             .create_provento(&record, &Utc::now().to_rfc3339())?;
-        to_response(entry)
+        Ok((to_response(entry)?, created))
     }
 
     /// Replace all business fields for an existing provento.

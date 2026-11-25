@@ -39,19 +39,20 @@ O ledger recebe um conjunto inicial de registros de novembro de 2026 uma única 
 
 `POST /api/v1/proventos/upload` usa `multipart/form-data` com um campo binário obrigatório chamado `file`. O arquivo tem cabeçalho e de 1 a 10.000 registros em UTF-8, com limite de 1 MiB. As colunas obrigatórias são `ticker`, `tipo` e `valor`, com as mesmas regras do cadastro individual. As colunas `data_com`, `data_pagamento` e `obs` são opcionais. O serviço interpreta célula opcional vazia como nula e rejeita cabeçalhos repetidos ou desconhecidos.
 
-Dois registros são idênticos se coincidirem os seis campos após normalização, incluindo `obs`. O serviço compara os valores decimais pela quantidade exata de micro-reais. Uma observação diferente representa um registro diferente para a importação.
+A identidade combina `ticker` normalizado, `tipo`, `valor` exato em micro-reais, `data_com` e `data_pagamento`. Datas nulas coincidem entre si. Quando só `obs` difere, o mesmo registro é atualizado.
 
 A resposta `200` usa o envelope `{ data, meta }`. Exemplo de `data`:
 
 ```json
-{"recebidos": 3, "inseridos": 2, "ignorados": 1}
+{"recebidos": 4, "inseridos": 2, "atualizados": 1, "ignorados": 1}
 ```
 
 | Campo | Tipo | Significado |
 | --- | --- | --- |
 | `recebidos` | inteiro | Quantidade de registros válidos lidos, sem contar o cabeçalho. |
 | `inseridos` | inteiro | Quantidade de registros novos gravados na transação. |
-| `ignorados` | inteiro | Quantidade de registros idênticos a um já gravado ou visto antes no mesmo arquivo. |
+| `atualizados` | inteiro | Quantidade de observações alteradas em registros existentes. |
+| `ignorados` | inteiro | Linhas substituídas por uma ocorrência posterior no arquivo ou já persistidas sem alteração. |
 
 ## Relatórios
 

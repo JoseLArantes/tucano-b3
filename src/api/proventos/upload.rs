@@ -39,10 +39,11 @@ pub(super) const UPLOAD_BODY_LIMIT: usize = MAX_CSV_BYTES + 64 * 1024;
 /// ```
 ///
 /// O limite é 1 MiB e 10.000 registros por arquivo. Toda linha é validada
-/// antes da gravação. Um erro rejeita o lote inteiro. Registros que tenham
-/// os mesmos seis campos após normalização são ignorados, inclusive dentro
-/// do mesmo arquivo. A operação não atualiza registros existentes. A resposta
-/// informa quantos registros foram recebidos, inseridos e ignorados.
+/// antes da gravação. Um erro rejeita o lote inteiro. A identidade combina
+/// ticker, tipo, valor exato, data-com e data de pagamento, inclusive datas nulas.
+/// Em registros existentes, somente `obs` é atualizada se houver mudança.
+/// Se a identidade se repetir no arquivo, vale a última linha. A resposta
+/// informa quantos registros foram recebidos, inseridos, atualizados e ignorados.
 #[utoipa::path(
     post,
     path = "/proventos/upload",
@@ -53,7 +54,7 @@ pub(super) const UPLOAD_BODY_LIMIT: usize = MAX_CSV_BYTES + 64 * 1024;
         description = "Arquivo CSV UTF-8 no campo file"
     ),
     responses(
-        (status = 200, description = "Lote validado e importado, com contagem de recebidos, inseridos e ignorados", body = ProventosCsvUploadApiResponse),
+        (status = 200, description = "Lote validado e importado, com contagem de recebidos, inseridos, atualizados e ignorados", body = ProventosCsvUploadApiResponse),
         (status = 400, description = "Formulário inválido, CSV vazio, cabeçalho ou registro inválido, ou mais de 10.000 registros", body = ErrorResponse),
         (status = 401, description = "Credencial ausente ou inválida", body = ErrorResponse),
         (status = 413, description = "Arquivo acima de 1 MiB ou formulário acima do limite multipart", body = ErrorResponse),
