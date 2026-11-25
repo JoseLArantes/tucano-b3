@@ -63,13 +63,14 @@ impl ProventosService {
         }
 
         let recebidos = records.len();
-        let inseridos = self
+        let (inseridos, atualizados) = self
             .ledger
             .import_proventos_csv(&records, &Utc::now().to_rfc3339())?;
         Ok(ProventosCsvUploadResponse {
             recebidos,
             inseridos,
-            ignorados: recebidos - inseridos,
+            atualizados,
+            ignorados: recebidos - inseridos - atualizados,
         })
     }
 }

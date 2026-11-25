@@ -75,6 +75,11 @@ fn map_proventos_error(error: ProventosError) -> AppError {
             resource: format!("provento {id}"),
         },
         ProventosError::Invalid(message) => AppError::InvalidParam { message },
+        ProventosError::Ledger(crate::ledger::LedgerError::DuplicateProvento) => {
+            AppError::Conflict {
+                message: "já existe um provento com o mesmo ticker, tipo, valor e datas".into(),
+            }
+        }
         error @ (ProventosError::Ledger(_) | ProventosError::Serialization(_)) => {
             AppError::Internal(anyhow::Error::new(error))
         }
@@ -158,8 +163,9 @@ pub(crate) async fn get_provento(
 /// em reais, com até seis casas, sem arredondamento. Datas usam `AAAA-MM-DD` e
 /// podem ser nulas quando a fonte não as informa. `obs` deve identificar a fonte
 /// quando conhecida e pode conter até 255 caracteres. O ticker é normalizado para
-/// maiúsculas. Cada chamada cria um novo ID, mesmo que os campos coincidam com
-/// outro lançamento. Escritas exigem autenticação configurada.
+/// maiúsculas. Ticker, tipo, valor exato e ambas as datas identificam o registro,
+/// inclusive quando uma data é nula. Se já existir, mantém o ID e atualiza
+/// somente `obs` se houver mudança. Escritas exigem autenticação configurada.
 #[utoipa::path(
     post,
     path = "/proventos",
@@ -167,6 +173,7 @@ pub(crate) async fn get_provento(
     request_body = ProventoRequest,
     responses(
         (status = 201, description = "Provento criado", body = ProventoApiResponse),
+        (status = 200, description = "Provento existente, com observação atualizada se necessário", body = ProventoApiResponse),
         (status = 400, description = "Dados do provento inválidos", body = ErrorResponse),
         (status = 503, description = "Configure uma credencial antes de cadastrar proventos", body = ErrorResponse),
         (status = 401, description = "Credencial ausente ou inválida", body = ErrorResponse),
@@ -179,12 +186,16 @@ pub(crate) async fn create_provento(
 ) -> AppResult<(StatusCode, Json<ApiResponse<ProventoResponse>>)> {
     require_configured_auth(&state)?;
     let start = Instant::now();
-    let record = state
+    let (record, created) = state
         .proventos
         .create(request)
         .map_err(map_proventos_error)?;
     Ok((
-        StatusCode::CREATED,
+        if created {
+            StatusCode::CREATED
+        } else {
+            StatusCode::OK
+        },
         Json(ApiResponse::new(
             record,
             start.elapsed().as_secs_f64() * 1000.0,
@@ -197,6 +208,7 @@ pub(crate) async fn create_provento(
 /// Substitui todos os campos de negócio do registro indicado e mantém o mesmo
 /// identificador e instante de criação. Os mesmos limites de tipo, valor, datas,
 /// ticker e observação aplicados em `POST` também são aplicados aqui.
+/// Uma alteração que coincida com a identidade de outro registro retorna `409`.
 #[utoipa::path(
     put,
     path = "/proventos/{id}",
@@ -205,6 +217,7 @@ pub(crate) async fn create_provento(
     request_body = ProventoRequest,
     responses(
         (status = 200, description = "Provento atualizado", body = ProventoApiResponse),
+        (status = 409, description = "Outro provento já possui o mesmo ticker, tipo, valor e datas", body = ErrorResponse),
         (status = 400, description = "Dados do provento inválidos", body = ErrorResponse),
         (status = 404, description = "Provento não encontrado", body = ErrorResponse),
         (status = 503, description = "Configure uma credencial antes de alterar proventos", body = ErrorResponse),

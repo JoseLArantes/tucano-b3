@@ -67,6 +67,9 @@ pub enum LedgerError {
 
     #[error("Internal synchronization error: {0}")]
     Lock(String),
+
+    #[error("Duplicate provento")]
+    DuplicateProvento,
 }
 
 /// Thread-safe SQLite ledger.
@@ -81,7 +84,7 @@ impl Ledger {
             std::fs::create_dir_all(parent)?;
         }
 
-        let conn = Connection::open(path).map_err(|_| LedgerError::OpenFailed {
+        let mut conn = Connection::open(path).map_err(|_| LedgerError::OpenFailed {
             path: path.display().to_string(),
         })?;
 
@@ -132,6 +135,36 @@ impl Ledger {
                 applied_at TEXT NOT NULL
             );",
         )?;
+
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let indexed = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name = 'idx_proventos_identity')",
+            [],
+            |row| row.get::<_, bool>(0),
+        )?;
+        if !indexed {
+            tx.execute_batch(
+                "WITH duplicates AS MATERIALIZED (
+                    SELECT id, obs, updated_at,
+                           MIN(id) OVER identity AS survivor,
+                           ROW_NUMBER() OVER (identity ORDER BY updated_at DESC, id DESC) AS newest,
+                           COUNT(*) OVER identity AS copies
+                    FROM proventos
+                    WINDOW identity AS (PARTITION BY ticker, tipo, valor_micros, data_com, data_pagamento)
+                 )
+                 UPDATE proventos SET (obs, updated_at) = (
+                     SELECT obs, updated_at FROM duplicates WHERE survivor = proventos.id AND newest = 1
+                 )
+                 WHERE id IN (SELECT survivor FROM duplicates WHERE copies > 1);
+                 DELETE FROM proventos WHERE id NOT IN (
+                     SELECT MIN(id) FROM proventos GROUP BY ticker, tipo, valor_micros, data_com, data_pagamento
+                 );
+                 CREATE UNIQUE INDEX idx_proventos_identity ON proventos(
+                     ticker, tipo, valor_micros, COALESCE(data_com, ''), COALESCE(data_pagamento, '')
+                 );",
+            )?;
+        }
+        tx.commit()?;
 
         Ok(Self {
             conn: Mutex::new(conn),
@@ -397,7 +430,7 @@ impl Ledger {
             let mut stmt = tx.prepare_cached(
                 "INSERT INTO proventos
                     (ticker, tipo, valor_micros, data_com, data_pagamento, obs, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7) ON CONFLICT DO NOTHING",
             )?;
             for record in records {
                 stmt.execute(rusqlite::params![
@@ -415,77 +448,61 @@ impl Ledger {
         Ok(())
     }
 
-    /// Import new normalized records in one transaction, skipping exact matches.
+    /// Import in one transaction, returning counts of inserts and observation changes.
     pub fn import_proventos_csv(
         &self,
         records: &[ProventoDraft],
         now: &str,
-    ) -> Result<usize, LedgerError> {
+    ) -> Result<(usize, usize), LedgerError> {
         let mut conn = self
             .conn
             .lock()
             .map_err(|e| LedgerError::Lock(e.to_string()))?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let mut inserted = 0;
-        {
-            let mut stmt = tx.prepare_cached(
-                "INSERT INTO proventos
-                    (ticker, tipo, valor_micros, data_com, data_pagamento, obs, created_at, updated_at)
-                 SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7
-                 WHERE NOT EXISTS (
-                     SELECT 1 FROM proventos
-                     WHERE ticker = ?1 AND tipo = ?2 AND valor_micros = ?3
-                       AND data_com IS ?4 AND data_pagamento IS ?5 AND obs IS ?6
-                 )",
-            )?;
-            for record in records {
-                inserted += stmt.execute(rusqlite::params![
-                    record.ticker,
-                    record.tipo,
-                    record.valor_micros,
-                    record.data_com,
-                    record.data_pagamento,
-                    record.obs,
-                    now,
-                ])?;
+        let mut updated = 0;
+        let mut seen = HashSet::new();
+        let mut final_rows = Vec::new();
+        for record in records.iter().rev() {
+            if seen.insert((
+                &record.ticker,
+                &record.tipo,
+                record.valor_micros,
+                &record.data_com,
+                &record.data_pagamento,
+            )) {
+                final_rows.push(record);
             }
         }
+        for record in final_rows.into_iter().rev() {
+            let (_, created, changed) = merge_provento(&tx, record, now)?;
+            inserted += usize::from(created);
+            updated += usize::from(changed);
+        }
         tx.commit()?;
-        Ok(inserted)
+        Ok((inserted, updated))
     }
 
-    /// Insert one provento and return the persisted row.
+    /// Insert or update the observation, returning the row and whether it was created.
     pub fn create_provento(
         &self,
         record: &ProventoDraft,
         now: &str,
-    ) -> Result<ProventoEntry, LedgerError> {
-        let conn = self
+    ) -> Result<(ProventoEntry, bool), LedgerError> {
+        let mut conn = self
             .conn
             .lock()
             .map_err(|e| LedgerError::Lock(e.to_string()))?;
-        conn.execute(
-            "INSERT INTO proventos
-                (ticker, tipo, valor_micros, data_com, data_pagamento, obs, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
-            rusqlite::params![
-                record.ticker,
-                record.tipo,
-                record.valor_micros,
-                record.data_com,
-                record.data_pagamento,
-                record.obs,
-                now,
-            ],
-        )?;
-        let id = conn.last_insert_rowid();
-        conn.query_row(
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let (id, created, _) = merge_provento(&tx, record, now)?;
+        let entry = tx.query_row(
             "SELECT id, ticker, tipo, valor_micros, data_com, data_pagamento, obs, created_at, updated_at
              FROM proventos WHERE id = ?1",
             [id],
             map_provento_row,
-        )
-        .map_err(LedgerError::from)
+        )?;
+        tx.commit()?;
+        Ok((entry, created))
     }
 
     /// Return a stored provento by its stable identifier.
@@ -651,7 +668,13 @@ impl Ledger {
                 record.obs,
                 now,
             ],
-        )?;
+        ).map_err(|error| {
+            if matches!(&error, rusqlite::Error::SqliteFailure(code, _) if code.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE) {
+                LedgerError::DuplicateProvento
+            } else {
+                error.into()
+            }
+        })?;
         if updated == 0 {
             return Ok(None);
         }
@@ -674,6 +697,53 @@ impl Ledger {
         let deleted = conn.execute("DELETE FROM proventos WHERE id = ?1", [id])?;
         Ok(deleted == 1)
     }
+}
+
+fn merge_provento(
+    conn: &Connection,
+    record: &ProventoDraft,
+    now: &str,
+) -> rusqlite::Result<(i64, bool, bool)> {
+    let existing = conn
+        .prepare_cached(
+            "SELECT id, obs FROM proventos WHERE ticker = ?1 AND tipo = ?2 AND valor_micros = ?3
+         AND COALESCE(data_com, '') = COALESCE(?4, '')
+         AND COALESCE(data_pagamento, '') = COALESCE(?5, '')",
+        )?
+        .query_row(
+            rusqlite::params![
+                record.ticker,
+                record.tipo,
+                record.valor_micros,
+                record.data_com,
+                record.data_pagamento
+            ],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, Option<String>>(1)?)),
+        )
+        .optional()?;
+    if let Some((id, obs)) = existing {
+        let changed = obs != record.obs;
+        if changed {
+            conn.prepare_cached("UPDATE proventos SET obs = ?1, updated_at = ?2 WHERE id = ?3")?
+                .execute(rusqlite::params![record.obs, now, id])?;
+        }
+        return Ok((id, false, changed));
+    }
+    conn.prepare_cached(
+        "INSERT INTO proventos
+         (ticker, tipo, valor_micros, data_com, data_pagamento, obs, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+    )?
+    .execute(rusqlite::params![
+        record.ticker,
+        record.tipo,
+        record.valor_micros,
+        record.data_com,
+        record.data_pagamento,
+        record.obs,
+        now
+    ])?;
+    Ok((conn.last_insert_rowid(), true, false))
 }
 
 fn report_micros(row: &rusqlite::Row<'_>, offset: usize) -> rusqlite::Result<i128> {
